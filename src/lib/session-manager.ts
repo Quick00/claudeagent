@@ -2,6 +2,24 @@ import { spawn, ChildProcess } from 'child_process';
 import path from 'path';
 import { config } from '@/lib/config';
 
+// Resolve the MCP server path at module load time (before cwd changes)
+const PROJECT_ROOT = path.resolve(process.cwd());
+
+function getMcpConfig(): string {
+  return JSON.stringify({
+    mcpServers: {
+      knowledge: {
+        command: 'node',
+        args: [path.join(PROJECT_ROOT, 'src/mcp/knowledge-server.mjs')],
+        env: {
+          KNOWLEDGE_API_URL: `${process.env.NEXTAUTH_URL || 'http://localhost:3000'}/api/knowledge`,
+          KNOWLEDGE_API_SECRET: process.env.KNOWLEDGE_API_SECRET || '',
+        },
+      },
+    },
+  });
+}
+
 interface QueuedRequest {
   resolve: (proc: ChildProcess) => void;
   args: string[];
@@ -21,19 +39,6 @@ export class SessionManager {
   }
 
   startSession(requestId: string, message: string, systemPrompt: string): ChildProcess | Promise<ChildProcess> {
-    const mcpConfig = JSON.stringify({
-      mcpServers: {
-        knowledge: {
-          command: 'node',
-          args: [path.join(process.cwd(), 'src/mcp/knowledge-server.mjs')],
-          env: {
-            KNOWLEDGE_API_URL: `${process.env.NEXTAUTH_URL || 'http://localhost:3000'}/api/knowledge`,
-            KNOWLEDGE_API_SECRET: process.env.KNOWLEDGE_API_SECRET || '',
-          },
-        },
-      },
-    });
-
     const args = [
       '--print',
       '--verbose',
@@ -41,7 +46,7 @@ export class SessionManager {
       '--max-turns', String(config.claudeMaxTurns),
       '--add-dir', config.eventinsightRepoPath,
       '--system-prompt', systemPrompt,
-      '--mcp-config', mcpConfig,
+      '--mcp-config', getMcpConfig(),
       '--permission-mode', 'bypassPermissions',
     ];
 
@@ -54,6 +59,8 @@ export class SessionManager {
       '--print',
       '--verbose',
       '--output-format', 'stream-json',
+      '--mcp-config', getMcpConfig(),
+      '--permission-mode', 'bypassPermissions',
     ];
 
     return this.spawnOrQueue(requestId, args, message);
