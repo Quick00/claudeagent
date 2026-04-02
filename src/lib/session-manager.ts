@@ -19,14 +19,14 @@ export class SessionManager {
     return this.queue.length;
   }
 
-  startSession(requestId: string, message: string): ChildProcess | Promise<ChildProcess> {
+  startSession(requestId: string, message: string, systemPrompt: string): ChildProcess | Promise<ChildProcess> {
     const args = [
       '--print',
       '--verbose',
       '--output-format', 'stream-json',
       '--max-turns', String(config.claudeMaxTurns),
       '--add-dir', config.eventinsightRepoPath,
-      '--system-prompt', config.systemPrompt,
+      '--system-prompt', systemPrompt,
     ];
 
     return this.spawnOrQueue(requestId, args, message);

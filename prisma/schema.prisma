@@ -34,3 +34,11 @@ model Message {
   createdAt      DateTime     @default(now())
   conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
 }
+
+model KnowledgeEntry {
+  id        String   @id @default(uuid())
+  category  String   // "correction", "terminology", "product_insight", "process"
+  content   String
+  source    String?  // which conversation triggered this
+  createdAt DateTime @default(now())
+}

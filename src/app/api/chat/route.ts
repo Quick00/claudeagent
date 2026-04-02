@@ -2,6 +2,7 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { sessionManager } from '@/lib/session-manager';
+import { config } from '@/lib/config';
 
 export async function POST(request: Request) {
   const session = await getServerSession(authOptions);
@@ -53,13 +54,64 @@ export async function POST(request: Request) {
     },
   });
 
+  // Build system prompt with knowledge context
+  const knowledgeEntries = await prisma.knowledgeEntry.findMany({
+    orderBy: { createdAt: 'asc' },
+  });
+
+  let systemPrompt = config.systemPrompt;
+
+  if (knowledgeEntries.length > 0) {
+    const grouped: Record<string, string[]> = {};
+    for (const entry of knowledgeEntries) {
+      if (!grouped[entry.category]) grouped[entry.category] = [];
+      grouped[entry.category].push(entry.content);
+    }
+
+    const categoryLabels: Record<string, string> = {
+      correction: 'Important corrections (these override what you find in code)',
+      terminology: 'Product terminology',
+      product_insight: 'Product knowledge',
+      process: 'Business processes',
+    };
+
+    let knowledgeBlock = '\n\n---\nKNOWLEDGE BASE (use this to give better answers):\n';
+    for (const [cat, entries] of Object.entries(grouped)) {
+      knowledgeBlock += `\n## ${categoryLabels[cat] || cat}\n`;
+      for (const entry of entries) {
+        knowledgeBlock += `- ${entry}\n`;
+      }
+    }
+    systemPrompt += knowledgeBlock;
+  }
+
+  // Add memory instructions
+  const knowledgeApiUrl = `${process.env.NEXTAUTH_URL}/api/knowledge`;
+  const knowledgeApiSecret = process.env.KNOWLEDGE_API_SECRET;
+
+  systemPrompt += `\n\n---
+MEMORY SYSTEM:
+When you discover something important while answering a question — a correction to a common misunderstanding, a useful product insight, how a feature actually works, or important terminology — save it so future questions benefit from this knowledge.
+
+To save knowledge, use the Bash tool to run:
+curl -s -X POST "${knowledgeApiUrl}" -H "Content-Type: application/json" -H "Authorization: Bearer ${knowledgeApiSecret}" -d '{"category":"<CATEGORY>","content":"<WHAT YOU LEARNED>"}'
+
+Categories: "correction" (wrong assumptions corrected), "terminology" (what product terms mean), "product_insight" (how features work), "process" (business workflows).
+
+Rules:
+- Only save genuinely useful, reusable knowledge — not conversation-specific details.
+- Keep entries concise (1-2 sentences).
+- Don't save things that are obvious from the codebase structure.
+- DO save things that required deep investigation or that surprised you.
+- DO save corrections when a user tells you your answer was wrong.`;
+
   // Spawn or resume Claude CLI
   const requestId = `${conversation.id}-${Date.now()}`;
-  console.log(`[chat] Starting request (requestId=${requestId}, conversationId=${conversation.id}, resume=${!!conversation.claudeSessionId})`);
+  console.log(`[chat] Starting request (requestId=${requestId}, conversationId=${conversation.id}, resume=${!!conversation.claudeSessionId}, knowledgeEntries=${knowledgeEntries.length})`);
 
   const procOrPromise = conversation.claudeSessionId
     ? sessionManager.resumeSession(requestId, conversation.claudeSessionId, message)
-    : sessionManager.startSession(requestId, message);
+    : sessionManager.startSession(requestId, message, systemPrompt);
 
   const proc = procOrPromise instanceof Promise ? await procOrPromise : procOrPromise;
   console.log(`[chat] Process acquired (pid=${proc.pid})`);
