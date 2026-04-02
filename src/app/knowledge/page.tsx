@@ -105,9 +105,9 @@ export default function KnowledgePage() {
       : [];
 
   return (
-    <div className="flex h-screen">
+    <div className="relative h-screen">
       {/* Graph */}
-      <div className="flex-1 bg-gray-50">
+      <div className="h-full bg-gray-50">
         <div className="absolute left-4 top-4 z-10 flex items-center gap-4">
           <a
             href="/"
@@ -168,9 +168,9 @@ export default function KnowledgePage() {
         )}
       </div>
 
-      {/* Detail panel */}
+      {/* Detail panel — overlays on the right */}
       {selectedNode && (
-        <div className="w-80 border-l border-gray-200 bg-white p-6">
+        <div className="absolute right-0 top-0 z-20 h-full w-96 overflow-y-auto border-l border-gray-200 bg-white p-6 shadow-lg">
           <button
             onClick={() => setSelectedNode(null)}
             className="mb-4 text-sm text-gray-400 hover:text-gray-600"
