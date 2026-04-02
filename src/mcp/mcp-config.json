@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "knowledge": {
+      "command": "node",
+      "args": ["src/mcp/knowledge-server.mjs"],
+      "env": {
+        "KNOWLEDGE_API_URL": "http://localhost:3000/api/knowledge",
+        "KNOWLEDGE_API_SECRET": ""
+      }
+    }
+  }
+}

@@ -109,6 +109,7 @@ export default function Home() {
                 Bash: 'Running a command...',
                 WebSearch: 'Searching the web...',
                 WebFetch: 'Fetching a page...',
+                mcp__knowledge__save_knowledge: 'Saving to knowledge base...',
               };
               setToolStatus(labels[event.tool] || 'Analyzing the codebase...');
             }
