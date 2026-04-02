@@ -87,11 +87,15 @@ export async function POST(request: Request) {
               console.log(`[chat] Got session ID from system event: ${claudeSessionId}`);
             }
 
-            // Forward assistant text
-            if (event.type === 'assistant' && event.subtype === 'text') {
-              fullResponse += event.text;
-              const sseData = JSON.stringify({ type: 'text', content: event.text });
-              controller.enqueue(encoder.encode(`data: ${sseData}\n\n`));
+            // Forward assistant text — the stream-json format nests text in message.content
+            if (event.type === 'assistant' && event.message?.content) {
+              for (const block of event.message.content) {
+                if (block.type === 'text' && block.text) {
+                  fullResponse += block.text;
+                  const sseData = JSON.stringify({ type: 'text', content: block.text });
+                  controller.enqueue(encoder.encode(`data: ${sseData}\n\n`));
+                }
+              }
             }
 
             // Handle result event (final)
