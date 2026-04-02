@@ -97,7 +97,7 @@ WHEN TO SAVE:
 - When you uncover a business process or workflow
 
 WHEN NOT TO SAVE:
-- Obvious things (e.g. "EventInsight is an event platform")
+- Obvious things (e.g. "Let's Get Digital is an event platform")
 - Conversation-specific details that won't help future questions
 - Things already in the knowledge base above
 
