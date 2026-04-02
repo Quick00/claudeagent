@@ -5,6 +5,7 @@ import dynamic from 'next/dynamic';
 
 const ForceGraph2D = dynamic(() => import('react-force-graph-2d'), {
   ssr: false,
+  loading: () => <div className="flex h-full items-center justify-center text-gray-400">Loading graph...</div>,
 });
 
 interface GraphNode {
@@ -38,9 +39,11 @@ export default function KnowledgePage() {
   const [graphData, setGraphData] = useState<GraphData>({ nodes: [], links: [] });
   const [selectedNode, setSelectedNode] = useState<GraphNode | null>(null);
   const [entries, setEntries] = useState<any[]>([]);
+  const [mounted, setMounted] = useState(false);
   const graphRef = useRef<any>(null);
 
   useEffect(() => {
+    setMounted(true);
     Promise.all([
       fetch('/api/knowledge/graph').then((r) => r.json()),
       fetch('/api/knowledge').then((r) => r.json()),
@@ -103,6 +106,14 @@ export default function KnowledgePage() {
           return tags.includes(selectedNode.label);
         })
       : [];
+
+  if (!mounted) {
+    return (
+      <div className="flex h-screen items-center justify-center text-gray-400">
+        Loading knowledge map...
+      </div>
+    );
+  }
 
   return (
     <div className="relative h-screen">
