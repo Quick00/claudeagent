@@ -87,12 +87,17 @@ export async function POST(request: Request) {
               console.log(`[chat] Got session ID from system event: ${claudeSessionId}`);
             }
 
-            // Forward assistant text — the stream-json format nests text in message.content
+            // Forward assistant content — text and tool use progress
             if (event.type === 'assistant' && event.message?.content) {
               for (const block of event.message.content) {
                 if (block.type === 'text' && block.text) {
                   fullResponse += block.text;
                   const sseData = JSON.stringify({ type: 'text', content: block.text });
+                  controller.enqueue(encoder.encode(`data: ${sseData}\n\n`));
+                }
+                if (block.type === 'tool_use') {
+                  const toolName = block.name || 'unknown';
+                  const sseData = JSON.stringify({ type: 'tool_use', tool: toolName });
                   controller.enqueue(encoder.encode(`data: ${sseData}\n\n`));
                 }
               }

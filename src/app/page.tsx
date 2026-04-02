@@ -18,6 +18,7 @@ export default function Home() {
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [streamingContent, setStreamingContent] = useState('');
+  const [toolStatus, setToolStatus] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [refreshTrigger, setRefreshTrigger] = useState(0);
 
@@ -63,6 +64,7 @@ export default function Home() {
     ]);
     setIsLoading(true);
     setStreamingContent('');
+    setToolStatus(null);
 
     try {
       const res = await fetch('/api/chat', {
@@ -96,9 +98,23 @@ export default function Home() {
             if (event.type === 'text') {
               accumulated += event.content;
               setStreamingContent(accumulated);
+              setToolStatus(null);
+            }
+
+            if (event.type === 'tool_use') {
+              const labels: Record<string, string> = {
+                Glob: 'Searching for files...',
+                Grep: 'Searching code...',
+                Read: 'Reading files...',
+                Bash: 'Running a command...',
+                WebSearch: 'Searching the web...',
+                WebFetch: 'Fetching a page...',
+              };
+              setToolStatus(labels[event.tool] || 'Analyzing the codebase...');
             }
 
             if (event.type === 'done') {
+              setToolStatus(null);
               setConversationId(event.conversationId);
               setMessages((prev) => [
                 ...prev,
@@ -155,6 +171,7 @@ export default function Home() {
         <ChatMessages
           messages={messages}
           streamingContent={streamingContent}
+          toolStatus={toolStatus}
         />
         <ChatInput onSend={handleSend} disabled={isLoading} />
       </div>
