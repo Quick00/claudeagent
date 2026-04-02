@@ -55,11 +55,14 @@ export async function POST(request: Request) {
 
   // Spawn or resume Claude CLI
   const requestId = `${conversation.id}-${Date.now()}`;
+  console.log(`[chat] Starting request (requestId=${requestId}, conversationId=${conversation.id}, resume=${!!conversation.claudeSessionId})`);
+
   const procOrPromise = conversation.claudeSessionId
     ? sessionManager.resumeSession(requestId, conversation.claudeSessionId, message)
     : sessionManager.startSession(requestId, message);
 
   const proc = procOrPromise instanceof Promise ? await procOrPromise : procOrPromise;
+  console.log(`[chat] Process acquired (pid=${proc.pid})`);
 
   // Stream response as SSE
   const encoder = new TextEncoder();
@@ -69,14 +72,19 @@ export async function POST(request: Request) {
       let claudeSessionId: string | null = null;
 
       proc.stdout!.on('data', (chunk: Buffer) => {
-        const lines = chunk.toString().split('\n').filter(Boolean);
+        const raw = chunk.toString();
+        console.log(`[chat] stdout chunk (${raw.length} bytes):`, raw.slice(0, 200));
+
+        const lines = raw.split('\n').filter(Boolean);
         for (const line of lines) {
           try {
             const event = JSON.parse(line);
+            console.log(`[chat] Parsed event: type=${event.type}, subtype=${event.subtype || 'none'}`);
 
             // Extract session ID from the first result event
             if (event.type === 'system' && event.session_id) {
               claudeSessionId = event.session_id;
+              console.log(`[chat] Got session ID from system event: ${claudeSessionId}`);
             }
 
             // Forward assistant text
@@ -90,19 +98,22 @@ export async function POST(request: Request) {
             if (event.type === 'result') {
               if (event.session_id) {
                 claudeSessionId = event.session_id;
+                console.log(`[chat] Got session ID from result event: ${claudeSessionId}`);
               }
+              console.log(`[chat] Result event received, response length: ${fullResponse.length}`);
             }
           } catch {
-            // Skip non-JSON lines
+            console.log(`[chat] Non-JSON line: ${line.slice(0, 100)}`);
           }
         }
       });
 
       proc.stderr!.on('data', (chunk: Buffer) => {
-        console.error('[claude stderr]', chunk.toString());
+        console.error('[chat] stderr:', chunk.toString());
       });
 
       proc.on('close', async (code) => {
+        console.log(`[chat] Process closed (code=${code}, responseLength=${fullResponse.length}, sessionId=${claudeSessionId})`);
         // Save assistant response
         if (fullResponse) {
           await prisma.message.create({
@@ -131,6 +142,7 @@ export async function POST(request: Request) {
       });
 
       proc.on('error', (err) => {
+        console.error(`[chat] Process error:`, err.message);
         const errorData = JSON.stringify({
           type: 'error',
           content: 'Claude process encountered an error. Please try again.',

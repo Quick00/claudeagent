@@ -71,11 +71,17 @@ export class SessionManager {
   }
 
   private doSpawn(requestId: string, args: string[], message: string): ChildProcess {
+    console.log(`[session-manager] Spawning claude process (requestId=${requestId}, active=${this.activeProcesses.size}, queued=${this.queue.length})`);
+    console.log(`[session-manager] Args: claude ${args.join(' ')}`);
+    console.log(`[session-manager] Message: ${message.slice(0, 100)}${message.length > 100 ? '...' : ''}`);
+
     const proc = spawn('claude', args, {
       stdio: ['pipe', 'pipe', 'pipe'],
       cwd: config.eventinsightRepoPath,
       env: { ...process.env },
     });
+
+    console.log(`[session-manager] Process spawned (pid=${proc.pid})`);
 
     this.activeProcesses.set(requestId, proc);
 
@@ -83,12 +89,14 @@ export class SessionManager {
     proc.stdin!.write(message);
     proc.stdin!.end();
 
-    proc.on('close', () => {
+    proc.on('close', (code, signal) => {
+      console.log(`[session-manager] Process closed (pid=${proc.pid}, code=${code}, signal=${signal}, requestId=${requestId})`);
       this.activeProcesses.delete(requestId);
       this.processQueue();
     });
 
-    proc.on('error', () => {
+    proc.on('error', (err) => {
+      console.error(`[session-manager] Process error (pid=${proc.pid}, requestId=${requestId}):`, err.message);
       this.activeProcesses.delete(requestId);
       this.processQueue();
     });
