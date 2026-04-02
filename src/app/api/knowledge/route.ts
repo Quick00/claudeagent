@@ -11,9 +11,10 @@ export async function POST(request: Request) {
   }
 
   const body = await request.json();
-  const { category, content, source } = body as {
+  const { category, content, tags, source } = body as {
     category: string;
     content: string;
+    tags?: string;
     source?: string;
   };
 
@@ -38,7 +39,7 @@ export async function POST(request: Request) {
   }
 
   const entry = await prisma.knowledgeEntry.create({
-    data: { category, content, source },
+    data: { category, content, tags: tags || '', source },
   });
 
   console.log(`[knowledge] New entry saved: [${category}] ${content.slice(0, 100)}`);

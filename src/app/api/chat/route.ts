@@ -94,13 +94,16 @@ MEMORY SYSTEM:
 When you discover something important while answering a question — a correction to a common misunderstanding, a useful product insight, how a feature actually works, or important terminology — save it so future questions benefit from this knowledge.
 
 To save knowledge, use the Bash tool to run:
-curl -s -X POST "${knowledgeApiUrl}" -H "Content-Type: application/json" -H "Authorization: Bearer ${knowledgeApiSecret}" -d '{"category":"<CATEGORY>","content":"<WHAT YOU LEARNED>"}'
+curl -s -X POST "${knowledgeApiUrl}" -H "Content-Type: application/json" -H "Authorization: Bearer ${knowledgeApiSecret}" -d '{"category":"<CATEGORY>","content":"<WHAT YOU LEARNED>","tags":"<comma-separated topics>"}'
 
 Categories: "correction" (wrong assumptions corrected), "terminology" (what product terms mean), "product_insight" (how features work), "process" (business workflows).
+
+Tags: short topic keywords that describe what this knowledge relates to (e.g. "badges,printing" or "registration,hubspot,import"). Use lowercase, keep tags to 1-2 words each. Reuse existing tags when possible.
 
 Rules:
 - Only save genuinely useful, reusable knowledge — not conversation-specific details.
 - Keep entries concise (1-2 sentences).
+- Always include 1-3 relevant tags so the knowledge map stays connected.
 - Don't save things that are obvious from the codebase structure.
 - DO save things that required deep investigation or that surprised you.
 - DO save corrections when a user tells you your answer was wrong.`;
