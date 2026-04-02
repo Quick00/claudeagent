@@ -22,6 +22,7 @@ export class SessionManager {
   startSession(requestId: string, message: string): ChildProcess | Promise<ChildProcess> {
     const args = [
       '--print',
+      '--verbose',
       '--output-format', 'stream-json',
       '--max-turns', String(config.claudeMaxTurns),
       '--add-dir', config.eventinsightRepoPath,
@@ -35,6 +36,7 @@ export class SessionManager {
     const args = [
       '--resume', claudeSessionId,
       '--print',
+      '--verbose',
       '--output-format', 'stream-json',
     ];
 
