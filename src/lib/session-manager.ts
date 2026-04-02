@@ -24,7 +24,7 @@ export class SessionManager {
       '--print',
       '--output-format', 'stream-json',
       '--max-turns', String(config.claudeMaxTurns),
-      '--cwd', config.eventinsightRepoPath,
+      '--add-dir', config.eventinsightRepoPath,
       '--system-prompt', config.systemPrompt,
     ];
 
@@ -36,7 +36,6 @@ export class SessionManager {
       '--resume', claudeSessionId,
       '--print',
       '--output-format', 'stream-json',
-      '--cwd', config.eventinsightRepoPath,
     ];
 
     return this.spawnOrQueue(requestId, args, message);
@@ -72,6 +71,7 @@ export class SessionManager {
   private doSpawn(requestId: string, args: string[], message: string): ChildProcess {
     const proc = spawn('claude', args, {
       stdio: ['pipe', 'pipe', 'pipe'],
+      cwd: config.eventinsightRepoPath,
       env: { ...process.env },
     });
 
