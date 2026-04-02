@@ -23,6 +23,8 @@
 # misc
 .DS_Store
 *.pem
+.idea/
+*.db
 
 # debug
 npm-debug.log*
@@ -40,3 +42,5 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+/src/generated/prisma
