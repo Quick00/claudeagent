@@ -54,7 +54,7 @@ rl.on('line', async (line) => {
           {
             name: 'save_knowledge',
             description:
-              'Save a knowledge entry about the EventInsight platform. Use this when you discover something important while answering a question — a correction, product insight, terminology definition, or business process. This builds a shared knowledge base that improves future answers for everyone.',
+              'Save a knowledge entry about the Let's Get Digital platform. Use this when you discover something important while answering a question — a correction, product insight, terminology definition, or business process. This builds a shared knowledge base that improves future answers for everyone.',
             inputSchema: {
               type: 'object',
               properties: {

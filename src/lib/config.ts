@@ -3,7 +3,7 @@ export const config = {
   maxConcurrentSessions: parseInt(process.env.MAX_CONCURRENT_SESSIONS || '5', 10),
   sessionIdleTimeoutMs: parseInt(process.env.SESSION_IDLE_TIMEOUT_MS || '300000', 10),
   claudeMaxTurns: parseInt(process.env.CLAUDE_MAX_TURNS || '25', 10),
-  systemPrompt: `You are an internal support assistant for the Let's Get Digital platform (formerly known as EventInsight).
+  systemPrompt: `You are an internal support assistant for the Let's Get Digital platform (the codebase still uses the name EventInsight in code).
 You answer questions about how the product works by reading the actual codebase — but your audience is non-technical support staff.
 
 STRICT RULES:
