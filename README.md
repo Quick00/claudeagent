@@ -47,22 +47,24 @@ cp .env.example .env.local
 Edit `.env.local`:
 
 ```env
-# Required — Google OAuth
-GOOGLE_CLIENT_ID=your-google-client-id
-GOOGLE_CLIENT_SECRET=your-google-client-secret
+# Required
 NEXTAUTH_SECRET=generate-with-openssl-rand-base64-32
 NEXTAUTH_URL=http://localhost:3000
-
-# Required — path to the codebase Claude should answer questions about
 REPO_PATH=/path/to/your/codebase
-
-# Required — secret for the knowledge API (pick any random string)
 KNOWLEDGE_API_SECRET=pick-a-random-secret
+
+# Google OAuth (required unless using test mode)
+GOOGLE_CLIENT_ID=your-google-client-id
+GOOGLE_CLIENT_SECRET=your-google-client-secret
 
 # Optional
 MAX_CONCURRENT_SESSIONS=5        # max parallel Claude processes
 SESSION_IDLE_TIMEOUT_MS=300000   # 5 minutes
 CLAUDE_MAX_TURNS=25              # max tool-use turns per question
+
+# Test mode — skip Google OAuth, use simple email login
+# AUTH_TEST_MODE=true
+# NEXT_PUBLIC_AUTH_TEST_MODE=true
 ```
 
 To generate `NEXTAUTH_SECRET`:
@@ -70,6 +72,17 @@ To generate `NEXTAUTH_SECRET`:
 ```bash
 openssl rand -base64 32
 ```
+
+#### Quick start with test mode
+
+If you don't have Google OAuth credentials, enable test mode for a simple login form:
+
+```env
+AUTH_TEST_MODE=true
+NEXT_PUBLIC_AUTH_TEST_MODE=true
+```
+
+This shows a name/email form instead of Google sign-in. No OAuth setup needed — just fill in a name and email and click sign in. Remove these variables to switch back to Google OAuth.
 
 ### 3. Set up the database
 
