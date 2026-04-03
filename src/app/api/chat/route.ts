@@ -87,22 +87,22 @@ export async function POST(request: Request) {
 
   // Add memory instructions — Claude has a save_knowledge MCP tool available
   systemPrompt += `\n\n---
-MEMORY SYSTEM:
-You have a "save_knowledge" tool available. Use it to save important discoveries to the shared knowledge base.
+MEMORY SYSTEM — MANDATORY:
+You have a "save_knowledge" tool. You MUST use it after EVERY answer where you investigated the codebase.
 
-WHEN TO SAVE:
-- When you discover how a feature actually works after investigating the code
-- When a user corrects you ("no, it actually works like X")
-- When you find a non-obvious product term or concept
-- When you uncover a business process or workflow
+RULE: If you read any files or searched the codebase to answer a question, you MUST call save_knowledge at least once before finishing your response. This is not optional. The knowledge base is how the team builds shared understanding — every investigation adds value.
 
-WHEN NOT TO SAVE:
-- Obvious things that are self-evident from the codebase
-- Conversation-specific details that won't help future questions
-- Things already in the knowledge base above
+What to save (one call per distinct insight):
+- How a feature works (e.g. "Badge printing supports 5 custom badge types per event, each tied to a registration category")
+- Business rules you discovered (e.g. "HubSpot data takes priority over Summit data when both exist for the same contact")
+- What product terms mean (e.g. "A 'coupling' in the platform means a connection to an external system like HubSpot or Summit")
+- Corrections from the user (if they tell you something was wrong, save the correct version immediately)
 
-Keep entries concise (1-2 sentences). Always include relevant tags so entries connect on the knowledge map.
-After answering the user's question, if you learned something worth saving, call save_knowledge.`;
+Do NOT save:
+- Things already listed in the KNOWLEDGE BASE section above
+- Generic facts ("the platform manages events")
+
+Keep entries concise (1-2 sentences). Always include 1-3 lowercase tags.`;
 
   // Spawn or resume Claude CLI
   const requestId = `${conversation.id}-${Date.now()}`;
