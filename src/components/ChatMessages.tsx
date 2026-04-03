@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import MessageBubble from './MessageBubble';
 
 interface Message {
@@ -14,34 +14,77 @@ interface ChatMessagesProps {
   streamingContent: string;
   toolStatus: string | null;
   isLoading: boolean;
+  onSendSuggestion: (message: string) => void;
 }
+
+const DEFAULT_SUGGESTIONS = [
+  'How does user registration work?',
+  'What badge types are available?',
+  'How does the HubSpot integration work?',
+  'What happens when someone checks in at an event?',
+];
 
 export default function ChatMessages({
   messages,
   streamingContent,
   toolStatus,
   isLoading,
+  onSendSuggestion,
 }: ChatMessagesProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
+  const [recentQuestions, setRecentQuestions] = useState<string[]>([]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, streamingContent, toolStatus, isLoading]);
 
+  // Load recent conversation titles as suggestions
+  useEffect(() => {
+    fetch('/api/conversations')
+      .then((r) => r.json())
+      .then((conversations: { title: string }[]) => {
+        const titles = conversations
+          .slice(0, 4)
+          .map((c) => c.title)
+          .filter((t) => t.length > 10 && t.length < 100);
+        setRecentQuestions(titles);
+      })
+      .catch(() => {});
+  }, []);
+
   if (messages.length === 0 && !streamingContent && !toolStatus && !isLoading) {
+    const suggestions = recentQuestions.length > 0 ? recentQuestions : DEFAULT_SUGGESTIONS;
+
     return (
-      <div className="flex flex-1 items-center justify-center text-gray-400">
-        <div className="text-center">
-          <h2 className="mb-2 text-xl font-medium">Codebase Q&A</h2>
-          <p className="text-sm">
+      <div className="flex flex-1 items-center justify-center">
+        <div className="w-full max-w-2xl px-6">
+          <h2 className="mb-2 text-center text-xl font-medium text-gray-800">
+            Codebase Q&A
+          </h2>
+          <p className="mb-8 text-center text-sm text-gray-400">
             Ask a question about how the product works
           </p>
+          <div className="grid grid-cols-2 gap-3">
+            {suggestions.map((q) => (
+              <button
+                key={q}
+                onClick={() => onSendSuggestion(q)}
+                className="rounded-xl border border-gray-200 bg-white px-4 py-3 text-left text-sm text-gray-600 transition-colors hover:border-blue-300 hover:bg-blue-50"
+              >
+                {q}
+              </button>
+            ))}
+          </div>
+          {recentQuestions.length > 0 && (
+            <p className="mt-4 text-center text-xs text-gray-400">
+              Based on recent questions
+            </p>
+          )}
         </div>
       </div>
     );
   }
 
-  // Show thinking indicator when loading but no content or tool status yet
   const showThinking = isLoading && !streamingContent && !toolStatus;
 
   return (

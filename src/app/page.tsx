@@ -174,6 +174,7 @@ export default function Home() {
           streamingContent={streamingContent}
           toolStatus={toolStatus}
           isLoading={isLoading}
+          onSendSuggestion={handleSend}
         />
         <ChatInput onSend={handleSend} disabled={isLoading} />
       </div>
