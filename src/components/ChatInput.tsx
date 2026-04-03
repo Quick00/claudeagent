@@ -44,7 +44,7 @@ export default function ChatInput({ onSend, disabled }: ChatInputProps) {
           value={input}
           onChange={handleInput}
           onKeyDown={handleKeyDown}
-          placeholder="Ask a question about Let's Get Digital..."
+          placeholder="Ask a question about the platform..."
           disabled={disabled}
           rows={1}
           className="flex-1 resize-none rounded-xl border border-gray-300 px-4 py-3 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:bg-gray-50 disabled:text-gray-400"

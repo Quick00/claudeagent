@@ -14,8 +14,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Let's Get Digital Q&A",
-  description: "Ask questions about the Let's Get Digital platform",
+  title: 'Codebase Q&A',
+  description: 'Ask questions about the platform',
 };
 
 export default function RootLayout({

@@ -30,7 +30,7 @@ export default function ChatMessages({
     return (
       <div className="flex flex-1 items-center justify-center text-gray-400">
         <div className="text-center">
-          <h2 className="mb-2 text-xl font-medium">Let's Get Digital Q&A</h2>
+          <h2 className="mb-2 text-xl font-medium">Codebase Q&A</h2>
           <p className="text-sm">
             Ask a question about how the product works
           </p>
