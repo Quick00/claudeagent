@@ -44,7 +44,7 @@ export class SessionManager {
       '--verbose',
       '--output-format', 'stream-json',
       '--max-turns', String(config.claudeMaxTurns),
-      '--add-dir', config.eventinsightRepoPath,
+      '--add-dir', config.repoPath,
       '--system-prompt', systemPrompt,
       '--mcp-config', getMcpConfig(),
       '--permission-mode', 'bypassPermissions',
@@ -100,7 +100,7 @@ export class SessionManager {
 
     const proc = spawn('claude', args, {
       stdio: ['pipe', 'pipe', 'pipe'],
-      cwd: config.eventinsightRepoPath,
+      cwd: config.repoPath,
       env: { ...process.env },
     });
 

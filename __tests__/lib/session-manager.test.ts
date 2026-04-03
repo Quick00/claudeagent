@@ -11,7 +11,7 @@ jest.mock('child_process', () => ({
 // Mock config
 jest.mock('@/lib/config', () => ({
   config: {
-    eventinsightRepoPath: '/mock/eventinsight',
+    repoPath: '/mock/eventinsight',
     maxConcurrentSessions: 2,
     sessionIdleTimeoutMs: 1000,
     claudeMaxTurns: 25,
