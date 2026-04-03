@@ -53,7 +53,7 @@ export default function ChatMessages({
   }, []);
 
   if (messages.length === 0 && !streamingContent && !toolStatus && !isLoading) {
-    const suggestions = recentQuestions.length > 0 ? recentQuestions : DEFAULT_SUGGESTIONS;
+    const suggestions = [...new Set(recentQuestions.length > 0 ? recentQuestions : DEFAULT_SUGGESTIONS)].slice(0, 4);
 
     return (
       <div className="flex flex-1 items-center justify-center">
@@ -65,9 +65,9 @@ export default function ChatMessages({
             Ask a question about how the product works
           </p>
           <div className="grid grid-cols-2 gap-3">
-            {suggestions.map((q) => (
+            {suggestions.map((q, i) => (
               <button
-                key={q}
+                key={`${i}-${q}`}
                 onClick={() => onSendSuggestion(q)}
                 className="rounded-xl border border-gray-200 bg-white px-4 py-3 text-left text-sm text-gray-600 transition-colors hover:border-blue-300 hover:bg-blue-50"
               >
