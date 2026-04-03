@@ -121,6 +121,18 @@ Keep entries concise (1-2 sentences). Always include 1-3 lowercase tags.`;
     start(controller) {
       let fullResponse = '';
       let claudeSessionId: string | null = null;
+      let closed = false;
+
+      const safeSend = (data: string) => {
+        if (closed) return;
+        controller.enqueue(encoder.encode(`data: ${data}\n\n`));
+      };
+
+      const safeClose = () => {
+        if (closed) return;
+        closed = true;
+        controller.close();
+      };
 
       proc.stdout!.on('data', (chunk: Buffer) => {
         const raw = chunk.toString();
@@ -144,7 +156,7 @@ Keep entries concise (1-2 sentences). Always include 1-3 lowercase tags.`;
               if (delta?.type === 'text_delta' && delta.text) {
                 fullResponse += delta.text;
                 const sseData = JSON.stringify({ type: 'text', content: delta.text });
-                controller.enqueue(encoder.encode(`data: ${sseData}\n\n`));
+                safeSend(sseData);
               }
             }
 
@@ -154,7 +166,7 @@ Keep entries concise (1-2 sentences). Always include 1-3 lowercase tags.`;
                 if (block.type === 'tool_use') {
                   const toolName = block.name || 'unknown';
                   const sseData = JSON.stringify({ type: 'tool_use', tool: toolName });
-                  controller.enqueue(encoder.encode(`data: ${sseData}\n\n`));
+                  safeSend(sseData);
                 }
               }
             }
@@ -202,8 +214,8 @@ Keep entries concise (1-2 sentences). Always include 1-3 lowercase tags.`;
           type: 'done',
           conversationId: conversation.id,
         });
-        controller.enqueue(encoder.encode(`data: ${doneData}\n\n`));
-        controller.close();
+        safeSend(doneData);
+        safeClose();
       });
 
       proc.on('error', (err) => {
@@ -212,8 +224,8 @@ Keep entries concise (1-2 sentences). Always include 1-3 lowercase tags.`;
           type: 'error',
           content: 'Claude process encountered an error. Please try again.',
         });
-        controller.enqueue(encoder.encode(`data: ${errorData}\n\n`));
-        controller.close();
+        safeSend(errorData);
+        safeClose();
       });
     },
   });
