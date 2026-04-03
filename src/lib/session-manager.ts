@@ -43,6 +43,7 @@ export class SessionManager {
       '--print',
       '--verbose',
       '--output-format', 'stream-json',
+      '--include-partial-messages',
       '--max-turns', String(config.claudeMaxTurns),
       '--add-dir', config.repoPath,
       '--system-prompt', systemPrompt,
@@ -59,6 +60,7 @@ export class SessionManager {
       '--print',
       '--verbose',
       '--output-format', 'stream-json',
+      '--include-partial-messages',
       '--mcp-config', getMcpConfig(),
       '--permission-mode', 'bypassPermissions',
     ];

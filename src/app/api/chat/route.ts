@@ -138,14 +138,19 @@ After answering the user's question, if you learned something worth saving, call
               console.log(`[chat] Got session ID from system event: ${claudeSessionId}`);
             }
 
-            // Forward assistant content — text and tool use progress
+            // Stream partial text as it arrives (token by token)
+            if (event.type === 'stream_event' && event.event?.type === 'content_block_delta') {
+              const delta = event.event.delta;
+              if (delta?.type === 'text_delta' && delta.text) {
+                fullResponse += delta.text;
+                const sseData = JSON.stringify({ type: 'text', content: delta.text });
+                controller.enqueue(encoder.encode(`data: ${sseData}\n\n`));
+              }
+            }
+
+            // Forward tool use progress from full assistant messages
             if (event.type === 'assistant' && event.message?.content) {
               for (const block of event.message.content) {
-                if (block.type === 'text' && block.text) {
-                  fullResponse += block.text;
-                  const sseData = JSON.stringify({ type: 'text', content: block.text });
-                  controller.enqueue(encoder.encode(`data: ${sseData}\n\n`));
-                }
                 if (block.type === 'tool_use') {
                   const toolName = block.name || 'unknown';
                   const sseData = JSON.stringify({ type: 'tool_use', tool: toolName });
