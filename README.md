@@ -7,7 +7,7 @@ A web app that lets team members ask questions about a codebase and get answers 
 - **Chat interface** with conversation history and sidebar
 - **Streaming responses** via Server-Sent Events from Claude Code CLI
 - **Multi-turn conversations** using Claude's `--resume` flag
-- **Per-user Claude authentication** — each user links their own Claude subscription via OAuth
+- **Per-user Claude authentication** — each user links their own Claude subscription by pasting a setup token
 - **Self-learning knowledge base** — Claude automatically saves insights to a shared database
 - **Knowledge map** — interactive graph visualization showing how product concepts connect
 - **Google OAuth** authentication for the app itself
@@ -26,9 +26,8 @@ A web app that lets team members ask questions about a codebase and get answers 
 ## Prerequisites
 
 - Node.js 20+
-- [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code) installed
 - Google OAuth credentials (from [Google Cloud Console](https://console.cloud.google.com/apis/credentials))
-- Each user needs a Claude subscription (Max, Pro, or Team) — they link their own account in the app
+- Each user needs a Claude subscription (Max, Pro, or Team) and [Claude Code](https://claude.ai/download) installed on their own machine to generate a setup token
 
 ## Setup
 
@@ -107,14 +106,23 @@ Open [http://localhost:3000](http://localhost:3000).
 ### 5. Sign in and link your Claude account
 
 1. Sign in with Google (or test mode credentials)
-2. You'll see a prompt to **Link your Claude account**
-3. Click the button — you'll be redirected to Claude's OAuth page
-4. Authorize the app with your Claude subscription
-5. You'll be redirected back and can start chatting
+2. You'll see a prompt to **Link your Claude account** — click the button
+3. A setup guide will appear with 3 steps:
 
-Each user must link their own Claude account. Usage is billed to their own subscription.
+   **Step 1** — Install Claude Code on your own computer:
+   ```bash
+   curl -fsSL https://claude.ai/install.sh | bash
+   ```
 
-You can manage your Claude account link in **Settings** (accessible from the sidebar).
+   **Step 2** — Generate a setup token:
+   ```bash
+   claude setup-token
+   ```
+   This opens a browser where you log in with your Claude account. After authorizing, a long token string is displayed in your terminal.
+
+   **Step 3** — Paste the token into the app and click **Link Account**
+
+Each user must link their own Claude account. Usage is billed to their own subscription. You can manage your linked account in **Settings** (accessible from the sidebar).
 
 ## Usage
 
@@ -159,7 +167,7 @@ src/
     api/
       auth/
         [...nextauth]/      # Google OAuth handler
-        claude/              # Claude OAuth: initiate, callback, unlink, status
+        claude/              # Claude account: link, unlink, status
       chat/                  # POST: send message, SSE stream response
       conversations/         # GET: list, GET/DELETE: single conversation
       dashboard/             # GET: dashboard statistics
@@ -174,14 +182,14 @@ src/
     ChatSidebar.tsx          # Conversation list + navigation + user info
     ChatMessages.tsx         # Message thread with streaming support
     ChatInput.tsx            # Auto-resizing textarea + send button
+    LinkClaudeModal.tsx      # Step-by-step guide to link a Claude account
     MessageBubble.tsx        # Single message with markdown rendering
     KnowledgeGraph.tsx       # Force-directed graph visualization
     Providers.tsx            # NextAuth SessionProvider wrapper
   lib/
     auth.ts                  # NextAuth config
-    claude-oauth.ts          # OAuth PKCE flow (authorize, token exchange, refresh)
     config.ts                # Environment variable access with defaults
-    crypto.ts                # AES-256-GCM encryption for OAuth tokens
+    crypto.ts                # AES-256-GCM encryption for stored tokens
     prisma.ts                # Prisma client singleton
     session-manager.ts       # Claude CLI process pool + queuing
   mcp/
