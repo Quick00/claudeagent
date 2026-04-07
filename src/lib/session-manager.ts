@@ -2,7 +2,6 @@ import { spawn, ChildProcess } from 'child_process';
 import path from 'path';
 import { config } from '@/lib/config';
 
-// Resolve the MCP server path at module load time (before cwd changes)
 const PROJECT_ROOT = path.resolve(process.cwd());
 
 function getMcpConfig(): string {
@@ -24,6 +23,7 @@ interface QueuedRequest {
   resolve: (proc: ChildProcess) => void;
   args: string[];
   message: string;
+  claudeToken: string;
 }
 
 export class SessionManager {
@@ -38,7 +38,7 @@ export class SessionManager {
     return this.queue.length;
   }
 
-  startSession(requestId: string, message: string, systemPrompt: string): ChildProcess | Promise<ChildProcess> {
+  startSession(requestId: string, message: string, systemPrompt: string, claudeToken: string): ChildProcess | Promise<ChildProcess> {
     const args = [
       '--print',
       '--verbose',
@@ -51,10 +51,10 @@ export class SessionManager {
       '--permission-mode', 'bypassPermissions',
     ];
 
-    return this.spawnOrQueue(requestId, args, message);
+    return this.spawnOrQueue(requestId, args, message, claudeToken);
   }
 
-  resumeSession(requestId: string, claudeSessionId: string, message: string): ChildProcess | Promise<ChildProcess> {
+  resumeSession(requestId: string, claudeSessionId: string, message: string, claudeToken: string): ChildProcess | Promise<ChildProcess> {
     const args = [
       '--resume', claudeSessionId,
       '--print',
@@ -65,7 +65,7 @@ export class SessionManager {
       '--permission-mode', 'bypassPermissions',
     ];
 
-    return this.spawnOrQueue(requestId, args, message);
+    return this.spawnOrQueue(requestId, args, message, claudeToken);
   }
 
   killSession(requestId: string): void {
@@ -85,17 +85,17 @@ export class SessionManager {
     this.queue = [];
   }
 
-  private spawnOrQueue(requestId: string, args: string[], message: string): ChildProcess | Promise<ChildProcess> {
+  private spawnOrQueue(requestId: string, args: string[], message: string, claudeToken: string): ChildProcess | Promise<ChildProcess> {
     if (this.activeProcesses.size < config.maxConcurrentSessions) {
-      return this.doSpawn(requestId, args, message);
+      return this.doSpawn(requestId, args, message, claudeToken);
     }
 
     return new Promise<ChildProcess>((resolve) => {
-      this.queue.push({ resolve, args, message });
+      this.queue.push({ resolve, args, message, claudeToken });
     });
   }
 
-  private doSpawn(requestId: string, args: string[], message: string): ChildProcess {
+  private doSpawn(requestId: string, args: string[], message: string, claudeToken: string): ChildProcess {
     console.log(`[session-manager] Spawning claude process (requestId=${requestId}, active=${this.activeProcesses.size}, queued=${this.queue.length})`);
     console.log(`[session-manager] Args: claude ${args.join(' ')}`);
     console.log(`[session-manager] Message: ${message.slice(0, 100)}${message.length > 100 ? '...' : ''}`);
@@ -103,14 +103,16 @@ export class SessionManager {
     const proc = spawn('claude', args, {
       stdio: ['pipe', 'pipe', 'pipe'],
       cwd: config.repoPath,
-      env: { ...process.env },
+      env: {
+        ...process.env,
+        CLAUDE_CODE_OAUTH_TOKEN: claudeToken,
+      },
     });
 
     console.log(`[session-manager] Process spawned (pid=${proc.pid})`);
 
     this.activeProcesses.set(requestId, proc);
 
-    // Write message to stdin for the CLI to process
     proc.stdin!.write(message);
     proc.stdin!.end();
 
@@ -135,10 +137,9 @@ export class SessionManager {
 
     const next = this.queue.shift()!;
     const requestId = `queued-${Date.now()}`;
-    const proc = this.doSpawn(requestId, next.args, next.message);
+    const proc = this.doSpawn(requestId, next.args, next.message, next.claudeToken);
     next.resolve(proc);
   }
 }
 
-// Singleton instance
 export const sessionManager = new SessionManager();
