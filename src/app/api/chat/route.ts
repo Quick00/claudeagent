@@ -38,6 +38,7 @@ export async function POST(request: Request) {
   if ('error' in tokenResult) {
     return Response.json({ error: tokenResult.error }, { status: tokenResult.status });
   }
+  const claudeToken = claudeToken;
 
   const body = await request.json();
   const { conversationId, message } = body as {
@@ -217,8 +218,8 @@ Keep entries concise (1-2 sentences). Always include 1-3 lowercase tags.`;
                   console.log(`[chat] error_during_execution — retrying (attempt ${retryCount + 1}/${MAX_RETRIES})`);
                   const retryRequestId = `${conversation.id}-retry-${Date.now()}`;
                   const retryProcOrPromise = conversation.claudeSessionId
-                    ? sessionManager.resumeSession(retryRequestId, conversation.claudeSessionId, message, tokenResult.token)
-                    : sessionManager.startSession(retryRequestId, message, systemPrompt, tokenResult.token);
+                    ? sessionManager.resumeSession(retryRequestId, conversation.claudeSessionId, message, claudeToken)
+                    : sessionManager.startSession(retryRequestId, message, systemPrompt, claudeToken);
 
                   if (retryProcOrPromise instanceof Promise) {
                     retryProcOrPromise.then((retryProc) => attachProcess(retryProc, retryCount + 1));
@@ -286,8 +287,8 @@ Keep entries concise (1-2 sentences). Always include 1-3 lowercase tags.`;
       console.log(`[chat] Starting request (requestId=${requestId}, conversationId=${conversation.id}, resume=${!!conversation.claudeSessionId}, knowledgeEntries=${knowledgeEntries.length})`);
 
       const procOrPromise = conversation.claudeSessionId
-        ? sessionManager.resumeSession(requestId, conversation.claudeSessionId, message, tokenResult.token)
-        : sessionManager.startSession(requestId, message, systemPrompt, tokenResult.token);
+        ? sessionManager.resumeSession(requestId, conversation.claudeSessionId, message, claudeToken)
+        : sessionManager.startSession(requestId, message, systemPrompt, claudeToken);
 
       if (procOrPromise instanceof Promise) {
         procOrPromise.then((proc) => {
