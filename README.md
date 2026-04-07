@@ -17,7 +17,7 @@ A web app that lets team members ask questions about a codebase and get answers 
 
 - Next.js 16 (App Router, TypeScript)
 - Tailwind CSS
-- SQLite via Prisma ORM
+- PostgreSQL via Prisma ORM
 - NextAuth.js (Google OAuth)
 - Claude Code CLI (`child_process.spawn`)
 - MCP server for knowledge tool
@@ -26,6 +26,7 @@ A web app that lets team members ask questions about a codebase and get answers 
 ## Prerequisites
 
 - Node.js 20+
+- PostgreSQL 17+ (or Docker for running it via compose)
 - Google OAuth credentials (from [Google Cloud Console](https://console.cloud.google.com/apis/credentials))
 - Each user needs a Claude subscription (Max, Pro, or Team) and [Claude Code](https://claude.ai/download) installed on their own machine to generate a setup token
 
@@ -49,7 +50,7 @@ Edit `.env`:
 
 ```env
 # Required
-DATABASE_URL="file:./dev.db"
+DATABASE_URL="postgresql://claude_agent:claude_agent@localhost:5432/claude_agent"
 GOOGLE_CLIENT_ID=your-google-client-id
 GOOGLE_CLIENT_SECRET=your-google-client-secret
 NEXTAUTH_SECRET=generate-with-openssl-rand-base64-32
@@ -88,12 +89,14 @@ This shows a name/email form instead of Google sign-in. No OAuth setup needed â€
 
 ### 3. Set up the database
 
+Start PostgreSQL (via Docker or locally), then:
+
 ```bash
 npx prisma generate
 npx prisma migrate dev
 ```
 
-`prisma generate` creates the Prisma client library. `prisma migrate dev` creates a local SQLite database (`dev.db`) with the required tables.
+`prisma generate` creates the Prisma client library. `prisma migrate dev` creates the database tables.
 
 ### 4. Start the development server
 
@@ -173,6 +176,8 @@ src/
       dashboard/             # GET: dashboard statistics
       knowledge/             # GET: list entries, POST: save entry
         graph/               # GET: graph data (nodes + links)
+      webhook/
+        gitlab/              # POST: GitLab webhook triggers git pull
     dashboard/               # Dashboard analytics page
     knowledge/               # Knowledge map page
     login/                   # Login page
@@ -190,6 +195,7 @@ src/
     auth.ts                  # NextAuth config
     config.ts                # Environment variable access with defaults
     crypto.ts                # AES-256-GCM encryption for stored tokens
+    git-pull.ts              # Git pull with concurrency lock
     prisma.ts                # Prisma client singleton
     session-manager.ts       # Claude CLI process pool + queuing
   mcp/
@@ -204,6 +210,29 @@ prisma/
 ```bash
 npm test
 ```
+
+## Docker
+
+### Running with Docker Compose
+
+```bash
+cp .env.example .env
+# Edit .env â€” set DATABASE_URL to: postgresql://claude_agent:claude_agent@postgres:5432/claude_agent
+docker compose build
+docker compose up -d
+```
+
+This starts PostgreSQL and the app. The database is persisted in a Docker volume.
+
+### GitLab webhook for repo sync
+
+To keep the codebase up-to-date automatically:
+
+1. Set `GITLAB_WEBHOOK_SECRET` in your `.env`
+2. Clone the repo inside the container: `docker compose exec app git clone git@gitlab.com:your/repo.git /app/repo`
+3. Set `REPO_PATH=/app/repo` in your `.env`
+4. In GitLab, add a webhook pointing to `https://your-domain/api/webhook/gitlab` with the matching secret token
+5. On every push, GitLab will notify the app to pull the latest changes
 
 ## Configuration
 
