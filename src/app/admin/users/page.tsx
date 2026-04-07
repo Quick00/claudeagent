@@ -35,6 +35,21 @@ export default function AdminUsersPage() {
       .finally(() => setLoading(false));
   }, []);
 
+  const currentUserId = (session?.user as any)?.id;
+
+  const toggleRole = async (userId: string, currentRole: string) => {
+    const newRole = currentRole === 'admin' ? 'user' : 'admin';
+    const res = await fetch('/api/admin/users', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId, role: newRole }),
+    });
+    if (!res.ok) return;
+    setUsers((prev) =>
+      prev.map((u) => (u.id === userId ? { ...u, role: newRole } : u))
+    );
+  };
+
   if (status === 'loading' || loading) {
     return (
       <div className="flex h-screen items-center justify-center">
@@ -76,35 +91,46 @@ export default function AdminUsersPage() {
               </tr>
             </thead>
             <tbody>
-              {users.map((user) => (
-                <tr key={user.id} className="border-b border-gray-100">
-                  <td className="py-3 pr-4 text-gray-900">{user.name}</td>
-                  <td className="py-3 pr-4 text-gray-500">{user.email}</td>
-                  <td className="py-3 pr-4">
-                    <span
-                      className={
-                        user.role === 'admin'
-                          ? 'rounded-full bg-blue-100 px-2 py-0.5 text-xs text-blue-700'
-                          : 'rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-600'
-                      }
-                    >
-                      {user.role}
-                    </span>
-                  </td>
-                  <td className="py-3 pr-4">
-                    <span
-                      className={
-                        user.claudeLinked
-                          ? 'inline-block h-2 w-2 rounded-full bg-green-500'
-                          : 'inline-block h-2 w-2 rounded-full bg-gray-300'
-                      }
-                    />
-                  </td>
-                  <td className="py-3 text-gray-500">
-                    {new Date(user.createdAt).toLocaleDateString()}
-                  </td>
-                </tr>
-              ))}
+              {users.map((user) => {
+                const isSelf = user.id === currentUserId;
+                return (
+                  <tr key={user.id} className="border-b border-gray-100">
+                    <td className="py-3 pr-4 text-gray-900">{user.name}</td>
+                    <td className="py-3 pr-4 text-gray-500">{user.email}</td>
+                    <td className="py-3 pr-4">
+                      {isSelf ? (
+                        <span className="rounded-full bg-blue-100 px-2 py-0.5 text-xs text-blue-700">
+                          {user.role}
+                        </span>
+                      ) : (
+                        <button
+                          onClick={() => toggleRole(user.id, user.role)}
+                          className={
+                            user.role === 'admin'
+                              ? 'rounded-full bg-blue-100 px-2 py-0.5 text-xs text-blue-700 hover:bg-blue-200'
+                              : 'rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-600 hover:bg-gray-200'
+                          }
+                          title={`Click to change to ${user.role === 'admin' ? 'user' : 'admin'}`}
+                        >
+                          {user.role}
+                        </button>
+                      )}
+                    </td>
+                    <td className="py-3 pr-4">
+                      <span
+                        className={
+                          user.claudeLinked
+                            ? 'inline-block h-2 w-2 rounded-full bg-green-500'
+                            : 'inline-block h-2 w-2 rounded-full bg-gray-300'
+                        }
+                      />
+                    </td>
+                    <td className="py-3 text-gray-500">
+                      {new Date(user.createdAt).toLocaleDateString()}
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
