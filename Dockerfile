@@ -8,6 +8,8 @@ WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 RUN npx prisma generate
+ARG NEXT_PUBLIC_AUTH_TEST_MODE
+ENV NEXT_PUBLIC_AUTH_TEST_MODE=$NEXT_PUBLIC_AUTH_TEST_MODE
 RUN npm run build
 
 FROM node:20-alpine AS production

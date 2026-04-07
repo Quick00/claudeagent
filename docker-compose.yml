@@ -10,11 +10,14 @@ services:
     restart: unless-stopped
 
   app:
-    build: .
+    build:
+      context: .
+      args:
+        NEXT_PUBLIC_AUTH_TEST_MODE: "true"
     ports:
       - "3000:3000"
     env_file:
-      - .env
+      - .env.local
     volumes:
       - repo:/app/repo
       - ~/.ssh:/home/nextjs/.ssh:ro
