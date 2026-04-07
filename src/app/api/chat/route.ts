@@ -3,6 +3,60 @@ import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { sessionManager } from '@/lib/session-manager';
 import { config } from '@/lib/config';
+import { decrypt, encrypt } from '@/lib/crypto';
+import { refreshAccessToken } from '@/lib/claude-oauth';
+
+async function getUserClaudeToken(userEmail: string): Promise<{ token: string } | { error: string; status: number }> {
+  const user = await prisma.user.findUnique({
+    where: { email: userEmail },
+    select: {
+      claudeToken: true,
+      claudeRefreshToken: true,
+      claudeTokenExpiresAt: true,
+      claudeEmail: true,
+    },
+  });
+
+  if (!user?.claudeToken || !user?.claudeRefreshToken) {
+    return { error: 'claude_account_not_linked', status: 403 };
+  }
+
+  const needsRefresh = user.claudeTokenExpiresAt
+    ? user.claudeTokenExpiresAt.getTime() - Date.now() < 5 * 60 * 1000
+    : false;
+
+  if (needsRefresh) {
+    try {
+      const decryptedRefresh = decrypt(user.claudeRefreshToken);
+      const newTokens = await refreshAccessToken(decryptedRefresh);
+      const expiresAt = new Date(Date.now() + newTokens.expiresIn * 1000);
+
+      await prisma.user.update({
+        where: { email: userEmail },
+        data: {
+          claudeToken: encrypt(newTokens.accessToken),
+          claudeRefreshToken: encrypt(newTokens.refreshToken),
+          claudeTokenExpiresAt: expiresAt,
+        },
+      });
+
+      return { token: newTokens.accessToken };
+    } catch {
+      await prisma.user.update({
+        where: { email: userEmail },
+        data: {
+          claudeToken: null,
+          claudeRefreshToken: null,
+          claudeTokenExpiresAt: null,
+          claudeEmail: null,
+        },
+      });
+      return { error: 'claude_token_expired', status: 403 };
+    }
+  }
+
+  return { token: decrypt(user.claudeToken) };
+}
 
 export async function POST(request: Request) {
   const session = await getServerSession(authOptions);
@@ -17,6 +71,11 @@ export async function POST(request: Request) {
     return new Response('User not found', { status: 404 });
   }
 
+  const tokenResult = await getUserClaudeToken(session.user.email);
+  if ('error' in tokenResult) {
+    return Response.json({ error: tokenResult.error }, { status: tokenResult.status });
+  }
+
   const body = await request.json();
   const { conversationId, message } = body as {
     conversationId: string | null;
@@ -27,7 +86,6 @@ export async function POST(request: Request) {
     return new Response('Message is required', { status: 400 });
   }
 
-  // Get or create conversation
   let conversation;
   if (conversationId) {
     conversation = await prisma.conversation.findFirst({
@@ -45,7 +103,6 @@ export async function POST(request: Request) {
     });
   }
 
-  // Save user message
   await prisma.message.create({
     data: {
       conversationId: conversation.id,
@@ -54,7 +111,6 @@ export async function POST(request: Request) {
     },
   });
 
-  // Build system prompt with knowledge context
   const knowledgeEntries = await prisma.knowledgeEntry.findMany({
     orderBy: { createdAt: 'asc' },
   });
@@ -85,7 +141,6 @@ export async function POST(request: Request) {
     systemPrompt += knowledgeBlock;
   }
 
-  // Add memory instructions — Claude has a save_knowledge MCP tool available
   systemPrompt += `\n\n---
 MEMORY SYSTEM — MANDATORY:
 You have a "save_knowledge" tool. You MUST use it after EVERY answer where you investigated the codebase.
@@ -104,18 +159,16 @@ Do NOT save:
 
 Keep entries concise (1-2 sentences). Always include 1-3 lowercase tags.`;
 
-  // Spawn or resume Claude CLI
   const requestId = `${conversation.id}-${Date.now()}`;
   console.log(`[chat] Starting request (requestId=${requestId}, conversationId=${conversation.id}, resume=${!!conversation.claudeSessionId}, knowledgeEntries=${knowledgeEntries.length})`);
 
   const procOrPromise = conversation.claudeSessionId
-    ? sessionManager.resumeSession(requestId, conversation.claudeSessionId, message)
-    : sessionManager.startSession(requestId, message, systemPrompt);
+    ? sessionManager.resumeSession(requestId, conversation.claudeSessionId, message, tokenResult.token)
+    : sessionManager.startSession(requestId, message, systemPrompt, tokenResult.token);
 
   const proc = procOrPromise instanceof Promise ? await procOrPromise : procOrPromise;
   console.log(`[chat] Process acquired (pid=${proc.pid})`);
 
-  // Stream response as SSE
   const encoder = new TextEncoder();
   const stream = new ReadableStream({
     start(controller) {
@@ -144,13 +197,11 @@ Keep entries concise (1-2 sentences). Always include 1-3 lowercase tags.`;
             const event = JSON.parse(line);
             console.log(`[chat] Parsed event: type=${event.type}, subtype=${event.subtype || 'none'}`);
 
-            // Extract session ID from the first result event
             if (event.type === 'system' && event.session_id) {
               claudeSessionId = event.session_id;
               console.log(`[chat] Got session ID from system event: ${claudeSessionId}`);
             }
 
-            // Stream partial text as it arrives (token by token)
             if (event.type === 'stream_event' && event.event?.type === 'content_block_delta') {
               const delta = event.event.delta;
               if (delta?.type === 'text_delta' && delta.text) {
@@ -160,7 +211,6 @@ Keep entries concise (1-2 sentences). Always include 1-3 lowercase tags.`;
               }
             }
 
-            // Forward tool use progress from full assistant messages
             if (event.type === 'assistant' && event.message?.content) {
               for (const block of event.message.content) {
                 if (block.type === 'tool_use') {
@@ -171,7 +221,6 @@ Keep entries concise (1-2 sentences). Always include 1-3 lowercase tags.`;
               }
             }
 
-            // Handle result event (final)
             if (event.type === 'result') {
               if (event.session_id) {
                 claudeSessionId = event.session_id;
@@ -191,7 +240,6 @@ Keep entries concise (1-2 sentences). Always include 1-3 lowercase tags.`;
 
       proc.on('close', async (code) => {
         console.log(`[chat] Process closed (code=${code}, responseLength=${fullResponse.length}, sessionId=${claudeSessionId})`);
-        // Save assistant response
         if (fullResponse) {
           await prisma.message.create({
             data: {
@@ -202,7 +250,6 @@ Keep entries concise (1-2 sentences). Always include 1-3 lowercase tags.`;
           });
         }
 
-        // Save Claude session ID for future --resume calls
         if (claudeSessionId) {
           await prisma.conversation.update({
             where: { id: conversation.id },
