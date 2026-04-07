@@ -7,9 +7,10 @@ A web app that lets team members ask questions about a codebase and get answers 
 - **Chat interface** with conversation history and sidebar
 - **Streaming responses** via Server-Sent Events from Claude Code CLI
 - **Multi-turn conversations** using Claude's `--resume` flag
+- **Per-user Claude authentication** — each user links their own Claude subscription via OAuth
 - **Self-learning knowledge base** — Claude automatically saves insights to a shared database
 - **Knowledge map** — interactive graph visualization showing how product concepts connect
-- **Google OAuth** authentication
+- **Google OAuth** authentication for the app itself
 - **Session management** — process pool with max concurrency and queuing
 
 ## Tech Stack
@@ -25,8 +26,9 @@ A web app that lets team members ask questions about a codebase and get answers 
 ## Prerequisites
 
 - Node.js 20+
-- [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code) installed and authenticated
+- [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code) installed
 - Google OAuth credentials (from [Google Cloud Console](https://console.cloud.google.com/apis/credentials))
+- Each user needs a Claude subscription (Max, Pro, or Team) — they link their own account in the app
 
 ## Setup
 
@@ -41,21 +43,21 @@ npm install
 Copy the example file and fill in your values:
 
 ```bash
-cp .env.example .env.local
+cp .env.example .env
 ```
 
-Edit `.env.local`:
+Edit `.env`:
 
 ```env
 # Required
+DATABASE_URL="file:./dev.db"
+GOOGLE_CLIENT_ID=your-google-client-id
+GOOGLE_CLIENT_SECRET=your-google-client-secret
 NEXTAUTH_SECRET=generate-with-openssl-rand-base64-32
 NEXTAUTH_URL=http://localhost:3000
 REPO_PATH=/path/to/your/codebase
+TOKEN_ENCRYPTION_KEY=generate-with-openssl-rand-hex-32
 KNOWLEDGE_API_SECRET=pick-a-random-secret
-
-# Google OAuth (required unless using test mode)
-GOOGLE_CLIENT_ID=your-google-client-id
-GOOGLE_CLIENT_SECRET=your-google-client-secret
 
 # Optional
 MAX_CONCURRENT_SESSIONS=5        # max parallel Claude processes
@@ -67,10 +69,11 @@ CLAUDE_MAX_TURNS=25              # max tool-use turns per question
 # NEXT_PUBLIC_AUTH_TEST_MODE=true
 ```
 
-To generate `NEXTAUTH_SECRET`:
+To generate secrets:
 
 ```bash
-openssl rand -base64 32
+openssl rand -base64 32   # for NEXTAUTH_SECRET
+openssl rand -hex 32      # for TOKEN_ENCRYPTION_KEY
 ```
 
 #### Quick start with test mode
@@ -87,10 +90,11 @@ This shows a name/email form instead of Google sign-in. No OAuth setup needed �
 ### 3. Set up the database
 
 ```bash
+npx prisma generate
 npx prisma migrate dev
 ```
 
-This creates a local SQLite database (`dev.db`) with the required tables.
+`prisma generate` creates the Prisma client library. `prisma migrate dev` creates a local SQLite database (`dev.db`) with the required tables.
 
 ### 4. Start the development server
 
@@ -100,9 +104,17 @@ npm run dev
 
 Open [http://localhost:3000](http://localhost:3000).
 
-### 5. Sign in
+### 5. Sign in and link your Claude account
 
-Click "Sign in with Google". Your user account is created automatically on first login.
+1. Sign in with Google (or test mode credentials)
+2. You'll see a prompt to **Link your Claude account**
+3. Click the button — you'll be redirected to Claude's OAuth page
+4. Authorize the app with your Claude subscription
+5. You'll be redirected back and can start chatting
+
+Each user must link their own Claude account. Usage is billed to their own subscription.
+
+You can manage your Claude account link in **Settings** (accessible from the sidebar).
 
 ## Usage
 
@@ -145,31 +157,38 @@ Click any node to see details.
 src/
   app/
     api/
-      auth/[...nextauth]/  # Google OAuth handler
-      chat/                 # POST: send message, SSE stream response
-      conversations/        # GET: list, GET/DELETE: single conversation
-      knowledge/            # GET: list entries, POST: save entry
-        graph/              # GET: graph data (nodes + links)
-    knowledge/              # Knowledge map page
-    login/                  # Login page
-    page.tsx                # Main chat page
+      auth/
+        [...nextauth]/      # Google OAuth handler
+        claude/              # Claude OAuth: initiate, callback, unlink, status
+      chat/                  # POST: send message, SSE stream response
+      conversations/         # GET: list, GET/DELETE: single conversation
+      dashboard/             # GET: dashboard statistics
+      knowledge/             # GET: list entries, POST: save entry
+        graph/               # GET: graph data (nodes + links)
+    dashboard/               # Dashboard analytics page
+    knowledge/               # Knowledge map page
+    login/                   # Login page
+    settings/                # Claude account settings (link/unlink)
+    page.tsx                 # Main chat page
   components/
-    ChatSidebar.tsx         # Conversation list + new chat + user info
-    ChatMessages.tsx        # Message thread with streaming support
-    ChatInput.tsx           # Auto-resizing textarea + send button
-    MessageBubble.tsx       # Single message with markdown rendering
-    KnowledgeGraph.tsx      # Force-directed graph visualization
-    Providers.tsx           # NextAuth SessionProvider wrapper
+    ChatSidebar.tsx          # Conversation list + navigation + user info
+    ChatMessages.tsx         # Message thread with streaming support
+    ChatInput.tsx            # Auto-resizing textarea + send button
+    MessageBubble.tsx        # Single message with markdown rendering
+    KnowledgeGraph.tsx       # Force-directed graph visualization
+    Providers.tsx            # NextAuth SessionProvider wrapper
   lib/
-    auth.ts                 # NextAuth config
-    config.ts               # Environment variable access with defaults
-    prisma.ts               # Prisma client singleton
-    session-manager.ts      # Claude CLI process pool + queuing
+    auth.ts                  # NextAuth config
+    claude-oauth.ts          # OAuth PKCE flow (authorize, token exchange, refresh)
+    config.ts                # Environment variable access with defaults
+    crypto.ts                # AES-256-GCM encryption for OAuth tokens
+    prisma.ts                # Prisma client singleton
+    session-manager.ts       # Claude CLI process pool + queuing
   mcp/
-    knowledge-server.mjs    # MCP server exposing save_knowledge tool
-  middleware.ts             # Route protection (JWT check)
+    knowledge-server.mjs     # MCP server exposing save_knowledge tool
+  proxy.ts                   # Route protection (JWT check)
 prisma/
-  schema.prisma             # Database schema
+  schema.prisma              # Database schema
 ```
 
 ## Running tests
