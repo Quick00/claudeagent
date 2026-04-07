@@ -7,12 +7,16 @@ datasource db {
 }
 
 model User {
-  id            String         @id @default(uuid())
-  email         String         @unique
-  name          String
-  image         String?
-  createdAt     DateTime       @default(now())
-  conversations Conversation[]
+  id                   String    @id @default(uuid())
+  email                String    @unique
+  name                 String
+  image                String?
+  claudeToken          String?
+  claudeRefreshToken   String?
+  claudeTokenExpiresAt DateTime?
+  claudeEmail          String?
+  createdAt            DateTime  @default(now())
+  conversations        Conversation[]
 }
 
 model Conversation {
