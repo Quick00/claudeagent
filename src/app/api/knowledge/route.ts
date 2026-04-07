@@ -1,3 +1,5 @@
+import { getServerSession } from 'next-auth';
+import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { NextResponse } from 'next/server';
 
@@ -22,7 +24,7 @@ export async function POST(request: Request) {
     return new Response('category and content are required', { status: 400 });
   }
 
-  const validCategories = ['correction', 'terminology', 'product_insight', 'process'];
+  const validCategories = ['correction', 'terminology', 'product_insight', 'process', 'developer'];
   if (!validCategories.includes(category)) {
     return new Response(`category must be one of: ${validCategories.join(', ')}`, { status: 400 });
   }
@@ -47,9 +49,20 @@ export async function POST(request: Request) {
   return NextResponse.json({ status: 'saved', id: entry.id });
 }
 
-// GET: List all knowledge entries (for the UI / admin)
+// GET: List knowledge entries (developer entries only visible to admins)
 export async function GET() {
+  const session = await getServerSession(authOptions);
+  let isAdmin = false;
+  if (session?.user?.email) {
+    const user = await prisma.user.findUnique({
+      where: { email: session.user.email },
+    });
+    isAdmin = user?.role === 'admin';
+  }
+
+  const where = isAdmin ? {} : { category: { not: 'developer' } };
   const entries = await prisma.knowledgeEntry.findMany({
+    where,
     orderBy: { createdAt: 'desc' },
   });
   return NextResponse.json(entries);

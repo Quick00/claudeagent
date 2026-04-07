@@ -32,6 +32,7 @@ const CATEGORY_COLORS: Record<string, string> = {
   terminology: '#8b5cf6',
   product_insight: '#10b981',
   process: '#f59e0b',
+  developer: '#3b82f6',
 };
 
 const CATEGORY_LABELS: Record<string, string> = {
@@ -39,6 +40,7 @@ const CATEGORY_LABELS: Record<string, string> = {
   terminology: 'Terminology',
   product_insight: 'Product Insights',
   process: 'Processes',
+  developer: 'Developer',
 };
 
 export default function DashboardPage() {

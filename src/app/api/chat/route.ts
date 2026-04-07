@@ -49,14 +49,15 @@ export async function POST(request: Request) {
     return new Response('Message is required', { status: 400 });
   }
 
-  let conversation;
+  let conversation: { id: string; claudeSessionId: string | null };
   if (conversationId) {
-    conversation = await prisma.conversation.findFirst({
+    const existing = await prisma.conversation.findFirst({
       where: { id: conversationId, userId: user.id },
     });
-    if (!conversation) {
+    if (!existing) {
       return new Response('Conversation not found', { status: 404 });
     }
+    conversation = existing;
   } else {
     conversation = await prisma.conversation.create({
       data: {
@@ -115,6 +116,7 @@ What to save (one call per distinct insight):
 - Business rules you discovered (e.g. "HubSpot data takes priority over Summit data when both exist for the same contact")
 - What product terms mean (e.g. "A 'coupling' in the platform means a connection to an external system like HubSpot or Summit")
 - Corrections from the user (if they tell you something was wrong, save the correct version immediately)
+- Developer insights: architecture patterns, how components connect, file structure, gotchas, technical decisions (use category "developer"). E.g. "The HubSpot import uses a mapping config per event to map HubSpot fields to registration fields"
 
 Do NOT save:
 - Things already listed in the KNOWLEDGE BASE section above

@@ -19,8 +19,10 @@ export async function GET() {
   const isAdmin = currentUser.role === 'admin';
   const conversationWhere = isAdmin ? {} : { userId: currentUser.id };
 
+  const knowledgeWhere = isAdmin ? {} : { category: { not: 'developer' } };
+
   const [entries, conversations, messages] = await Promise.all([
-    prisma.knowledgeEntry.findMany({ orderBy: { createdAt: 'desc' } }),
+    prisma.knowledgeEntry.findMany({ where: knowledgeWhere, orderBy: { createdAt: 'desc' } }),
     prisma.conversation.findMany({
       where: conversationWhere,
       orderBy: { createdAt: 'desc' },

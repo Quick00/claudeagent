@@ -60,9 +60,9 @@ rl.on('line', async (line) => {
               properties: {
                 category: {
                   type: 'string',
-                  enum: ['correction', 'terminology', 'product_insight', 'process'],
+                  enum: ['correction', 'terminology', 'product_insight', 'process', 'developer'],
                   description:
-                    'correction = wrong assumptions corrected, terminology = what product terms mean, product_insight = how features work, process = business workflows',
+                    'correction = wrong assumptions corrected, terminology = what product terms mean, product_insight = how features work, process = business workflows, developer = technical architecture, code patterns, and implementation details',
                 },
                 content: {
                   type: 'string',
