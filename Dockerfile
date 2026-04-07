@@ -15,7 +15,7 @@ RUN npm run build
 FROM node:20-alpine AS production
 WORKDIR /app
 
-RUN apk add --no-cache git openssh-client
+RUN apk add --no-cache git openssh-client su-exec
 
 RUN addgroup --system --gid 1001 nodejs && \
     adduser --system --uid 1001 nextjs
@@ -29,7 +29,6 @@ COPY --from=build /app/package.json ./package.json
 COPY docker-entrypoint.sh /docker-entrypoint.sh
 RUN chmod +x /docker-entrypoint.sh
 
-USER nextjs
 EXPOSE 3000
 ENV PORT=3000
 ENV HOSTNAME="0.0.0.0"
