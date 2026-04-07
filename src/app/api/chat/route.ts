@@ -139,13 +139,21 @@ Keep entries concise (1-2 sentences). Always include 1-3 lowercase tags.`;
 
       const safeSend = (data: string) => {
         if (closed) return;
-        controller.enqueue(encoder.encode(`data: ${data}\n\n`));
+        try {
+          controller.enqueue(encoder.encode(`data: ${data}\n\n`));
+        } catch {
+          closed = true;
+        }
       };
 
       const safeClose = () => {
         if (closed) return;
         closed = true;
-        controller.close();
+        try {
+          controller.close();
+        } catch {
+          // Already closed
+        }
       };
 
       proc.stdout!.on('data', (chunk: Buffer) => {
