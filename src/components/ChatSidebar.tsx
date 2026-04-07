@@ -101,6 +101,17 @@ export default function ChatSidebar({
           </svg>
           Knowledge Map
         </a>
+        {(session?.user as any)?.role === 'admin' && (
+          <a
+            href="/admin/users"
+            className="flex w-full items-center justify-center gap-2 rounded-lg bg-gray-100 px-3 py-2 text-sm text-gray-600 hover:bg-gray-200"
+          >
+            <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197" />
+            </svg>
+            Users
+          </a>
+        )}
       </div>
       <div className="border-t border-gray-200 p-4">
         <div className="flex items-center gap-3">
