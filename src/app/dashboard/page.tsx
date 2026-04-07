@@ -113,7 +113,9 @@ export default function DashboardPage() {
             By Category
           </h2>
           <div className="flex gap-3">
-            {Object.entries(CATEGORY_LABELS).map(([key, label]) => {
+            {Object.entries(CATEGORY_LABELS)
+              .filter(([key]) => data.isAdmin || key !== 'developer')
+              .map(([key, label]) => {
               const count = data.stats.categories[key] || 0;
               return (
                 <div
