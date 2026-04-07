@@ -1,7 +1,8 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useSession } from 'next-auth/react';
+import { useSearchParams } from 'next/navigation';
 import { redirect } from 'next/navigation';
 import ChatSidebar from '@/components/ChatSidebar';
 import ChatMessages from '@/components/ChatMessages';
@@ -16,6 +17,7 @@ interface Message {
 
 export default function Home() {
   const { data: session, status } = useSession();
+  const searchParams = useSearchParams();
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [streamingContent, setStreamingContent] = useState('');
@@ -36,19 +38,7 @@ export default function Home() {
     fetchClaudeStatus();
   }, []);
 
-  if (status === 'loading') {
-    return (
-      <div className="flex h-screen items-center justify-center">
-        <div className="text-gray-400">Loading...</div>
-      </div>
-    );
-  }
-
-  if (status === 'unauthenticated') {
-    redirect('/login');
-  }
-
-  const loadConversation = async (id: string) => {
+  const loadConversation = useCallback(async (id: string) => {
     const res = await fetch(`/api/conversations/${id}`);
     if (!res.ok) return;
     const data = await res.json();
@@ -61,7 +51,38 @@ export default function Home() {
       }))
     );
     setStreamingContent('');
-  };
+  }, []);
+
+  // Load conversation from URL query param on mount
+  useEffect(() => {
+    const convId = searchParams.get('conversation');
+    if (convId) {
+      loadConversation(convId);
+    }
+  }, [searchParams, loadConversation]);
+
+  // Re-fetch conversation messages when returning to the page (e.g. after navigating away)
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible' && conversationId && !isLoading) {
+        loadConversation(conversationId);
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+  }, [conversationId, isLoading, loadConversation]);
+
+  if (status === 'loading') {
+    return (
+      <div className="flex h-screen items-center justify-center">
+        <div className="text-gray-400">Loading...</div>
+      </div>
+    );
+  }
+
+  if (status === 'unauthenticated') {
+    redirect('/login');
+  }
 
   const handleNewChat = () => {
     setConversationId(null);
