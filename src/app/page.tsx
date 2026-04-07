@@ -6,6 +6,7 @@ import { redirect } from 'next/navigation';
 import ChatSidebar from '@/components/ChatSidebar';
 import ChatMessages from '@/components/ChatMessages';
 import ChatInput from '@/components/ChatInput';
+import LinkClaudeModal from '@/components/LinkClaudeModal';
 
 interface Message {
   id: string;
@@ -22,12 +23,17 @@ export default function Home() {
   const [isLoading, setIsLoading] = useState(false);
   const [refreshTrigger, setRefreshTrigger] = useState(0);
   const [claudeLinked, setClaudeLinked] = useState<boolean | null>(null);
+  const [showLinkModal, setShowLinkModal] = useState(false);
 
-  useEffect(() => {
+  const fetchClaudeStatus = () => {
     fetch('/api/auth/claude/status')
       .then((res) => res.json())
       .then((data) => setClaudeLinked(data.linked))
       .catch(() => setClaudeLinked(false));
+  };
+
+  useEffect(() => {
+    fetchClaudeStatus();
   }, []);
 
   if (status === 'loading') {
@@ -195,12 +201,12 @@ export default function Home() {
                 To start asking questions, you need to link your Claude account.
                 This requires a Claude Max, Pro, or Team subscription.
               </p>
-              <a
-                href="/api/auth/claude"
-                className="inline-block rounded-lg bg-blue-600 px-6 py-3 text-sm font-medium text-white hover:bg-blue-700"
+              <button
+                onClick={() => setShowLinkModal(true)}
+                className="rounded-lg bg-blue-600 px-6 py-3 text-sm font-medium text-white hover:bg-blue-700"
               >
                 Link Claude Account
-              </a>
+              </button>
             </div>
           </div>
         ) : (
@@ -216,6 +222,16 @@ export default function Home() {
           </>
         )}
       </div>
+
+      {showLinkModal && (
+        <LinkClaudeModal
+          onClose={() => setShowLinkModal(false)}
+          onLinked={() => {
+            setShowLinkModal(false);
+            fetchClaudeStatus();
+          }}
+        />
+      )}
     </div>
   );
 }

@@ -1,24 +1,26 @@
 'use client';
 
-import { Suspense, useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useSession } from 'next-auth/react';
-import { redirect, useSearchParams } from 'next/navigation';
+import { redirect } from 'next/navigation';
+import LinkClaudeModal from '@/components/LinkClaudeModal';
 
-function SettingsContent() {
+export default function SettingsPage() {
   const { data: session, status } = useSession();
-  const searchParams = useSearchParams();
   const [claudeStatus, setClaudeStatus] = useState<{ linked: boolean; email: string | null } | null>(null);
   const [unlinking, setUnlinking] = useState(false);
+  const [showModal, setShowModal] = useState(false);
 
-  const success = searchParams.get('success');
-  const error = searchParams.get('error');
-
-  useEffect(() => {
+  const fetchStatus = () => {
     fetch('/api/auth/claude/status')
       .then((res) => res.json())
       .then(setClaudeStatus)
       .catch(console.error);
-  }, [success]);
+  };
+
+  useEffect(() => {
+    fetchStatus();
+  }, []);
 
   if (status === 'loading') {
     return (
@@ -44,22 +46,15 @@ function SettingsContent() {
     }
   };
 
+  const handleLinked = () => {
+    setShowModal(false);
+    fetchStatus();
+  };
+
   return (
     <div className="flex min-h-screen items-center justify-center bg-gray-50">
       <div className="w-full max-w-md rounded-lg bg-white p-8 shadow-md">
         <h1 className="mb-6 text-xl font-bold text-gray-900">Settings</h1>
-
-        {success === 'linked' && (
-          <div className="mb-4 rounded-lg bg-green-50 p-3 text-sm text-green-700">
-            Claude account linked successfully!
-          </div>
-        )}
-
-        {error && (
-          <div className="mb-4 rounded-lg bg-red-50 p-3 text-sm text-red-700">
-            Failed to link Claude account: {error.replace(/_/g, ' ')}
-          </div>
-        )}
 
         <div className="space-y-4">
           <div>
@@ -98,12 +93,12 @@ function SettingsContent() {
                 <p className="text-xs text-gray-400">
                   Link your Claude account to start asking questions. Requires a Claude Max, Pro, or Team subscription.
                 </p>
-                <a
-                  href="/api/auth/claude"
-                  className="inline-block rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
+                <button
+                  onClick={() => setShowModal(true)}
+                  className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
                 >
                   Link Claude Account
-                </a>
+                </button>
               </div>
             )}
           </div>
@@ -115,18 +110,13 @@ function SettingsContent() {
           </a>
         </div>
       </div>
-    </div>
-  );
-}
 
-export default function SettingsPage() {
-  return (
-    <Suspense fallback={
-      <div className="flex h-screen items-center justify-center">
-        <div className="text-gray-400">Loading...</div>
-      </div>
-    }>
-      <SettingsContent />
-    </Suspense>
+      {showModal && (
+        <LinkClaudeModal
+          onClose={() => setShowModal(false)}
+          onLinked={handleLinked}
+        />
+      )}
+    </div>
   );
 }

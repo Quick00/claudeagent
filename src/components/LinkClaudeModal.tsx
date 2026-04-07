@@ -1,0 +1,128 @@
+'use client';
+
+import { useState } from 'react';
+
+interface LinkClaudeModalProps {
+  onClose: () => void;
+  onLinked: () => void;
+}
+
+export default function LinkClaudeModal({ onClose, onLinked }: LinkClaudeModalProps) {
+  const [token, setToken] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const handleSubmit = async () => {
+    const trimmed = token.trim();
+    if (!trimmed) return;
+
+    setSaving(true);
+    setError(null);
+
+    try {
+      const res = await fetch('/api/auth/claude/link', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token: trimmed }),
+      });
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || 'Failed to save token');
+      }
+
+      onLinked();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Something went wrong');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={onClose}>
+      <div
+        className="mx-4 w-full max-w-lg rounded-xl bg-white p-6 shadow-xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="mb-4 flex items-center justify-between">
+          <h2 className="text-lg font-semibold text-gray-900">Link your Claude account</h2>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600">&times;</button>
+        </div>
+
+        <p className="mb-4 text-sm text-gray-500">
+          To use this app, you need a Claude subscription (Max, Pro, or Team) and a setup token.
+          Follow the steps below to generate one.
+        </p>
+
+        <div className="mb-5 space-y-4">
+          <div className="rounded-lg bg-gray-50 p-4">
+            <h3 className="mb-2 text-sm font-semibold text-gray-800">Step 1: Install Claude Code</h3>
+            <p className="mb-2 text-sm text-gray-600">
+              Open a terminal on your computer and run:
+            </p>
+            <div className="rounded-md bg-gray-900 px-3 py-2">
+              <code className="text-sm text-green-400">npm install -g @anthropic-ai/claude-code</code>
+            </div>
+            <p className="mt-2 text-xs text-gray-400">
+              Requires Node.js 18+. If you don't have Node.js, download it from{' '}
+              <a href="https://nodejs.org" target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:underline">
+                nodejs.org
+              </a>
+            </p>
+          </div>
+
+          <div className="rounded-lg bg-gray-50 p-4">
+            <h3 className="mb-2 text-sm font-semibold text-gray-800">Step 2: Generate a token</h3>
+            <p className="mb-2 text-sm text-gray-600">
+              Run this command and follow the instructions in your browser:
+            </p>
+            <div className="rounded-md bg-gray-900 px-3 py-2">
+              <code className="text-sm text-green-400">claude setup-token</code>
+            </div>
+            <p className="mt-2 text-xs text-gray-400">
+              This will open a browser window where you log in with your Claude account.
+              After authorizing, a long token string will be displayed in your terminal.
+            </p>
+          </div>
+
+          <div className="rounded-lg bg-gray-50 p-4">
+            <h3 className="mb-2 text-sm font-semibold text-gray-800">Step 3: Paste your token</h3>
+            <p className="mb-2 text-sm text-gray-600">
+              Copy the token from your terminal and paste it below:
+            </p>
+            <textarea
+              value={token}
+              onChange={(e) => setToken(e.target.value)}
+              placeholder="Paste your Claude token here..."
+              rows={3}
+              className="w-full resize-none rounded-lg border border-gray-300 px-3 py-2 text-sm font-mono focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+            />
+          </div>
+        </div>
+
+        {error && (
+          <div className="mb-4 rounded-lg bg-red-50 p-3 text-sm text-red-700">
+            {error}
+          </div>
+        )}
+
+        <div className="flex justify-end gap-3">
+          <button
+            onClick={onClose}
+            className="rounded-lg border border-gray-300 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={handleSubmit}
+            disabled={saving || !token.trim()}
+            className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed"
+          >
+            {saving ? 'Saving...' : 'Link Account'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}

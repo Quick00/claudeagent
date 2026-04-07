@@ -3,56 +3,16 @@ import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { sessionManager } from '@/lib/session-manager';
 import { config } from '@/lib/config';
-import { decrypt, encrypt } from '@/lib/crypto';
-import { refreshAccessToken } from '@/lib/claude-oauth';
+import { decrypt } from '@/lib/crypto';
 
 async function getUserClaudeToken(userEmail: string): Promise<{ token: string } | { error: string; status: number }> {
   const user = await prisma.user.findUnique({
     where: { email: userEmail },
-    select: {
-      claudeToken: true,
-      claudeRefreshToken: true,
-      claudeTokenExpiresAt: true,
-      claudeEmail: true,
-    },
+    select: { claudeToken: true },
   });
 
-  if (!user?.claudeToken || !user?.claudeRefreshToken) {
+  if (!user?.claudeToken) {
     return { error: 'claude_account_not_linked', status: 403 };
-  }
-
-  const needsRefresh = user.claudeTokenExpiresAt
-    ? user.claudeTokenExpiresAt.getTime() - Date.now() < 5 * 60 * 1000
-    : false;
-
-  if (needsRefresh) {
-    try {
-      const decryptedRefresh = decrypt(user.claudeRefreshToken);
-      const newTokens = await refreshAccessToken(decryptedRefresh);
-      const expiresAt = new Date(Date.now() + newTokens.expiresIn * 1000);
-
-      await prisma.user.update({
-        where: { email: userEmail },
-        data: {
-          claudeToken: encrypt(newTokens.accessToken),
-          claudeRefreshToken: encrypt(newTokens.refreshToken),
-          claudeTokenExpiresAt: expiresAt,
-        },
-      });
-
-      return { token: newTokens.accessToken };
-    } catch {
-      await prisma.user.update({
-        where: { email: userEmail },
-        data: {
-          claudeToken: null,
-          claudeRefreshToken: null,
-          claudeTokenExpiresAt: null,
-          claudeEmail: null,
-        },
-      });
-      return { error: 'claude_token_expired', status: 403 };
-    }
   }
 
   return { token: decrypt(user.claudeToken) };
