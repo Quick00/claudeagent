@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 
 interface DashboardData {
+  isAdmin: boolean;
   stats: {
     totalEntries: number;
     totalConversations: number;
@@ -22,6 +23,7 @@ interface DashboardData {
     id: string;
     title: string;
     createdAt: string;
+    userName: string;
   }[];
 }
 
@@ -198,6 +200,9 @@ export default function DashboardPage() {
                   >
                     <div className="truncate font-medium">{conv.title}</div>
                     <div className="text-xs text-gray-400">
+                      {data.isAdmin && (
+                        <span className="mr-1 text-gray-500">{conv.userName} &middot;</span>
+                      )}
                       {new Date(conv.createdAt).toLocaleDateString()}
                     </div>
                   </a>

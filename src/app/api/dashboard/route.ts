@@ -1,12 +1,35 @@
+import { getServerSession } from 'next-auth';
+import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { NextResponse } from 'next/server';
 
 export async function GET() {
+  const session = await getServerSession(authOptions);
+  if (!session?.user?.email) {
+    return new Response('Unauthorized', { status: 401 });
+  }
+
+  const currentUser = await prisma.user.findUnique({
+    where: { email: session.user.email },
+  });
+  if (!currentUser) {
+    return new Response('User not found', { status: 404 });
+  }
+
+  const isAdmin = currentUser.role === 'admin';
+  const conversationWhere = isAdmin ? {} : { userId: currentUser.id };
+
   const [entries, conversations, messages] = await Promise.all([
     prisma.knowledgeEntry.findMany({ orderBy: { createdAt: 'desc' } }),
     prisma.conversation.findMany({
+      where: conversationWhere,
       orderBy: { createdAt: 'desc' },
-      select: { id: true, title: true, createdAt: true },
+      select: {
+        id: true,
+        title: true,
+        createdAt: true,
+        user: { select: { name: true } },
+      },
     }),
     prisma.message.count(),
   ]);
@@ -43,6 +66,7 @@ export async function GET() {
   }
 
   return NextResponse.json({
+    isAdmin,
     stats: {
       totalEntries: entries.length,
       totalConversations: conversations.length,
@@ -52,6 +76,11 @@ export async function GET() {
     tags,
     entries: entries.slice(0, 50),
     entriesByDay,
-    recentConversations: conversations.slice(0, 10),
+    recentConversations: conversations.slice(0, 10).map((c) => ({
+      id: c.id,
+      title: c.title,
+      createdAt: c.createdAt,
+      userName: c.user.name,
+    })),
   });
 }
