@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { Suspense, useState, useEffect, useCallback } from 'react';
 import { useSession } from 'next-auth/react';
 import { useSearchParams } from 'next/navigation';
 import { redirect } from 'next/navigation';
@@ -16,6 +16,18 @@ interface Message {
 }
 
 export default function Home() {
+  return (
+    <Suspense fallback={
+      <div className="flex h-screen items-center justify-center">
+        <div className="text-gray-400">Loading...</div>
+      </div>
+    }>
+      <HomeContent />
+    </Suspense>
+  );
+}
+
+function HomeContent() {
   const { data: session, status } = useSession();
   const searchParams = useSearchParams();
   const [conversationId, setConversationId] = useState<string | null>(null);
