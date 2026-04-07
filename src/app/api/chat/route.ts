@@ -11,14 +11,14 @@ const MAX_RETRIES = 2;
 async function getUserClaudeToken(userEmail: string): Promise<{ token: string } | { error: string; status: number }> {
   const user = await prisma.user.findUnique({
     where: { email: userEmail },
-    select: { userClaudeToken: true },
+    select: { claudeToken: true },
   });
 
-  if (!user?.userClaudeToken) {
+  if (!user?.claudeToken) {
     return { error: 'claude_account_not_linked', status: 403 };
   }
 
-  return { token: decrypt(user.userClaudeToken) };
+  return { token: decrypt(user.claudeToken) };
 }
 
 export async function POST(request: Request) {
