@@ -21,8 +21,9 @@ export async function GET(
 
   const { id } = await params;
 
+  const isAdmin = user.role === 'admin';
   const conversation = await prisma.conversation.findFirst({
-    where: { id, userId: user.id },
+    where: isAdmin ? { id } : { id, userId: user.id },
     include: {
       messages: {
         orderBy: { createdAt: 'asc' },
