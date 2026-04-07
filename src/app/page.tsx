@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 import { useSession } from 'next-auth/react';
 import { redirect } from 'next/navigation';
 import ChatSidebar from '@/components/ChatSidebar';
@@ -21,6 +21,14 @@ export default function Home() {
   const [toolStatus, setToolStatus] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [refreshTrigger, setRefreshTrigger] = useState(0);
+  const [claudeLinked, setClaudeLinked] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    fetch('/api/auth/claude/status')
+      .then((res) => res.json())
+      .then((data) => setClaudeLinked(data.linked))
+      .catch(() => setClaudeLinked(false));
+  }, []);
 
   if (status === 'loading') {
     return (
@@ -56,7 +64,6 @@ export default function Home() {
   };
 
   const handleSend = async (message: string) => {
-    // Optimistically add user message
     const tempId = `temp-${Date.now()}`;
     setMessages((prev) => [
       ...prev,
@@ -72,6 +79,15 @@ export default function Home() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ conversationId, message }),
       });
+
+      if (res.status === 403) {
+        const data = await res.json();
+        if (data.error === 'claude_account_not_linked' || data.error === 'claude_token_expired') {
+          setClaudeLinked(false);
+          setMessages((prev) => prev.filter((m) => m.id !== tempId));
+          return;
+        }
+      }
 
       if (!res.ok) {
         throw new Error(`HTTP ${res.status}`);
@@ -169,14 +185,36 @@ export default function Home() {
         refreshTrigger={refreshTrigger}
       />
       <div className="flex flex-1 flex-col">
-        <ChatMessages
-          messages={messages}
-          streamingContent={streamingContent}
-          toolStatus={toolStatus}
-          isLoading={isLoading}
-          onSendSuggestion={handleSend}
-        />
-        <ChatInput onSend={handleSend} disabled={isLoading} />
+        {claudeLinked === false ? (
+          <div className="flex flex-1 flex-col items-center justify-center gap-4 p-8">
+            <div className="text-center">
+              <h2 className="mb-2 text-lg font-semibold text-gray-900">
+                Link your Claude account
+              </h2>
+              <p className="mb-4 max-w-sm text-sm text-gray-500">
+                To start asking questions, you need to link your Claude account.
+                This requires a Claude Max, Pro, or Team subscription.
+              </p>
+              <a
+                href="/api/auth/claude"
+                className="inline-block rounded-lg bg-blue-600 px-6 py-3 text-sm font-medium text-white hover:bg-blue-700"
+              >
+                Link Claude Account
+              </a>
+            </div>
+          </div>
+        ) : (
+          <>
+            <ChatMessages
+              messages={messages}
+              streamingContent={streamingContent}
+              toolStatus={toolStatus}
+              isLoading={isLoading}
+              onSendSuggestion={handleSend}
+            />
+            <ChatInput onSend={handleSend} disabled={isLoading} />
+          </>
+        )}
       </div>
     </div>
   );
