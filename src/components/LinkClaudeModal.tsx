@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 
 interface LinkClaudeModalProps {
   onClose: () => void;
@@ -11,6 +11,13 @@ export default function LinkClaudeModal({ onClose, onLinked }: LinkClaudeModalPr
   const [token, setToken] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [copied, setCopied] = useState<string | null>(null);
+
+  const copyToClipboard = useCallback((text: string, id: string) => {
+    navigator.clipboard.writeText(text);
+    setCopied(id);
+    setTimeout(() => setCopied(null), 2000);
+  }, []);
 
   const handleSubmit = async () => {
     const trimmed = token.trim();
@@ -61,8 +68,14 @@ export default function LinkClaudeModal({ onClose, onLinked }: LinkClaudeModalPr
             <p className="mb-2 text-sm text-gray-600">
               Open a terminal on your computer and run:
             </p>
-            <div className="rounded-md bg-gray-900 px-3 py-2">
+            <div className="flex items-center justify-between rounded-md bg-gray-900 px-3 py-2">
               <code className="text-sm text-green-400">curl -fsSL https://claude.ai/install.sh | bash</code>
+              <button
+                onClick={() => copyToClipboard('curl -fsSL https://claude.ai/install.sh | bash', 'install')}
+                className="ml-2 shrink-0 text-xs text-gray-400 hover:text-white"
+              >
+                {copied === 'install' ? 'Copied!' : 'Copy'}
+              </button>
             </div>
           </div>
 
@@ -71,8 +84,14 @@ export default function LinkClaudeModal({ onClose, onLinked }: LinkClaudeModalPr
             <p className="mb-2 text-sm text-gray-600">
               Run this command and follow the instructions in your browser:
             </p>
-            <div className="rounded-md bg-gray-900 px-3 py-2">
+            <div className="flex items-center justify-between rounded-md bg-gray-900 px-3 py-2">
               <code className="text-sm text-green-400">claude setup-token</code>
+              <button
+                onClick={() => copyToClipboard('claude setup-token', 'token')}
+                className="ml-2 shrink-0 text-xs text-gray-400 hover:text-white"
+              >
+                {copied === 'token' ? 'Copied!' : 'Copy'}
+              </button>
             </div>
             <p className="mt-2 text-xs text-gray-400">
               This will open a browser window where you log in with your Claude account.
