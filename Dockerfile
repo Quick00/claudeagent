@@ -17,6 +17,7 @@ WORKDIR /app
 
 RUN apk add --no-cache git openssh-client su-exec curl bash
 RUN curl -fsSL https://claude.ai/install.sh | bash
+RUN cp /root/.claude/local/claude /usr/local/bin/claude
 
 RUN addgroup --system --gid 1001 nodejs && \
     adduser --system --uid 1001 nextjs
