@@ -28,12 +28,24 @@ const CATEGORY_COLORS: Record<string, string> = {
   terminology: '#8b5cf6',
   product_insight: '#10b981',
   process: '#f59e0b',
+  developer: '#3b82f6',
+};
+
+const CATEGORY_LABELS: Record<string, string> = {
+  correction: 'Corrections',
+  terminology: 'Terminology',
+  product_insight: 'Product Insights',
+  process: 'Processes',
+  developer: 'Developer',
 };
 
 export default function KnowledgeGraph() {
   const [graphData, setGraphData] = useState<GraphData>({ nodes: [], links: [] });
+  const [allGraphData, setAllGraphData] = useState<GraphData>({ nodes: [], links: [] });
   const [selectedNode, setSelectedNode] = useState<GraphNode | null>(null);
   const [entries, setEntries] = useState<any[]>([]);
+  const [hiddenCategories, setHiddenCategories] = useState<Set<string>>(new Set());
+  const [availableCategories, setAvailableCategories] = useState<string[]>([]);
   const graphRef = useRef<any>(null);
 
   useEffect(() => {
@@ -41,10 +53,45 @@ export default function KnowledgeGraph() {
       fetch('/api/knowledge/graph').then((r) => r.json()),
       fetch('/api/knowledge').then((r) => r.json()),
     ]).then(([graph, allEntries]) => {
+      setAllGraphData(graph);
       setGraphData(graph);
       setEntries(allEntries);
+      const cats = [...new Set(allEntries.map((e: any) => e.category))] as string[];
+      setAvailableCategories(cats);
     });
   }, []);
+
+  useEffect(() => {
+    if (hiddenCategories.size === 0) {
+      setGraphData(allGraphData);
+      return;
+    }
+    const visibleEntryIds = new Set(
+      allGraphData.nodes
+        .filter((n) => n.type === 'entry' && !hiddenCategories.has(n.category))
+        .map((n) => n.id)
+    );
+    const filteredLinks = allGraphData.links.filter((l) => {
+      const sourceId = typeof l.source === 'string' ? l.source : l.source.id;
+      return visibleEntryIds.has(sourceId);
+    });
+    const usedTopicIds = new Set(
+      filteredLinks.map((l) => (typeof l.target === 'string' ? l.target : l.target.id))
+    );
+    const filteredNodes = allGraphData.nodes.filter(
+      (n) => (n.type === 'entry' && visibleEntryIds.has(n.id)) || (n.type === 'topic' && usedTopicIds.has(n.id))
+    );
+    setGraphData({ nodes: filteredNodes, links: filteredLinks });
+  }, [hiddenCategories, allGraphData]);
+
+  const toggleCategory = (cat: string) => {
+    setHiddenCategories((prev) => {
+      const next = new Set(prev);
+      if (next.has(cat)) next.delete(cat);
+      else next.add(cat);
+      return next;
+    });
+  };
 
   const handleNodeClick = useCallback((node: any) => {
     setSelectedNode(node as GraphNode);
@@ -113,18 +160,27 @@ export default function KnowledgeGraph() {
           </span>
         </div>
 
-        <div className="absolute bottom-4 left-4 z-10 flex gap-4 rounded-lg bg-white p-3 shadow">
-          {Object.entries(CATEGORY_COLORS).map(([key, color]) => (
-            <div key={key} className="flex items-center gap-1.5">
-              <span
-                className="inline-block h-3 w-3 rounded-full"
-                style={{ backgroundColor: color }}
-              />
-              <span className="text-xs text-gray-600">
-                {key.replace('_', ' ')}
-              </span>
-            </div>
-          ))}
+        <div className="absolute bottom-4 left-4 z-10 flex gap-2 rounded-lg bg-white p-3 shadow">
+          {availableCategories.map((cat) => {
+            const hidden = hiddenCategories.has(cat);
+            return (
+              <button
+                key={cat}
+                onClick={() => toggleCategory(cat)}
+                className={`flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs transition-opacity ${
+                  hidden ? 'opacity-40' : ''
+                }`}
+              >
+                <span
+                  className="inline-block h-3 w-3 rounded-full"
+                  style={{ backgroundColor: CATEGORY_COLORS[cat] || '#6b7280' }}
+                />
+                <span className="text-gray-600">
+                  {CATEGORY_LABELS[cat] || cat.replace('_', ' ')}
+                </span>
+              </button>
+            );
+          })}
         </div>
 
         {graphData.nodes.length > 0 ? (

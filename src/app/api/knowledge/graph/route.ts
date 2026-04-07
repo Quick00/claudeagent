@@ -1,3 +1,5 @@
+import { getServerSession } from 'next-auth';
+import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { NextResponse } from 'next/server';
 
@@ -14,7 +16,18 @@ interface GraphLink {
 }
 
 export async function GET() {
+  const session = await getServerSession(authOptions);
+  let isAdmin = false;
+  if (session?.user?.email) {
+    const user = await prisma.user.findUnique({
+      where: { email: session.user.email },
+    });
+    isAdmin = user?.role === 'admin';
+  }
+
+  const where = isAdmin ? {} : { category: { not: 'developer' } };
   const entries = await prisma.knowledgeEntry.findMany({
+    where,
     orderBy: { createdAt: 'asc' },
   });
 
