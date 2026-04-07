@@ -77,6 +77,7 @@ export const authOptions: NextAuthOptions = {
         });
         if (dbUser) {
           (session.user as any).id = dbUser.id;
+          (session.user as any).role = dbUser.role;
         }
       }
       return session;
