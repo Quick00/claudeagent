@@ -50,6 +50,17 @@ export default function AdminUsersPage() {
     );
   };
 
+  const deleteUser = async (userId: string, name: string) => {
+    if (!confirm(`Delete user "${name}"? This will also delete their conversations.`)) return;
+    const res = await fetch('/api/admin/users', {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId }),
+    });
+    if (!res.ok) return;
+    setUsers((prev) => prev.filter((u) => u.id !== userId));
+  };
+
   if (status === 'loading' || loading) {
     return (
       <div className="flex h-screen items-center justify-center">
@@ -87,7 +98,8 @@ export default function AdminUsersPage() {
                 <th className="pb-3 pr-4 font-medium">Email</th>
                 <th className="pb-3 pr-4 font-medium">Role</th>
                 <th className="pb-3 pr-4 font-medium">Claude</th>
-                <th className="pb-3 font-medium">Joined</th>
+                <th className="pb-3 pr-4 font-medium">Joined</th>
+                <th className="pb-3 font-medium"></th>
               </tr>
             </thead>
             <tbody>
@@ -125,8 +137,19 @@ export default function AdminUsersPage() {
                         }
                       />
                     </td>
-                    <td className="py-3 text-gray-500">
+                    <td className="py-3 pr-4 text-gray-500">
                       {new Date(user.createdAt).toLocaleDateString()}
+                    </td>
+                    <td className="py-3">
+                      {!isSelf && (
+                        <button
+                          onClick={() => deleteUser(user.id, user.name)}
+                          className="text-xs text-gray-400 hover:text-red-500"
+                          title="Delete user"
+                        >
+                          Delete
+                        </button>
+                      )}
                     </td>
                   </tr>
                 );

@@ -35,6 +35,30 @@ export async function PATCH(request: Request) {
   return NextResponse.json(updated);
 }
 
+export async function DELETE(request: Request) {
+  const session = await getServerSession(authOptions);
+  if (!session?.user?.email) {
+    return new Response('Unauthorized', { status: 401 });
+  }
+
+  const currentUser = await prisma.user.findUnique({
+    where: { email: session.user.email },
+  });
+  if (!currentUser || currentUser.role !== 'admin') {
+    return new Response('Forbidden', { status: 403 });
+  }
+
+  const { userId } = (await request.json()) as { userId: string };
+
+  if (userId === currentUser.id) {
+    return new Response('Cannot delete yourself', { status: 400 });
+  }
+
+  await prisma.user.delete({ where: { id: userId } });
+
+  return new Response(null, { status: 204 });
+}
+
 export async function GET() {
   const session = await getServerSession(authOptions);
   if (!session?.user?.email) {
