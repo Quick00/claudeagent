@@ -5,7 +5,7 @@ export async function POST(request: Request) {
   const token = request.headers.get('X-Gitlab-Token');
   const secret = process.env.GITLAB_WEBHOOK_SECRET;
 
-  if (!token || token !== secret) {
+  if (!secret || !token || token !== secret) {
     return new NextResponse('Unauthorized', { status: 401 });
   }
 

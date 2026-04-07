@@ -28,6 +28,12 @@ describe('POST /api/webhook/gitlab', () => {
     process.env = originalEnv;
   });
 
+  it('returns 401 when GITLAB_WEBHOOK_SECRET is not configured', async () => {
+    delete process.env.GITLAB_WEBHOOK_SECRET;
+    const res = await POST(makeRequest({ 'X-Gitlab-Token': 'anything' }));
+    expect(res.status).toBe(401);
+  });
+
   it('returns 401 when X-Gitlab-Token is missing', async () => {
     const res = await POST(makeRequest());
     expect(res.status).toBe(401);
@@ -44,6 +50,8 @@ describe('POST /api/webhook/gitlab', () => {
     const res = await POST(makeRequest({ 'X-Gitlab-Token': 'test-secret' }));
 
     expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body).toEqual({ message: 'Pull successful', output: 'Already up to date.\n' });
     expect(mockExecGitPull).toHaveBeenCalledWith('/repo');
   });
 
