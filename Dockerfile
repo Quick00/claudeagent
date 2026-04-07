@@ -24,7 +24,6 @@ COPY --from=build /app/.next/static ./.next/static
 COPY --from=build /app/node_modules/.prisma ./node_modules/.prisma
 COPY --from=build /app/node_modules/@prisma ./node_modules/@prisma
 COPY --from=build /app/node_modules/prisma ./node_modules/prisma
-COPY --from=build /app/node_modules/.bin ./node_modules/.bin
 COPY --from=build /app/prisma ./prisma
 COPY --from=build /app/package.json ./package.json
 COPY docker-entrypoint.sh /docker-entrypoint.sh
