@@ -12,8 +12,6 @@ model User {
   name                 String
   image                String?
   claudeToken          String?
-  claudeRefreshToken   String?
-  claudeTokenExpiresAt DateTime?
   claudeEmail          String?
   createdAt            DateTime  @default(now())
   conversations        Conversation[]

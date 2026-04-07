@@ -13,8 +13,6 @@ export async function POST() {
     where: { email: session.user.email },
     data: {
       claudeToken: null,
-      claudeRefreshToken: null,
-      claudeTokenExpiresAt: null,
       claudeEmail: null,
     },
   });
