@@ -62,14 +62,8 @@ export default function LinkClaudeModal({ onClose, onLinked }: LinkClaudeModalPr
               Open a terminal on your computer and run:
             </p>
             <div className="rounded-md bg-gray-900 px-3 py-2">
-              <code className="text-sm text-green-400">npm install -g @anthropic-ai/claude-code</code>
+              <code className="text-sm text-green-400">curl -fsSL https://claude.ai/install.sh | bash</code>
             </div>
-            <p className="mt-2 text-xs text-gray-400">
-              Requires Node.js 18+. If you don't have Node.js, download it from{' '}
-              <a href="https://nodejs.org" target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:underline">
-                nodejs.org
-              </a>
-            </p>
           </div>
 
           <div className="rounded-lg bg-gray-50 p-4">
