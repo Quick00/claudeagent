@@ -217,9 +217,12 @@ function HomeContent() {
 
             if (event.type === 'error') {
               setStreamingContent('');
+              setToolStatus(null);
               if (event.errorType === 'claude_token_expired') {
                 setClaudeLinked(false);
+                setIsLoading(false);
                 setMessages((prev) => prev.filter((m) => m.id !== tempId));
+                return;
               } else {
                 setMessages((prev) => [
                   ...prev,

@@ -135,6 +135,7 @@ Keep entries concise (1-2 sentences). Always include 1-3 lowercase tags.`;
       let fullResponse = '';
       let claudeSessionId: string | null = null;
       let closed = false;
+      let authFailed = false;
 
       const safeSend = (data: string) => {
         if (closed) return;
@@ -173,12 +174,15 @@ Keep entries concise (1-2 sentences). Always include 1-3 lowercase tags.`;
 
             if (event.type === 'assistant' && event.error === 'authentication_failed') {
               console.error('[chat] Authentication failed — invalid Claude token');
+              authFailed = true;
+              fullResponse = '';
               const sseData = JSON.stringify({
                 type: 'error',
                 content: 'Your Claude account token is invalid or expired. Please re-link your Claude account in Settings.',
                 errorType: 'claude_token_expired',
               });
               safeSend(sseData);
+              safeClose();
             }
 
             if (event.type === 'assistant' && event.message?.content) {
@@ -209,7 +213,11 @@ Keep entries concise (1-2 sentences). Always include 1-3 lowercase tags.`;
       });
 
       proc.on('close', async (code) => {
-        console.log(`[chat] Process closed (code=${code}, responseLength=${fullResponse.length}, sessionId=${claudeSessionId})`);
+        console.log(`[chat] Process closed (code=${code}, responseLength=${fullResponse.length}, sessionId=${claudeSessionId}, authFailed=${authFailed})`);
+        if (authFailed) {
+          safeClose();
+          return;
+        }
         if (fullResponse) {
           await prisma.message.create({
             data: {
