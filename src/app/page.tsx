@@ -73,16 +73,47 @@ function HomeContent() {
     }
   }, [searchParams, loadConversation]);
 
-  // Re-fetch conversation messages when returning to the page (e.g. after navigating away)
+  // Re-fetch conversation messages when returning to the page.
+  // If the last message is from the user (response still generating), poll until
+  // the assistant reply appears in the DB.
   useEffect(() => {
+    let pollTimer: ReturnType<typeof setTimeout> | null = null;
+    let cancelled = false;
+
+    const pollForResponse = async (convId: string) => {
+      if (cancelled) return;
+      const res = await fetch(`/api/conversations/${convId}`);
+      if (!res.ok || cancelled) return;
+      const data = await res.json();
+      const msgs: Message[] = data.messages.map((m: any) => ({
+        id: m.id,
+        role: m.role,
+        content: m.content,
+      }));
+      setMessages(msgs);
+
+      const lastMsg = msgs[msgs.length - 1];
+      if (lastMsg && lastMsg.role === 'user' && !cancelled) {
+        // Response not saved yet — keep polling
+        setIsLoading(true);
+        pollTimer = setTimeout(() => pollForResponse(convId), 3000);
+      } else {
+        setIsLoading(false);
+      }
+    };
+
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible' && conversationId && !isLoading) {
-        loadConversation(conversationId);
+        pollForResponse(conversationId);
       }
     };
     document.addEventListener('visibilitychange', handleVisibilityChange);
-    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
-  }, [conversationId, isLoading, loadConversation]);
+    return () => {
+      cancelled = true;
+      if (pollTimer) clearTimeout(pollTimer);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [conversationId, isLoading]);
 
   if (status === 'loading') {
     return (
