@@ -176,6 +176,13 @@ Keep entries concise (1-2 sentences). Always include 1-3 lowercase tags.`;
               console.error('[chat] Authentication failed — invalid Claude token');
               authFailed = true;
               fullResponse = '';
+              prisma.message.create({
+                data: {
+                  conversationId: conversation.id,
+                  role: 'assistant',
+                  content: 'Your Claude account token is invalid or expired. Please re-link your Claude account in Settings.',
+                },
+              }).catch((err) => console.error('[chat] Failed to save auth error message:', err));
               const sseData = JSON.stringify({
                 type: 'error',
                 content: 'Your Claude account token is invalid or expired. Please re-link your Claude account in Settings.',
