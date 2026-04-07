@@ -1,4 +1,14 @@
 services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: claude_agent
+      POSTGRES_PASSWORD: claude_agent
+      POSTGRES_DB: claude_agent
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    restart: unless-stopped
+
   app:
     build: .
     ports:
@@ -6,10 +16,12 @@ services:
     env_file:
       - .env
     volumes:
-      - ./data:/app/data
       - repo:/app/repo
       - ~/.ssh:/home/nextjs/.ssh:ro
+    depends_on:
+      - postgres
     restart: unless-stopped
 
 volumes:
+  pgdata:
   repo:
