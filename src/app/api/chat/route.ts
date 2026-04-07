@@ -117,7 +117,7 @@ What to save (one call per distinct insight):
 - Business rules you discovered (e.g. "HubSpot data takes priority over Summit data when both exist for the same contact")
 - What product terms mean (e.g. "A 'coupling' in the platform means a connection to an external system like HubSpot or Summit")
 - Corrections from the user (if they tell you something was wrong, save the correct version immediately)
-- Developer insights: architecture patterns, how components connect, file structure, gotchas, technical decisions (use category "developer"). E.g. "The HubSpot import uses a mapping config per event to map HubSpot fields to registration fields"
+- Developer insights (use category "developer"): architecture patterns, how components connect, gotchas, technical decisions. IMPORTANT: also save the code flow — which files are involved and in what order, so you don't need to re-read them next time. E.g. "HubSpot import flow: cronjobs/OgzHubspotImport.php → HubspotImportHelper → HubspotApiHelper. Uses per-event mapping configs from Helpers/Mappings/ to map HubSpot fields to registration fields."
 
 Do NOT save:
 - Things already listed in the KNOWLEDGE BASE section above
