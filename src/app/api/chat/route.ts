@@ -171,6 +171,16 @@ Keep entries concise (1-2 sentences). Always include 1-3 lowercase tags.`;
               }
             }
 
+            if (event.type === 'assistant' && event.error === 'authentication_failed') {
+              console.error('[chat] Authentication failed — invalid Claude token');
+              const sseData = JSON.stringify({
+                type: 'error',
+                content: 'Your Claude account token is invalid or expired. Please re-link your Claude account in Settings.',
+                errorType: 'claude_token_expired',
+              });
+              safeSend(sseData);
+            }
+
             if (event.type === 'assistant' && event.message?.content) {
               for (const block of event.message.content) {
                 if (block.type === 'tool_use') {

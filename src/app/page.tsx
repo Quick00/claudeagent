@@ -217,14 +217,19 @@ function HomeContent() {
 
             if (event.type === 'error') {
               setStreamingContent('');
-              setMessages((prev) => [
-                ...prev,
-                {
-                  id: `error-${Date.now()}`,
-                  role: 'assistant',
-                  content: `Error: ${event.content}`,
-                },
-              ]);
+              if (event.errorType === 'claude_token_expired') {
+                setClaudeLinked(false);
+                setMessages((prev) => prev.filter((m) => m.id !== tempId));
+              } else {
+                setMessages((prev) => [
+                  ...prev,
+                  {
+                    id: `error-${Date.now()}`,
+                    role: 'assistant',
+                    content: `Error: ${event.content}`,
+                  },
+                ]);
+              }
             }
           } catch {
             // Skip malformed JSON
