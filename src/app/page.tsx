@@ -96,7 +96,7 @@ function HomeContent() {
       if (lastMsg && lastMsg.role === 'user' && !cancelled) {
         // Response not saved yet — keep polling
         setIsLoading(true);
-        pollTimer = setTimeout(() => pollForResponse(convId), 3000);
+        pollTimer = setTimeout(() => pollForResponse(convId), 1000);
       } else {
         setIsLoading(false);
       }
