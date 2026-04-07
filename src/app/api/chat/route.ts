@@ -11,14 +11,14 @@ const MAX_RETRIES = 2;
 async function getUserClaudeToken(userEmail: string): Promise<{ token: string } | { error: string; status: number }> {
   const user = await prisma.user.findUnique({
     where: { email: userEmail },
-    select: { claudeToken: true },
+    select: { userClaudeToken: true },
   });
 
-  if (!user?.claudeToken) {
+  if (!user?.userClaudeToken) {
     return { error: 'claude_account_not_linked', status: 403 };
   }
 
-  return { token: decrypt(user.claudeToken) };
+  return { token: decrypt(user.userClaudeToken) };
 }
 
 export async function POST(request: Request) {
@@ -38,7 +38,7 @@ export async function POST(request: Request) {
   if ('error' in tokenResult) {
     return Response.json({ error: tokenResult.error }, { status: tokenResult.status });
   }
-  const claudeToken = claudeToken;
+  const userClaudeToken = userClaudeToken;
 
   const body = await request.json();
   const { conversationId, message } = body as {
@@ -218,8 +218,8 @@ Keep entries concise (1-2 sentences). Always include 1-3 lowercase tags.`;
                   console.log(`[chat] error_during_execution — retrying (attempt ${retryCount + 1}/${MAX_RETRIES})`);
                   const retryRequestId = `${conversation.id}-retry-${Date.now()}`;
                   const retryProcOrPromise = conversation.claudeSessionId
-                    ? sessionManager.resumeSession(retryRequestId, conversation.claudeSessionId, message, claudeToken)
-                    : sessionManager.startSession(retryRequestId, message, systemPrompt, claudeToken);
+                    ? sessionManager.resumeSession(retryRequestId, conversation.claudeSessionId, message, userClaudeToken)
+                    : sessionManager.startSession(retryRequestId, message, systemPrompt, userClaudeToken);
 
                   if (retryProcOrPromise instanceof Promise) {
                     retryProcOrPromise.then((retryProc) => attachProcess(retryProc, retryCount + 1));
@@ -287,8 +287,8 @@ Keep entries concise (1-2 sentences). Always include 1-3 lowercase tags.`;
       console.log(`[chat] Starting request (requestId=${requestId}, conversationId=${conversation.id}, resume=${!!conversation.claudeSessionId}, knowledgeEntries=${knowledgeEntries.length})`);
 
       const procOrPromise = conversation.claudeSessionId
-        ? sessionManager.resumeSession(requestId, conversation.claudeSessionId, message, claudeToken)
-        : sessionManager.startSession(requestId, message, systemPrompt, claudeToken);
+        ? sessionManager.resumeSession(requestId, conversation.claudeSessionId, message, userClaudeToken)
+        : sessionManager.startSession(requestId, message, systemPrompt, userClaudeToken);
 
       if (procOrPromise instanceof Promise) {
         procOrPromise.then((proc) => {
