@@ -32,7 +32,7 @@ const CATEGORY_COLORS: Record<string, string> = {
   terminology: '#8b5cf6',
   product_insight: '#10b981',
   process: '#f59e0b',
-  developer: '#3b82f6',
+  developer: '#0ea5e9',
 };
 
 const CATEGORY_LABELS: Record<string, string> = {
