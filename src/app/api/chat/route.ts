@@ -38,7 +38,7 @@ export async function POST(request: Request) {
   if ('error' in tokenResult) {
     return Response.json({ error: tokenResult.error }, { status: tokenResult.status });
   }
-  const userClaudeToken = userClaudeToken;
+  const userClaudeToken = tokenResult.token;
 
   const body = await request.json();
   const { conversationId, message } = body as {
