@@ -227,6 +227,14 @@ Keep entries concise (1-2 sentences). Always include 1-3 lowercase tags.`;
                   event.error === 'rate_limit' &&
                   event.message?.content
               ) {
+                prisma.message.create({
+                  data: {
+                    conversationId: conversation.id,
+                    role: 'assistant',
+                    content: event.message.content[0].text,
+                  },
+                }).catch((err) => console.error('[chat] Failed to save auth error message:', err));
+
                 const sseData = JSON.stringify({ type: 'text', content: event.message.content[0].text });
                 safeSend(sseData);
               }
