@@ -2,6 +2,7 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { NextResponse } from 'next/server';
+import { embedText } from '@/lib/embeddings';
 
 // POST: Claude saves a knowledge entry (called via tool use / fetch from CLI)
 export async function POST(request: Request) {
@@ -40,9 +41,25 @@ export async function POST(request: Request) {
     return NextResponse.json({ status: 'skipped', reason: 'duplicate' });
   }
 
+  let embedding: number[] | null = null;
+  try {
+    embedding = await embedText(content);
+  } catch (err) {
+    console.error('[knowledge] Failed to generate embedding:', (err as Error).message);
+  }
+
   const entry = await prisma.knowledgeEntry.create({
     data: { category, content, tags: tags || '', source },
   });
+
+  if (embedding) {
+    const vectorStr = `[${embedding.join(',')}]`;
+    await prisma.$executeRaw`
+      UPDATE "KnowledgeEntry"
+      SET embedding = ${vectorStr}::vector
+      WHERE id = ${entry.id}
+    `;
+  }
 
   console.log(`[knowledge] New entry saved: [${category}] ${content.slice(0, 100)}`);
 
