@@ -222,7 +222,15 @@ Keep entries concise (1-2 sentences). Always include 1-3 lowercase tags.`;
                     : sessionManager.startSession(retryRequestId, message, systemPrompt, userClaudeToken);
 
                   if (retryProcOrPromise instanceof Promise) {
-                    retryProcOrPromise.then((retryProc) => attachProcess(retryProc, retryCount + 1));
+                    retryProcOrPromise.then((retryProc) => attachProcess(retryProc, retryCount + 1)).catch((err) => {
+                      console.error('[chat] Failed to acquire retry process:', err.message);
+                      const errorData = JSON.stringify({
+                        type: 'error',
+                        content: 'Failed to retry Claude process. Please try again.',
+                      });
+                      safeSend(errorData);
+                      safeClose();
+                    });
                   } else {
                     attachProcess(retryProcOrPromise, retryCount + 1);
                   }
@@ -294,6 +302,14 @@ Keep entries concise (1-2 sentences). Always include 1-3 lowercase tags.`;
         procOrPromise.then((proc) => {
           console.log(`[chat] Process acquired (pid=${proc.pid})`);
           attachProcess(proc, 0);
+        }).catch((err) => {
+          console.error('[chat] Failed to acquire process:', err.message);
+          const errorData = JSON.stringify({
+            type: 'error',
+            content: 'Failed to start Claude process. Please try again.',
+          });
+          safeSend(errorData);
+          safeClose();
         });
       } else {
         console.log(`[chat] Process acquired (pid=${procOrPromise.pid})`);
