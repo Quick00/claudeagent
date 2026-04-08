@@ -1,8 +1,10 @@
 import { spawn, ChildProcess } from 'child_process';
+import { mkdirSync } from 'fs';
 import path from 'path';
 import { config } from '@/lib/config';
 
 const PROJECT_ROOT = path.resolve(process.cwd());
+const SESSIONS_DIR = path.join(PROJECT_ROOT, '.claude-sessions');
 
 function getMcpConfig(): string {
   return JSON.stringify({
@@ -24,6 +26,7 @@ interface QueuedRequest {
   args: string[];
   message: string;
   claudeToken: string;
+  userId: string;
 }
 
 export class SessionManager {
@@ -38,7 +41,7 @@ export class SessionManager {
     return this.queue.length;
   }
 
-  startSession(requestId: string, message: string, systemPrompt: string, claudeToken: string): ChildProcess | Promise<ChildProcess> {
+  startSession(requestId: string, message: string, systemPrompt: string, claudeToken: string, userId: string): ChildProcess | Promise<ChildProcess> {
     const args = [
       '--print',
       '--verbose',
@@ -51,10 +54,10 @@ export class SessionManager {
       '--permission-mode', 'bypassPermissions',
     ];
 
-    return this.spawnOrQueue(requestId, args, message, claudeToken);
+    return this.spawnOrQueue(requestId, args, message, claudeToken, userId);
   }
 
-  resumeSession(requestId: string, claudeSessionId: string, message: string, claudeToken: string): ChildProcess | Promise<ChildProcess> {
+  resumeSession(requestId: string, claudeSessionId: string, message: string, claudeToken: string, userId: string): ChildProcess | Promise<ChildProcess> {
     const args = [
       '--resume', claudeSessionId,
       '--print',
@@ -65,7 +68,7 @@ export class SessionManager {
       '--permission-mode', 'bypassPermissions',
     ];
 
-    return this.spawnOrQueue(requestId, args, message, claudeToken);
+    return this.spawnOrQueue(requestId, args, message, claudeToken, userId);
   }
 
   killSession(requestId: string): void {
@@ -85,26 +88,30 @@ export class SessionManager {
     this.queue = [];
   }
 
-  private spawnOrQueue(requestId: string, args: string[], message: string, claudeToken: string): ChildProcess | Promise<ChildProcess> {
+  private spawnOrQueue(requestId: string, args: string[], message: string, claudeToken: string, userId: string): ChildProcess | Promise<ChildProcess> {
     if (this.activeProcesses.size < config.maxConcurrentSessions) {
-      return this.doSpawn(requestId, args, message, claudeToken);
+      return this.doSpawn(requestId, args, message, claudeToken, userId);
     }
 
     return new Promise<ChildProcess>((resolve) => {
-      this.queue.push({ resolve, args, message, claudeToken });
+      this.queue.push({ resolve, args, message, claudeToken, userId });
     });
   }
 
-  private doSpawn(requestId: string, args: string[], message: string, claudeToken: string): ChildProcess {
+  private doSpawn(requestId: string, args: string[], message: string, claudeToken: string, userId: string): ChildProcess {
     console.log(`[session-manager] Spawning claude process (requestId=${requestId}, active=${this.activeProcesses.size}, queued=${this.queue.length})`);
     console.log(`[session-manager] Args: claude ${args.join(' ')}`);
     console.log(`[session-manager] Message: ${message.slice(0, 100)}${message.length > 100 ? '...' : ''}`);
+
+    const userHome = path.join(SESSIONS_DIR, userId);
+    mkdirSync(userHome, { recursive: true });
 
     const proc = spawn('claude', args, {
       stdio: ['pipe', 'pipe', 'pipe'],
       cwd: config.repoPath,
       env: {
         ...process.env,
+        HOME: userHome,
         CLAUDE_CODE_OAUTH_TOKEN: claudeToken,
       },
     });
@@ -137,7 +144,7 @@ export class SessionManager {
 
     const next = this.queue.shift()!;
     const requestId = `queued-${Date.now()}`;
-    const proc = this.doSpawn(requestId, next.args, next.message, next.claudeToken);
+    const proc = this.doSpawn(requestId, next.args, next.message, next.claudeToken, next.userId);
     next.resolve(proc);
   }
 }

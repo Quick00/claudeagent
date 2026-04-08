@@ -223,8 +223,8 @@ Keep entries concise (1-2 sentences). Always include 1-3 lowercase tags.`;
                   retrying = true;
                   const retryRequestId = `${conversation.id}-retry-${Date.now()}`;
                   const retryProcOrPromise = conversation.claudeSessionId
-                    ? sessionManager.resumeSession(retryRequestId, conversation.claudeSessionId, message, userClaudeToken)
-                    : sessionManager.startSession(retryRequestId, message, systemPrompt, userClaudeToken);
+                    ? sessionManager.resumeSession(retryRequestId, conversation.claudeSessionId, message, userClaudeToken, user.id)
+                    : sessionManager.startSession(retryRequestId, message, systemPrompt, userClaudeToken, user.id);
 
                   if (retryProcOrPromise instanceof Promise) {
                     retryProcOrPromise.then((retryProc) => attachProcess(retryProc, retryCount + 1)).catch((err) => {
@@ -303,8 +303,8 @@ Keep entries concise (1-2 sentences). Always include 1-3 lowercase tags.`;
       console.log(`[chat] Starting request (requestId=${requestId}, conversationId=${conversation.id}, resume=${!!conversation.claudeSessionId}, knowledgeEntries=${knowledgeEntries.length})`);
 
       const procOrPromise = conversation.claudeSessionId
-        ? sessionManager.resumeSession(requestId, conversation.claudeSessionId, message, userClaudeToken)
-        : sessionManager.startSession(requestId, message, systemPrompt, userClaudeToken);
+        ? sessionManager.resumeSession(requestId, conversation.claudeSessionId, message, userClaudeToken, user.id)
+        : sessionManager.startSession(requestId, message, systemPrompt, userClaudeToken, user.id);
 
       if (procOrPromise instanceof Promise) {
         procOrPromise.then((proc) => {

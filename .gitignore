@@ -44,3 +44,6 @@ yarn-error.log*
 next-env.d.ts
 
 /src/generated/prisma
+
+# per-user claude session data
+.claude-sessions/
