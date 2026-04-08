@@ -33,7 +33,7 @@ export async function POST(request: Request) {
   if (!user) {
     return new Response('User not found', { status: 404 });
   }
-  const userId = userId;
+  const userId = user.id;
 
   const tokenResult = await getUserClaudeToken(session.user.email);
   if ('error' in tokenResult) {
