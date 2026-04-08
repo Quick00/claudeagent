@@ -23,7 +23,10 @@ services:
       - .env.local
     volumes:
       - repo:/app/repo
+      - claude-sessions:/app/claude-sessions
       - ~/.ssh:/home/nextjs/.ssh:ro
+    environment:
+      - SESSIONS_DIR=/app/claude-sessions
     depends_on:
       - postgres
     restart: unless-stopped
@@ -31,3 +34,4 @@ services:
 volumes:
   pgdata:
   repo:
+  claude-sessions:
