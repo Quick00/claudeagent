@@ -279,7 +279,7 @@ export default function KnowledgeGraph() {
                 </div>
               )}
               <div className="text-xs text-gray-400">
-                Added {new Date(selectedEntry.createdAt).toLocaleDateString()}
+                Added {new Date(selectedEntry.createdAt).toLocaleDateString('en-GB')}
               </div>
             </>
           ) : null}

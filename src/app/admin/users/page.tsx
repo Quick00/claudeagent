@@ -138,7 +138,7 @@ export default function AdminUsersPage() {
                       />
                     </td>
                     <td className="py-3 pr-4 text-gray-500">
-                      {new Date(user.createdAt).toLocaleDateString()}
+                      {new Date(user.createdAt).toLocaleDateString('en-GB')}
                     </td>
                     <td className="py-3">
                       {!isSelf && (

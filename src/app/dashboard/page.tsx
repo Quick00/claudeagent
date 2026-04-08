@@ -207,7 +207,7 @@ export default function DashboardPage() {
                       {data.isAdmin && (
                         <span className="mr-1 text-gray-500">{conv.userName} &middot;</span>
                       )}
-                      {new Date(conv.createdAt).toLocaleDateString()}
+                      {new Date(conv.createdAt).toLocaleDateString('en-GB')}
                     </div>
                   </a>
                 ))
@@ -248,7 +248,7 @@ export default function DashboardPage() {
                         </span>
                       </div>
                       <span className="text-xs text-gray-400">
-                        {new Date(entry.createdAt).toLocaleDateString()}
+                        {new Date(entry.createdAt).toLocaleDateString('en-GB')}
                       </span>
                     </div>
                     <p className="text-sm leading-relaxed text-gray-800">
