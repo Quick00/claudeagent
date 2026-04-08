@@ -149,6 +149,9 @@ Keep entries concise (1-2 sentences). Always include 1-3 lowercase tags.`;
         }
       };
 
+      // Send conversation ID immediately so the client can update the sidebar
+      safeSend(JSON.stringify({ type: 'conversation_created', conversationId: conversation.id, title: message.slice(0, 100) }));
+
       function attachProcess(proc: ChildProcess, retryCount: number) {
         let fullResponse = '';
         let claudeSessionId: string | null = null;

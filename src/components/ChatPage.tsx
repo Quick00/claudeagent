@@ -175,6 +175,12 @@ export default function ChatPage({ initialConversationId }: { initialConversatio
           try {
             const event = JSON.parse(jsonStr);
 
+            if (event.type === 'conversation_created') {
+              setConversationId(event.conversationId);
+              window.history.replaceState(null, '', `/conversation/${event.conversationId}`);
+              setRefreshTrigger((prev) => prev + 1);
+            }
+
             if (event.type === 'text') {
               accumulated += event.content;
               setStreamingContent(accumulated);
@@ -196,8 +202,6 @@ export default function ChatPage({ initialConversationId }: { initialConversatio
 
             if (event.type === 'done') {
               setToolStatus(null);
-              setConversationId(event.conversationId);
-              window.history.replaceState(null, '', `/conversation/${event.conversationId}`);
               setMessages((prev) => [
                 ...prev,
                 {
