@@ -33,6 +33,7 @@ export async function POST(request: Request) {
   if (!user) {
     return new Response('User not found', { status: 404 });
   }
+  const userId = userId;
 
   const tokenResult = await getUserClaudeToken(session.user.email);
   if ('error' in tokenResult) {
@@ -53,7 +54,7 @@ export async function POST(request: Request) {
   let conversation: { id: string; claudeSessionId: string | null };
   if (conversationId) {
     const existing = await prisma.conversation.findFirst({
-      where: { id: conversationId, userId: user.id },
+      where: { id: conversationId, userId: userId },
     });
     if (!existing) {
       return new Response('Conversation not found', { status: 404 });
@@ -62,7 +63,7 @@ export async function POST(request: Request) {
   } else {
     conversation = await prisma.conversation.create({
       data: {
-        userId: user.id,
+        userId: userId,
         title: message.slice(0, 100),
       },
     });
@@ -223,8 +224,8 @@ Keep entries concise (1-2 sentences). Always include 1-3 lowercase tags.`;
                   retrying = true;
                   const retryRequestId = `${conversation.id}-retry-${Date.now()}`;
                   const retryProcOrPromise = conversation.claudeSessionId
-                    ? sessionManager.resumeSession(retryRequestId, conversation.claudeSessionId, message, userClaudeToken, user.id)
-                    : sessionManager.startSession(retryRequestId, message, systemPrompt, userClaudeToken, user.id);
+                    ? sessionManager.resumeSession(retryRequestId, conversation.claudeSessionId, message, userClaudeToken, userId)
+                    : sessionManager.startSession(retryRequestId, message, systemPrompt, userClaudeToken, userId);
 
                   if (retryProcOrPromise instanceof Promise) {
                     retryProcOrPromise.then((retryProc) => attachProcess(retryProc, retryCount + 1)).catch((err) => {
@@ -303,8 +304,8 @@ Keep entries concise (1-2 sentences). Always include 1-3 lowercase tags.`;
       console.log(`[chat] Starting request (requestId=${requestId}, conversationId=${conversation.id}, resume=${!!conversation.claudeSessionId}, knowledgeEntries=${knowledgeEntries.length})`);
 
       const procOrPromise = conversation.claudeSessionId
-        ? sessionManager.resumeSession(requestId, conversation.claudeSessionId, message, userClaudeToken, user.id)
-        : sessionManager.startSession(requestId, message, systemPrompt, userClaudeToken, user.id);
+        ? sessionManager.resumeSession(requestId, conversation.claudeSessionId, message, userClaudeToken, userId)
+        : sessionManager.startSession(requestId, message, systemPrompt, userClaudeToken, userId);
 
       if (procOrPromise instanceof Promise) {
         procOrPromise.then((proc) => {
