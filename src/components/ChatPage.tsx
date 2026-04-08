@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useSession } from 'next-auth/react';
-import { useRouter } from 'next/navigation';
 import { redirect } from 'next/navigation';
 import ChatSidebar from '@/components/ChatSidebar';
 import ChatMessages from '@/components/ChatMessages';
@@ -17,7 +16,7 @@ interface Message {
 
 export default function ChatPage({ initialConversationId }: { initialConversationId?: string }) {
   const { data: session, status } = useSession();
-  const router = useRouter();
+
   const [conversationId, setConversationId] = useState<string | null>(initialConversationId ?? null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [streamingContent, setStreamingContent] = useState('');
@@ -44,7 +43,7 @@ export default function ChatPage({ initialConversationId }: { initialConversatio
     setStreamingContent('');
     setToolStatus(null);
     setIsLoading(false);
-    router.replace(`/conversation/${id}`);
+    window.history.replaceState(null, '', `/conversation/${id}`);
 
     const res = await fetch(`/api/conversations/${id}`);
     if (!res.ok) return;
@@ -56,7 +55,7 @@ export default function ChatPage({ initialConversationId }: { initialConversatio
         content: m.content,
       }))
     );
-  }, [router]);
+  }, []);
 
   // Load initial conversation on mount
   useEffect(() => {
@@ -125,7 +124,7 @@ export default function ChatPage({ initialConversationId }: { initialConversatio
     setStreamingContent('');
     setToolStatus(null);
     setIsLoading(false);
-    router.replace('/');
+    window.history.replaceState(null, '', '/');
   };
 
   const handleSend = async (message: string) => {
@@ -198,7 +197,7 @@ export default function ChatPage({ initialConversationId }: { initialConversatio
             if (event.type === 'done') {
               setToolStatus(null);
               setConversationId(event.conversationId);
-              router.replace(`/conversation/${event.conversationId}`);
+              window.history.replaceState(null, '', `/conversation/${event.conversationId}`);
               setMessages((prev) => [
                 ...prev,
                 {
