@@ -46,7 +46,7 @@ Two functions:
 - Calls the Anthropic Voyager embeddings API
 - Input: plain text string
 - Output: 1024-dimensional float array
-- Auth: `ANTHROPIC_API_KEY` env var
+- Auth: `VOYAGE_API_KEY` env var
 
 ### `findRelevantEntries(query: string, limit: number): Promise<KnowledgeEntry[]>`
 
@@ -107,7 +107,7 @@ Run manually after migration: `npx tsx scripts/backfill-embeddings.ts`
 
 Add to `.env.example`:
 ```
-ANTHROPIC_API_KEY=your-api-key-here
+VOYAGE_API_KEY=your-api-key-here
 ```
 
 ## What Does NOT Change
