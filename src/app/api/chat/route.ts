@@ -268,13 +268,13 @@ Keep entries concise (1-2 sentences). Always include 1-3 lowercase tags.`;
                 content: fullResponse,
               },
             });
-          }
 
-          if (claudeSessionId) {
-            await prisma.conversation.update({
-              where: { id: conversation.id },
-              data: { claudeSessionId },
-            });
+            if (claudeSessionId) {
+              await prisma.conversation.update({
+                where: { id: conversation.id },
+                data: { claudeSessionId },
+              });
+            }
           }
 
           const doneData = JSON.stringify({
