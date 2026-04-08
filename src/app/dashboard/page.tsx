@@ -197,7 +197,7 @@ export default function DashboardPage() {
                 data.recentConversations.map((conv, i) => (
                   <a
                     key={conv.id}
-                    href={`/?conversation=${conv.id}`}
+                    href={`/conversation/${conv.id}`}
                     className={`block px-4 py-3 text-sm text-gray-700 hover:bg-gray-50 ${
                       i > 0 ? 'border-t border-gray-100' : ''
                     }`}
