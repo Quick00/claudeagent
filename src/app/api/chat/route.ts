@@ -5,6 +5,7 @@ import { sessionManager } from '@/lib/session-manager';
 import { config } from '@/lib/config';
 import { decrypt } from '@/lib/crypto';
 import { ChildProcess } from 'child_process';
+import { findRelevantEntries } from '@/lib/embeddings';
 
 const MAX_RETRIES = 2;
 
@@ -77,9 +78,15 @@ export async function POST(request: Request) {
     },
   });
 
-  const knowledgeEntries = await prisma.knowledgeEntry.findMany({
-    orderBy: { createdAt: 'asc' },
-  });
+  let knowledgeEntries: { id: string; category: string; content: string; tags: string; source: string | null; createdAt: Date }[] = [];
+  try {
+    knowledgeEntries = await findRelevantEntries(message, 10);
+  } catch (err) {
+    console.error('[chat] Failed to fetch relevant entries, falling back to all:', (err as Error).message);
+    knowledgeEntries = await prisma.knowledgeEntry.findMany({
+      orderBy: { createdAt: 'asc' },
+    });
+  }
 
   let systemPrompt = config.systemPrompt;
 
