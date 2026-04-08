@@ -153,6 +153,7 @@ Keep entries concise (1-2 sentences). Always include 1-3 lowercase tags.`;
         let fullResponse = '';
         let claudeSessionId: string | null = null;
         let authFailed = false;
+        let retrying = false;
 
         proc.stdout!.on('data', (chunk: Buffer) => {
           const raw = chunk.toString();
@@ -216,6 +217,7 @@ Keep entries concise (1-2 sentences). Always include 1-3 lowercase tags.`;
 
                 if (event.is_error && event.subtype === 'error_during_execution' && retryCount < MAX_RETRIES) {
                   console.log(`[chat] error_during_execution — retrying (attempt ${retryCount + 1}/${MAX_RETRIES})`);
+                  retrying = true;
                   const retryRequestId = `${conversation.id}-retry-${Date.now()}`;
                   const retryProcOrPromise = conversation.claudeSessionId
                     ? sessionManager.resumeSession(retryRequestId, conversation.claudeSessionId, message, userClaudeToken)
@@ -250,9 +252,12 @@ Keep entries concise (1-2 sentences). Always include 1-3 lowercase tags.`;
         });
 
         proc.on('close', async (code) => {
-          console.log(`[chat] Process closed (code=${code}, responseLength=${fullResponse.length}, sessionId=${claudeSessionId}, authFailed=${authFailed})`);
+          console.log(`[chat] Process closed (code=${code}, responseLength=${fullResponse.length}, sessionId=${claudeSessionId}, authFailed=${authFailed}, retrying=${retrying})`);
           if (authFailed) {
             safeClose();
+            return;
+          }
+          if (retrying) {
             return;
           }
           if (fullResponse) {
