@@ -18,6 +18,7 @@ export async function embedText(text: string): Promise<number[]> {
     body: JSON.stringify({
       input: text,
       model: EMBEDDING_MODEL,
+      dimensions: 1024,
     }),
   });
 

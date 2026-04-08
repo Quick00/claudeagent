@@ -1,10 +1,12 @@
 services:
   postgres:
-    image: postgres:17-alpine
+    image: pgvector/pgvector:pg17
     environment:
       POSTGRES_USER: claude_agent
       POSTGRES_PASSWORD: claude_agent
       POSTGRES_DB: claude_agent
+    ports:
+      - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
       - ./prisma/init-pgvector.sql:/docker-entrypoint-initdb.d/init-pgvector.sql
