@@ -222,6 +222,15 @@ Keep entries concise (1-2 sentences). Always include 1-3 lowercase tags.`;
                 }
               }
 
+              if (
+                  event.type === 'assistant' &&
+                  event.error === 'rate_limit' &&
+                  event.message?.content
+              ) {
+                const sseData = JSON.stringify({ type: 'text', content: event.message.content[0].text });
+                safeSend(sseData);
+              }
+
               if (event.type === 'result') {
                 if (event.session_id) {
                   claudeSessionId = event.session_id;
