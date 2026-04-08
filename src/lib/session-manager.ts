@@ -14,6 +14,7 @@ function getMcpConfig(): string {
         args: [path.join(PROJECT_ROOT, 'src/mcp/knowledge-server.mjs')],
         env: {
           KNOWLEDGE_API_URL: `${process.env.NEXTAUTH_URL || 'http://localhost:3000'}/api/knowledge`,
+          KNOWLEDGE_SEARCH_URL: `${process.env.NEXTAUTH_URL || 'http://localhost:3000'}/api/knowledge/search`,
           KNOWLEDGE_API_SECRET: process.env.KNOWLEDGE_API_SECRET || '',
         },
       },

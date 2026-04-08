@@ -9,6 +9,7 @@
 import { createInterface } from 'readline';
 
 const API_URL = process.env.KNOWLEDGE_API_URL || 'http://localhost:3000/api/knowledge';
+const SEARCH_URL = process.env.KNOWLEDGE_SEARCH_URL || 'http://localhost:3000/api/knowledge/search';
 const API_SECRET = process.env.KNOWLEDGE_API_SECRET || '';
 
 const rl = createInterface({ input: process.stdin });
@@ -78,6 +79,25 @@ rl.on('line', async (line) => {
               required: ['category', 'content', 'tags'],
             },
           },
+          {
+            name: 'search_knowledge',
+            description:
+              'Search the knowledge base for entries relevant to a question or topic. Use this when the user asks what you know, or when you want to check if knowledge exists about a specific topic before answering.',
+            inputSchema: {
+              type: 'object',
+              properties: {
+                query: {
+                  type: 'string',
+                  description: 'The search query — a question or topic to find relevant knowledge about.',
+                },
+                limit: {
+                  type: 'number',
+                  description: 'Maximum number of results to return (default: 10).',
+                },
+              },
+              required: ['query'],
+            },
+          },
         ],
       },
     });
@@ -86,6 +106,53 @@ rl.on('line', async (line) => {
 
   if (method === 'tools/call') {
     const { name, arguments: args } = params;
+
+    if (name === 'search_knowledge') {
+      try {
+        const res = await fetch(SEARCH_URL, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${API_SECRET}`,
+          },
+          body: JSON.stringify({
+            query: args.query,
+            limit: args.limit || 10,
+          }),
+        });
+
+        const data = await res.json();
+
+        if (!res.ok) {
+          throw new Error(data.error || `HTTP ${res.status}`);
+        }
+
+        const entries = data.entries || [];
+        let text;
+        if (entries.length === 0) {
+          text = 'No knowledge entries found for this query.';
+        } else {
+          text = `Found ${entries.length} relevant knowledge entries:\n\n` +
+            entries.map((e, i) => `${i + 1}. [${e.category}] ${e.content}`).join('\n');
+        }
+
+        send({
+          jsonrpc: '2.0',
+          id,
+          result: { content: [{ type: 'text', text }] },
+        });
+      } catch (err) {
+        send({
+          jsonrpc: '2.0',
+          id,
+          result: {
+            content: [{ type: 'text', text: `Error searching knowledge: ${err.message}` }],
+            isError: true,
+          },
+        });
+      }
+      return;
+    }
 
     if (name === 'save_knowledge') {
       try {
