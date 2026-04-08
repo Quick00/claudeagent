@@ -4,7 +4,7 @@ import path from 'path';
 import { config } from '@/lib/config';
 
 const PROJECT_ROOT = path.resolve(process.cwd());
-const SESSIONS_DIR = path.join(PROJECT_ROOT, '.claude-sessions');
+const SESSIONS_DIR = process.env.SESSIONS_DIR || path.join('/tmp', 'claude-sessions');
 
 function getMcpConfig(): string {
   return JSON.stringify({
