@@ -5,30 +5,30 @@ import { PrismaPg } from '@prisma/adapter-pg';
 const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL ?? '' });
 const prisma = new PrismaClient({ adapter });
 
-const VOYAGE_API_URL = 'https://api.voyageai.com/v1/embeddings';
-const EMBEDDING_MODEL = 'voyage-3';
+const OPENROUTER_API_URL = 'https://openrouter.ai/api/v1/embeddings';
+const EMBEDDING_MODEL = 'openai/text-embedding-3-large';
 
 async function embedText(text: string): Promise<number[]> {
-  const apiKey = process.env.VOYAGE_API_KEY;
+  const apiKey = process.env.OPENROUTER_API_KEY;
   if (!apiKey) {
-    throw new Error('VOYAGE_API_KEY is not set');
+    throw new Error('OPENROUTER_API_KEY is not set');
   }
 
-  const res = await fetch(VOYAGE_API_URL, {
+  const res = await fetch(OPENROUTER_API_URL, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${apiKey}`,
     },
     body: JSON.stringify({
-      input: [text],
+      input: text,
       model: EMBEDDING_MODEL,
     }),
   });
 
   if (!res.ok) {
     const body = await res.text();
-    throw new Error(`Voyage API error (${res.status}): ${body}`);
+    throw new Error(`OpenRouter embeddings error (${res.status}): ${body}`);
   }
 
   const data = await res.json();

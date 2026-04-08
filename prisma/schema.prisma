@@ -44,6 +44,6 @@ model KnowledgeEntry {
   content   String
   tags      String                          @default("")
   source    String?
-  embedding Unsupported("vector(1024)")?
+  embedding Unsupported("vector(3072)")?
   createdAt DateTime                        @default(now())
 }
