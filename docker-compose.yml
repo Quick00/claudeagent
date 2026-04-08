@@ -7,6 +7,7 @@ services:
       POSTGRES_DB: claude_agent
     volumes:
       - pgdata:/var/lib/postgresql/data
+      - ./prisma/init-pgvector.sql:/docker-entrypoint-initdb.d/init-pgvector.sql
     restart: unless-stopped
 
   app:

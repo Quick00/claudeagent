@@ -39,10 +39,11 @@ model Message {
 }
 
 model KnowledgeEntry {
-  id        String   @id @default(uuid())
-  category  String   // "correction", "terminology", "product_insight", "process"
+  id        String                          @id @default(uuid())
+  category  String
   content   String
-  tags      String   @default("") // comma-separated topic tags, e.g. "badges,printing,events"
-  source    String?  // which conversation triggered this
-  createdAt DateTime @default(now())
+  tags      String                          @default("")
+  source    String?
+  embedding Unsupported("vector(1024)")?
+  createdAt DateTime                        @default(now())
 }
