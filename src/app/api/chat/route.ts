@@ -115,8 +115,10 @@ export async function POST(request: Request) {
   }
 
   systemPrompt += `\n\n---
-MEMORY SYSTEM — MANDATORY:
-You have a "save_knowledge" tool. You MUST use it after EVERY answer where you investigated the codebase.
+KNOWLEDGE TOOLS:
+You have two knowledge tools:
+- "search_knowledge" — search the knowledge base by topic. Use this when the user asks what you know, asks about a specific topic, or when you want to check existing knowledge before answering.
+- "save_knowledge" — save new knowledge. You MUST use it after EVERY answer where you investigated the codebase.
 
 RULE: If you read any files or searched the codebase to answer a question, you MUST call save_knowledge at least once before finishing your response. This is not optional. The knowledge base is how the team builds shared understanding — every investigation adds value.
 
