@@ -51,10 +51,16 @@ function HomeContent() {
   }, []);
 
   const loadConversation = useCallback(async (id: string) => {
+    setConversationId(id);
+    setMessages([]);
+    setStreamingContent('');
+    setToolStatus(null);
+    setIsLoading(false);
+    window.history.replaceState(null, '', `/?conversation=${id}`);
+
     const res = await fetch(`/api/conversations/${id}`);
     if (!res.ok) return;
     const data = await res.json();
-    setConversationId(id);
     setMessages(
       data.messages.map((m: any) => ({
         id: m.id,
@@ -62,7 +68,6 @@ function HomeContent() {
         content: m.content,
       }))
     );
-    setStreamingContent('');
   }, []);
 
   // Load conversation from URL query param on mount
@@ -131,6 +136,9 @@ function HomeContent() {
     setConversationId(null);
     setMessages([]);
     setStreamingContent('');
+    setToolStatus(null);
+    setIsLoading(false);
+    window.history.replaceState(null, '', '/');
   };
 
   const handleSend = async (message: string) => {
@@ -203,6 +211,7 @@ function HomeContent() {
             if (event.type === 'done') {
               setToolStatus(null);
               setConversationId(event.conversationId);
+              window.history.replaceState(null, '', `/?conversation=${event.conversationId}`);
               setMessages((prev) => [
                 ...prev,
                 {
