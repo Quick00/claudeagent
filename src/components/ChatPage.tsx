@@ -108,6 +108,9 @@ export default function ChatPage({ initialConversationId }: { initialConversatio
         content: m.content,
       }));
       setMessages(msgs);
+      if (data.flags) {
+        processFlags(data.flags);
+      }
 
       const lastMsg = msgs[msgs.length - 1];
       if (lastMsg && lastMsg.role === 'user' && !cancelled) {
@@ -130,7 +133,7 @@ export default function ChatPage({ initialConversationId }: { initialConversatio
       if (pollTimer) clearTimeout(pollTimer);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
-  }, [conversationId, isLoading]);
+  }, [conversationId, isLoading, processFlags]);
 
   if (status === 'loading') {
     return (
@@ -282,8 +285,10 @@ export default function ChatPage({ initialConversationId }: { initialConversatio
     }
   };
 
+  const hasPendingFlag = flags.some((f) => f.status === 'PENDING');
+
   const handleFlag = async () => {
-    if (!conversationId || flagSubmitting) return;
+    if (!conversationId || flagSubmitting || hasPendingFlag) return;
     setFlagSubmitting(true);
     try {
       const res = await fetch('/api/flags', {
@@ -336,18 +341,19 @@ export default function ChatPage({ initialConversationId }: { initialConversatio
                 <div />
                 <div className="relative">
                   <button
-                    onClick={() => setShowFlagForm(!showFlagForm)}
+                    onClick={() => { if (!hasPendingFlag && !flagSubmitting) setShowFlagForm(!showFlagForm); }}
+                    disabled={hasPendingFlag || flagSubmitting}
                     className={`flex items-center gap-1 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${
-                      flags.some((f) => f.status === 'PENDING')
+                      hasPendingFlag
                         ? 'bg-red-50 text-red-600'
                         : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
-                    }`}
-                    title="Flag this conversation"
+                    } disabled:cursor-not-allowed disabled:opacity-50`}
+                    title={hasPendingFlag ? 'Already flagged' : 'Flag this conversation'}
                   >
-                    <svg className="h-3.5 w-3.5" fill={flags.some((f) => f.status === 'PENDING') ? 'currentColor' : 'none'} stroke="currentColor" viewBox="0 0 24 24">
+                    <svg className="h-3.5 w-3.5" fill={hasPendingFlag ? 'currentColor' : 'none'} stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 21v-4m0 0V5a2 2 0 012-2h6.5l1 1H21l-3 6 3 6h-8.5l-1-1H5a2 2 0 00-2 2zm9-13.5V9" />
                     </svg>
-                    {flags.some((f) => f.status === 'PENDING') ? 'Flagged' : 'Flag'}
+                    {hasPendingFlag ? 'Flagged' : 'Flag'}
                   </button>
                   {showFlagForm && (
                     <div className="absolute right-0 top-full z-10 mt-1 w-72 rounded-lg border border-gray-200 bg-white p-3 shadow-lg">

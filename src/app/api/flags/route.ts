@@ -32,6 +32,13 @@ export async function POST(request: Request) {
     return new Response('Conversation not found', { status: 404 });
   }
 
+  const existing = await prisma.flag.findFirst({
+    where: { conversationId, userId: user.id, status: 'PENDING' },
+  });
+  if (existing) {
+    return new Response('A pending flag already exists for this conversation', { status: 409 });
+  }
+
   const flag = await prisma.flag.create({
     data: {
       conversationId,

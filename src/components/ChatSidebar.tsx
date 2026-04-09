@@ -48,6 +48,19 @@ export default function ChatSidebar({
     return () => clearInterval(interval);
   }, [refreshTrigger]);
 
+  // Clear the badge immediately when a conversation is opened so the user
+  // doesn't see a stale dot for up to 30 s until the next poll.
+  useEffect(() => {
+    if (activeConversationId) {
+      setNotificationConvIds((prev) => {
+        if (!prev.has(activeConversationId)) return prev;
+        const next = new Set(prev);
+        next.delete(activeConversationId);
+        return next;
+      });
+    }
+  }, [activeConversationId]);
+
   const handleDelete = async (e: React.MouseEvent, id: string) => {
     e.stopPropagation();
     await fetch(`/api/conversations/${id}`, { method: 'DELETE' });
