@@ -76,14 +76,12 @@ describe('FeedbackWidget', () => {
       organization: 'test-org',
       email: 'test@example.com',
       name: 'Test User',
-      placement: 'right',
       theme: 'light',
     }));
   });
 
-  it('calls Featurebase to open widget on button click', () => {
-    const mockFeaturebase = jest.fn();
-    (window as any).Featurebase = mockFeaturebase;
+  it('posts message to open widget on button click', () => {
+    const postMessageSpy = jest.spyOn(window, 'postMessage');
 
     mockUseSession.mockReturnValue({
       data: { user: { name: 'Test User', email: 'test@example.com' }, expires: '' },
@@ -92,11 +90,15 @@ describe('FeedbackWidget', () => {
     });
 
     render(<FeedbackWidget />);
-    mockFeaturebase.mockClear();
 
     fireEvent.click(screen.getByText('Feedback'));
 
-    expect(mockFeaturebase).toHaveBeenCalledWith('manually_open_feedback_widget');
+    expect(postMessageSpy).toHaveBeenCalledWith({
+      target: 'FeaturebaseWidget',
+      data: { action: 'openFeedbackWidget' },
+    }, '*');
+
+    postMessageSpy.mockRestore();
   });
 
   it('renders button even when session is loading', () => {

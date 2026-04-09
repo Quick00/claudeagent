@@ -17,7 +17,6 @@ export default function FeedbackWidget() {
 
     window.Featurebase('initialize_feedback_widget', {
       organization: process.env.NEXT_PUBLIC_FEATUREBASE_ORG,
-      placement: 'right',
       theme: 'light',
       email: session?.user?.email ?? undefined,
       name: session?.user?.name ?? undefined,
@@ -25,9 +24,10 @@ export default function FeedbackWidget() {
   };
 
   const handleClick = () => {
-    if (typeof window.Featurebase === 'function') {
-      window.Featurebase('manually_open_feedback_widget');
-    }
+    window.postMessage({
+      target: 'FeaturebaseWidget',
+      data: { action: 'openFeedbackWidget' },
+    }, '*');
   };
 
   return (
