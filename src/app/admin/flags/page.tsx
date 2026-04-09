@@ -236,9 +236,9 @@ export default function AdminFlagsPage() {
         )}
 
         <div className="mt-6 border-t border-gray-200 pt-4">
-          <a href="/" className="text-sm text-blue-600 hover:text-blue-700">
+          <Link href="/" className="text-sm text-blue-600 hover:text-blue-700">
             &larr; Back to chat
-          </a>
+          </Link>
         </div>
       </div>
     </div>
