@@ -8,6 +8,11 @@ jest.mock('child_process', () => ({
   spawn: (...args: any[]) => mockSpawn(...args),
 }));
 
+// Mock fs
+jest.mock('fs', () => ({
+  mkdirSync: jest.fn(),
+}));
+
 // Mock config
 jest.mock('@/lib/config', () => ({
   config: {
@@ -43,7 +48,7 @@ describe('SessionManager', () => {
     mockSpawn.mockReturnValue(createMockProcess());
 
     const manager = new SessionManager();
-    const proc = manager.startSession('msg-1', 'Hello');
+    const proc = manager.startSession('msg-1', 'Hello', '', 'test-token', 'user-1');
 
     expect(mockSpawn).toHaveBeenCalledTimes(1);
     const args = mockSpawn.mock.calls[0];
@@ -57,7 +62,7 @@ describe('SessionManager', () => {
     mockSpawn.mockReturnValue(createMockProcess());
 
     const manager = new SessionManager();
-    const proc = manager.resumeSession('msg-2', 'session-abc', 'Follow up');
+    const proc = manager.resumeSession('msg-2', 'session-abc', 'Follow up', 'test-token', 'user-1');
 
     expect(mockSpawn).toHaveBeenCalledTimes(1);
     const args = mockSpawn.mock.calls[0];
@@ -73,14 +78,14 @@ describe('SessionManager', () => {
     const manager = new SessionManager();
 
     // Start 2 sessions (the max)
-    manager.startSession('msg-1', 'Hello 1');
-    manager.startSession('msg-2', 'Hello 2');
+    manager.startSession('msg-1', 'Hello 1', '', 'test-token', 'user-1');
+    manager.startSession('msg-2', 'Hello 2', '', 'test-token', 'user-1');
 
     expect(mockSpawn).toHaveBeenCalledTimes(2);
     expect(manager.queueSize).toBe(0);
 
     // Third should be queued
-    const queued = manager.startSession('msg-3', 'Hello 3');
+    const queued = manager.startSession('msg-3', 'Hello 3', '', 'test-token', 'user-1');
     expect(manager.queueSize).toBe(1);
 
     // Complete first process — queued one should start
@@ -98,7 +103,7 @@ describe('SessionManager', () => {
     mockSpawn.mockReturnValue(proc);
 
     const manager = new SessionManager();
-    manager.startSession('msg-1', 'Hello');
+    manager.startSession('msg-1', 'Hello', '', 'test-token', 'user-1');
 
     expect(manager.activeCount).toBe(1);
 
