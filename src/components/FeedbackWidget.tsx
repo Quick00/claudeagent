@@ -2,6 +2,7 @@
 
 import Script from 'next/script';
 import { useSession } from 'next-auth/react';
+import { useRef } from 'react';
 
 declare global {
   interface Window {
@@ -11,6 +12,27 @@ declare global {
 
 export default function FeedbackWidget() {
   const { data: session } = useSession();
+  const identifiedRef = useRef(false);
+
+  const identifyUser = async () => {
+    if (identifiedRef.current) return;
+    if (typeof window.Featurebase !== 'function') return;
+    if (!session?.user?.email) return;
+
+    try {
+      const res = await fetch('/api/auth/featurebase');
+      if (!res.ok) return;
+      const { token } = await res.json();
+
+      window.Featurebase('identify', {
+        organization: process.env.NEXT_PUBLIC_FEATUREBASE_ORG,
+        featurebaseJwt: token,
+      });
+      identifiedRef.current = true;
+    } catch {
+      // Silent fail — widget still works, just without user identification
+    }
+  };
 
   const handleReady = () => {
     if (typeof window.Featurebase !== 'function') return;
@@ -20,13 +42,7 @@ export default function FeedbackWidget() {
       theme: 'light',
     });
 
-    if (session?.user?.email) {
-      window.Featurebase('identify', {
-        organization: process.env.NEXT_PUBLIC_FEATUREBASE_ORG,
-        email: session.user.email,
-        name: session.user.name ?? undefined,
-      });
-    }
+    identifyUser();
   };
 
   const handleClick = () => {
