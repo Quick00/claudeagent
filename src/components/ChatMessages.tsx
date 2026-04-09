@@ -69,7 +69,7 @@ export default function ChatMessages({
               <button
                 key={`${i}-${q}`}
                 onClick={() => onSendSuggestion(q)}
-                className="rounded-xl border border-gray-200 bg-white px-4 py-3 text-left text-sm text-gray-600 transition-colors hover:border-blue-300 hover:bg-blue-50"
+                className="rounded-xl border cursor-pointer border-gray-200 bg-white px-4 py-3 text-left text-sm text-gray-600 transition-colors hover:border-blue-300 hover:bg-blue-50"
               >
                 {q}
               </button>
