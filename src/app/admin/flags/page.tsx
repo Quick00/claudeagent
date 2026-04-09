@@ -24,6 +24,7 @@ export default function AdminFlagsPage() {
   const [respondingTo, setRespondingTo] = useState<string | null>(null);
   const [responseText, setResponseText] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [filter, setFilter] = useState<'PENDING' | 'RESPONDED' | 'ALL'>('PENDING');
 
   useEffect(() => {
     fetch('/api/flags')
@@ -98,13 +99,34 @@ export default function AdminFlagsPage() {
   return (
     <div className="flex min-h-screen items-center justify-center bg-gray-50">
       <div className="w-full max-w-5xl rounded-lg bg-white p-8 shadow-md">
-        <h1 className="mb-6 text-xl font-bold text-gray-900">Flagged Conversations</h1>
+        <div className="mb-6 flex items-center justify-between">
+          <h1 className="text-xl font-bold text-gray-900">Flagged Conversations</h1>
+          <div className="flex gap-1 rounded-lg bg-gray-100 p-1">
+            {(['PENDING', 'RESPONDED', 'ALL'] as const).map((value) => {
+              const count = value === 'ALL' ? flags.length : flags.filter((f) => f.status === value).length;
+              return (
+                <button
+                  key={value}
+                  onClick={() => setFilter(value)}
+                  className={`rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
+                    filter === value
+                      ? 'bg-white text-gray-900 shadow-sm'
+                      : 'text-gray-500 hover:text-gray-700'
+                  }`}
+                >
+                  {value === 'ALL' ? 'All' : value === 'PENDING' ? 'Pending' : 'Responded'}
+                  <span className="ml-1.5 text-gray-400">{count}</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
 
         {flags.length === 0 ? (
           <p className="text-gray-500">No flagged conversations yet.</p>
         ) : (
           <div className="space-y-4">
-            {flags.map((flag) => (
+            {flags.filter((f) => filter === 'ALL' || f.status === filter).map((flag) => (
               <div
                 key={flag.id}
                 className={`rounded-lg border p-4 ${
@@ -206,6 +228,9 @@ export default function AdminFlagsPage() {
                 )}
               </div>
             ))}
+            {flags.length > 0 && flags.filter((f) => filter === 'ALL' || f.status === filter).length === 0 && (
+              <p className="text-gray-500">No {filter.toLowerCase()} flags.</p>
+            )}
           </div>
         )}
 
