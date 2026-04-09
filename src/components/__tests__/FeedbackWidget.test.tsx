@@ -1,7 +1,7 @@
 /**
  * @jest-environment jsdom
  */
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 
 // Mock next-auth/react
 jest.mock('next-auth/react', () => ({
@@ -123,7 +123,7 @@ describe('ChatSidebar feedback integration', () => {
     (global.fetch as jest.Mock).mockRestore?.();
   });
 
-  it('renders the FeedbackWidget in the sidebar', () => {
+  it('renders the FeedbackWidget in the sidebar', async () => {
     mockUseSession.mockReturnValue({
       data: { user: { name: 'Test User', email: 'test@example.com' }, expires: '' },
       status: 'authenticated',
@@ -139,6 +139,8 @@ describe('ChatSidebar feedback integration', () => {
       />
     );
 
-    expect(screen.getByText('Feedback')).toBeDefined();
+    await waitFor(() => {
+      expect(screen.getByText('Feedback')).toBeDefined();
+    });
   });
 });
