@@ -29,6 +29,7 @@ describe('FeedbackWidget', () => {
     jest.clearAllMocks();
     // Clean up any global Featurebase mock
     delete (window as any).Featurebase;
+    delete process.env.NEXT_PUBLIC_FEATUREBASE_ORG;
   });
 
   it('renders the Feedback button', () => {
