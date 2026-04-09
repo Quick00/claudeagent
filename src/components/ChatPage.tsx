@@ -46,20 +46,13 @@ export default function ChatPage({ initialConversationId }: { initialConversatio
       .catch(() => setClaudeLinked(false));
   };
 
-  const fetchFlags = useCallback(async (convId: string) => {
-    try {
-      const res = await fetch(`/api/conversations/${convId}`);
-      if (!res.ok) return;
-      const data = await res.json();
-      if (data.flags) {
-        setFlags(data.flags);
-        for (const flag of data.flags) {
-          if (flag.status === 'RESPONDED' && !flag.seenByUser) {
-            fetch(`/api/flags/${flag.id}/seen`, { method: 'PATCH' }).catch(() => {});
-          }
-        }
+  const processFlags = useCallback((flagsData: Flag[]) => {
+    setFlags(flagsData);
+    for (const flag of flagsData) {
+      if (flag.status === 'RESPONDED' && !flag.seenByUser) {
+        fetch(`/api/flags/${flag.id}/seen`, { method: 'PATCH' }).catch(() => {});
       }
-    } catch {}
+    }
   }, []);
 
   useEffect(() => {
@@ -85,8 +78,10 @@ export default function ChatPage({ initialConversationId }: { initialConversatio
         content: m.content,
       }))
     );
-    fetchFlags(id);
-  }, [fetchFlags]);
+    if (data.flags) {
+      processFlags(data.flags);
+    }
+  }, [processFlags]);
 
   // Load initial conversation on mount
   useEffect(() => {
