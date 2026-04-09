@@ -91,7 +91,7 @@ export default function ChatSidebar({
           </svg>
           Knowledge Map
         </a>
-        {(session?.user as any)?.role === 'admin' && (
+        {(session?.user as Record<string, unknown>)?.role === 'admin' && (
           <a
             href="/admin/users"
             className="flex w-full items-center justify-center gap-2 rounded-lg bg-gray-100 px-3 py-2 text-sm text-gray-600 hover:bg-gray-200"
@@ -116,6 +116,7 @@ export default function ChatSidebar({
       <div className="border-t border-gray-200 p-4">
         <div className="flex items-center gap-3">
           {session?.user?.image && (
+            /* eslint-disable-next-line @next/next/no-img-element */
             <img
               src={session.user.image}
               alt=""

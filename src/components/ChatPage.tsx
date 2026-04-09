@@ -15,7 +15,7 @@ interface Message {
 }
 
 export default function ChatPage({ initialConversationId }: { initialConversationId?: string }) {
-  const { data: session, status } = useSession();
+  const { status } = useSession();
 
   const [conversationId, setConversationId] = useState<string | null>(initialConversationId ?? null);
   const [messages, setMessages] = useState<Message[]>([]);
@@ -49,7 +49,7 @@ export default function ChatPage({ initialConversationId }: { initialConversatio
     if (!res.ok) return;
     const data = await res.json();
     setMessages(
-      data.messages.map((m: any) => ({
+      data.messages.map((m: { id: string; role: string; content: string }) => ({
         id: m.id,
         role: m.role,
         content: m.content,
@@ -76,7 +76,7 @@ export default function ChatPage({ initialConversationId }: { initialConversatio
       const res = await fetch(`/api/conversations/${convId}`);
       if (!res.ok || cancelled) return;
       const data = await res.json();
-      const msgs: Message[] = data.messages.map((m: any) => ({
+      const msgs: Message[] = data.messages.map((m: { id: string; role: string; content: string }) => ({
         id: m.id,
         role: m.role,
         content: m.content,
@@ -239,7 +239,7 @@ export default function ChatPage({ initialConversationId }: { initialConversatio
           }
         }
       }
-    } catch (err) {
+    } catch {
       setMessages((prev) => [
         ...prev,
         {

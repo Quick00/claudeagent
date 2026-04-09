@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useSession } from 'next-auth/react';
 import { redirect } from 'next/navigation';
+import Link from 'next/link';
 
 interface UserRow {
   id: string;
@@ -35,7 +36,7 @@ export default function AdminUsersPage() {
       .finally(() => setLoading(false));
   }, []);
 
-  const currentUserId = (session?.user as any)?.id;
+  const currentUserId = (session?.user as Record<string, unknown>)?.id;
 
   const toggleRole = async (userId: string, currentRole: string) => {
     const newRole = currentRole === 'admin' ? 'user' : 'admin';
@@ -159,9 +160,9 @@ export default function AdminUsersPage() {
         </div>
 
         <div className="mt-6 border-t border-gray-200 pt-4">
-          <a href="/" className="text-sm text-blue-600 hover:text-blue-700">
+          <Link href="/" className="text-sm text-blue-600 hover:text-blue-700">
             &larr; Back to chat
-          </a>
+          </Link>
         </div>
       </div>
     </div>
