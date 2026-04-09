@@ -13,7 +13,7 @@ describe('execGitPull', () => {
   });
 
   it('runs git pull on the given repo path', async () => {
-    mockExec.mockImplementation((_cmd: string, _opts: unknown, cb: Function) => {
+    mockExec.mockImplementation((_cmd: string, _opts: unknown, cb: (...args: unknown[]) => void) => {
       cb(null, 'Already up to date.\n', '');
     });
 
@@ -28,7 +28,7 @@ describe('execGitPull', () => {
   });
 
   it('returns error when git pull fails', async () => {
-    mockExec.mockImplementation((_cmd: string, _opts: unknown, cb: Function) => {
+    mockExec.mockImplementation((_cmd: string, _opts: unknown, cb: (...args: unknown[]) => void) => {
       cb(new Error('merge conflict'), '', 'error output');
     });
 
@@ -38,8 +38,8 @@ describe('execGitPull', () => {
   });
 
   it('rejects concurrent pulls', async () => {
-    let resolveFirst: Function;
-    mockExec.mockImplementationOnce((_cmd: string, _opts: unknown, cb: Function) => {
+    let resolveFirst: () => void;
+    mockExec.mockImplementationOnce((_cmd: string, _opts: unknown, cb: (...args: unknown[]) => void) => {
       resolveFirst = () => cb(null, 'done', '');
     });
 

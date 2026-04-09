@@ -1,6 +1,7 @@
 'use client';
 
-import { useEffect, useState, useRef, useCallback } from 'react';
+import { useEffect, useState, useRef, useCallback, useMemo } from 'react';
+import Link from 'next/link';
 import ForceGraph2D from 'react-force-graph-2d';
 
 interface GraphNode {
@@ -22,6 +23,14 @@ interface GraphData {
   links: GraphLink[];
 }
 
+interface KnowledgeEntry {
+  id: string;
+  category: string;
+  content: string;
+  tags: string;
+  createdAt: string;
+}
+
 const CATEGORY_COLORS: Record<string, string> = {
   topic: '#3b82f6',
   correction: '#ef4444',
@@ -40,12 +49,12 @@ const CATEGORY_LABELS: Record<string, string> = {
 };
 
 export default function KnowledgeGraph() {
-  const [graphData, setGraphData] = useState<GraphData>({ nodes: [], links: [] });
   const [allGraphData, setAllGraphData] = useState<GraphData>({ nodes: [], links: [] });
   const [selectedNode, setSelectedNode] = useState<GraphNode | null>(null);
-  const [entries, setEntries] = useState<any[]>([]);
+  const [entries, setEntries] = useState<KnowledgeEntry[]>([]);
   const [hiddenCategories, setHiddenCategories] = useState<Set<string>>(new Set());
   const [availableCategories, setAvailableCategories] = useState<string[]>([]);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const graphRef = useRef<any>(null);
 
   useEffect(() => {
@@ -54,17 +63,15 @@ export default function KnowledgeGraph() {
       fetch('/api/knowledge').then((r) => r.json()),
     ]).then(([graph, allEntries]) => {
       setAllGraphData(graph);
-      setGraphData(graph);
       setEntries(allEntries);
-      const cats = [...new Set(allEntries.map((e: any) => e.category))] as string[];
+      const cats = [...new Set(allEntries.map((e: KnowledgeEntry) => e.category))] as string[];
       setAvailableCategories(cats);
     });
   }, []);
 
-  useEffect(() => {
+  const graphData = useMemo(() => {
     if (hiddenCategories.size === 0) {
-      setGraphData(allGraphData);
-      return;
+      return allGraphData;
     }
     const visibleEntryIds = new Set(
       allGraphData.nodes
@@ -81,7 +88,7 @@ export default function KnowledgeGraph() {
     const filteredNodes = allGraphData.nodes.filter(
       (n) => (n.type === 'entry' && visibleEntryIds.has(n.id)) || (n.type === 'topic' && usedTopicIds.has(n.id))
     );
-    setGraphData({ nodes: filteredNodes, links: filteredLinks });
+    return { nodes: filteredNodes, links: filteredLinks };
   }, [hiddenCategories, allGraphData]);
 
   const toggleCategory = (cat: string) => {
@@ -93,8 +100,8 @@ export default function KnowledgeGraph() {
     });
   };
 
-  const handleNodeClick = useCallback((node: any) => {
-    setSelectedNode(node as GraphNode);
+  const handleNodeClick = useCallback((node: GraphNode & { x?: number; y?: number }) => {
+    setSelectedNode(node);
     if (graphRef.current) {
       graphRef.current.centerAt(node.x, node.y, 500);
       graphRef.current.zoom(3, 500);
@@ -102,8 +109,8 @@ export default function KnowledgeGraph() {
   }, []);
 
   const nodeCanvasObject = useCallback(
-    (node: any, ctx: CanvasRenderingContext2D, globalScale: number) => {
-      const n = node as GraphNode;
+    (node: GraphNode & { x?: number; y?: number }, ctx: CanvasRenderingContext2D, globalScale: number) => {
+      const n = node;
       const fontSize = n.type === 'topic' ? 14 / globalScale : 11 / globalScale;
       const radius = n.type === 'topic' ? 8 : 5;
       const color = CATEGORY_COLORS[n.type === 'topic' ? 'topic' : n.category] || '#6b7280';
@@ -147,12 +154,12 @@ export default function KnowledgeGraph() {
     <div className="relative h-screen">
       <div className="h-full bg-gray-50">
         <div className="absolute left-4 top-4 z-10 flex items-center gap-4">
-          <a
+          <Link
             href="/"
             className="rounded-lg bg-white px-3 py-2 text-sm font-medium text-gray-700 shadow hover:bg-gray-100"
           >
             &larr; Back to Chat
-          </a>
+          </Link>
           <h1 className="text-lg font-semibold text-gray-800">Knowledge Map</h1>
           <span className="text-sm text-gray-500">
             {graphData.nodes.filter((n) => n.type === 'entry').length} entries,{' '}
@@ -191,7 +198,7 @@ export default function KnowledgeGraph() {
             onNodeClick={handleNodeClick}
             linkColor={() => '#d1d5db'}
             linkWidth={1.5}
-            nodePointerAreaPaint={(node: any, color: string, ctx: CanvasRenderingContext2D) => {
+            nodePointerAreaPaint={(node: GraphNode & { x?: number; y?: number }, color: string, ctx: CanvasRenderingContext2D) => {
               ctx.beginPath();
               ctx.arc(node.x!, node.y!, 10, 0, 2 * Math.PI);
               ctx.fillStyle = color;

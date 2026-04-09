@@ -1,11 +1,20 @@
-import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
+import { describe, it, expect, beforeEach, jest } from '@jest/globals';
 import type { ChildProcess } from 'child_process';
 import { EventEmitter } from 'events';
 
 // Mock child_process
 const mockSpawn = jest.fn();
 jest.mock('child_process', () => ({
-  spawn: (...args: any[]) => mockSpawn(...args),
+  spawn: (...args: unknown[]) => mockSpawn(...args),
+}));
+
+jest.mock('fs', () => ({
+  mkdirSync: jest.fn(),
+}));
+
+// Mock fs
+jest.mock('fs', () => ({
+  mkdirSync: jest.fn(),
 }));
 
 // Mock fs
@@ -25,7 +34,7 @@ jest.mock('@/lib/config', () => ({
 }));
 
 function createMockProcess(): ChildProcess {
-  const proc = new EventEmitter() as any;
+  const proc = new EventEmitter() as ChildProcess & { stdin: { write: jest.Mock; end: jest.Mock } };
   proc.stdout = new EventEmitter();
   proc.stderr = new EventEmitter();
   proc.stdin = { write: jest.fn(), end: jest.fn() };
@@ -35,7 +44,7 @@ function createMockProcess(): ChildProcess {
 }
 
 describe('SessionManager', () => {
-  let SessionManager: any;
+  let SessionManager: typeof import('@/lib/session-manager').SessionManager;
 
   beforeEach(async () => {
     jest.resetModules();
@@ -48,7 +57,7 @@ describe('SessionManager', () => {
     mockSpawn.mockReturnValue(createMockProcess());
 
     const manager = new SessionManager();
-    const proc = manager.startSession('msg-1', 'Hello', '', 'test-token', 'user-1');
+    manager.startSession('msg-1', 'Hello', '', 'test-token', 'user-1');
 
     expect(mockSpawn).toHaveBeenCalledTimes(1);
     const args = mockSpawn.mock.calls[0];
@@ -62,7 +71,7 @@ describe('SessionManager', () => {
     mockSpawn.mockReturnValue(createMockProcess());
 
     const manager = new SessionManager();
-    const proc = manager.resumeSession('msg-2', 'session-abc', 'Follow up', 'test-token', 'user-1');
+    manager.resumeSession('msg-2', 'session-abc', 'Follow up', 'test-token', 'user-1');
 
     expect(mockSpawn).toHaveBeenCalledTimes(1);
     const args = mockSpawn.mock.calls[0];
@@ -85,7 +94,7 @@ describe('SessionManager', () => {
     expect(manager.queueSize).toBe(0);
 
     // Third should be queued
-    const queued = manager.startSession('msg-3', 'Hello 3', '', 'test-token', 'user-1');
+    queued = manager.startSession('msg-3', 'Hello 3', '', 'test-token', 'user-1');
     expect(manager.queueSize).toBe(1);
 
     // Complete first process — queued one should start

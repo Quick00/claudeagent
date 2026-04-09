@@ -82,7 +82,7 @@ export class SessionManager {
   }
 
   killAll(): void {
-    for (const [id, proc] of this.activeProcesses) {
+    for (const [, proc] of this.activeProcesses) {
       proc.kill('SIGTERM');
     }
     this.activeProcesses.clear();

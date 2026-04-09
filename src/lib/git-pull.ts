@@ -18,7 +18,7 @@ export function execGitPull(repoPath: string): Promise<PullResult> {
   pullInProgress = true;
 
   return new Promise((resolve) => {
-    exec('git pull', { cwd: repoPath }, (error, stdout, _stderr) => {
+    exec('git pull', { cwd: repoPath }, (error, stdout) => {
       pullInProgress = false;
       if (error) {
         resolve({ success: false, error: error.message });
