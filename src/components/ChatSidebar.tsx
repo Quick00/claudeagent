@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import {useEffect, useMemo, useState} from 'react';
 import { useSession, signOut } from 'next-auth/react';
 import FeedbackWidget from './FeedbackWidget';
 
@@ -25,7 +25,7 @@ export default function ChatSidebar({
 }: ChatSidebarProps) {
   const { data: session } = useSession();
   const [conversations, setConversations] = useState<Conversation[]>([]);
-  const [notificationConvIds, setNotificationConvIds] = useState<Set<string>>(new Set());
+  const [rawNotificationConvIds, setRawNotificationConvIds] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     fetch('/api/conversations')
@@ -39,7 +39,7 @@ export default function ChatSidebar({
       fetch('/api/flags/notifications')
         .then((res) => res.json())
         .then((data) => {
-          setNotificationConvIds(new Set(data.conversationIds || []));
+          setRawNotificationConvIds(new Set(data.conversationIds || []));
         })
         .catch(() => {});
     };
@@ -49,18 +49,13 @@ export default function ChatSidebar({
     return () => clearInterval(interval);
   }, [refreshTrigger]);
 
-  // Clear the badge immediately when a conversation is opened so the user
-  // doesn't see a stale dot for up to 30 s until the next poll.
-  useEffect(() => {
-    if (activeConversationId) {
-      setNotificationConvIds((prev) => {
-        if (!prev.has(activeConversationId)) return prev;
-        const next = new Set(prev);
-        next.delete(activeConversationId);
-        return next;
-      });
-    }
-  }, [activeConversationId]);
+  const notificationConvIds = useMemo(() => {
+    if (!activeConversationId) return rawNotificationConvIds;
+    if (!rawNotificationConvIds.has(activeConversationId)) return rawNotificationConvIds;
+    const next = new Set(rawNotificationConvIds);
+    next.delete(activeConversationId);
+    return next;
+  }, [rawNotificationConvIds, activeConversationId]);
 
   const handleDelete = async (e: React.MouseEvent, id: string) => {
     e.stopPropagation();
@@ -137,7 +132,7 @@ export default function ChatSidebar({
             Users
           </a>
         )}
-        {(session?.user as any)?.role === 'admin' && (
+        {(session?.user as Record<string, unknown>)?.role === 'admin' && (
           <a
             href="/admin/flags"
             className="flex w-full items-center justify-center gap-2 rounded-lg bg-gray-100 px-3 py-2 text-sm text-gray-600 hover:bg-gray-200"

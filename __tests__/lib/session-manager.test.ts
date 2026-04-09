@@ -17,6 +17,11 @@ jest.mock('fs', () => ({
   mkdirSync: jest.fn(),
 }));
 
+// Mock fs
+jest.mock('fs', () => ({
+  mkdirSync: jest.fn(),
+}));
+
 // Mock config
 jest.mock('@/lib/config', () => ({
   config: {

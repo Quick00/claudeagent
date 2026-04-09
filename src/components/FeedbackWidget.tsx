@@ -6,7 +6,7 @@ import { useRef } from 'react';
 
 declare global {
   interface Window {
-    Featurebase: (...args: any[]) => void;
+    Featurebase: (...args: unknown[]) => void;
   }
 }
 
