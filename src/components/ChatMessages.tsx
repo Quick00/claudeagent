@@ -9,12 +9,21 @@ interface Message {
   content: string;
 }
 
+interface Flag {
+  id: string;
+  status: string;
+  adminResponse: string | null;
+  respondedAt: string | null;
+  admin: { name: string } | null;
+}
+
 interface ChatMessagesProps {
   messages: Message[];
   streamingContent: string;
   toolStatus: string | null;
   isLoading: boolean;
   onSendSuggestion: (message: string) => void;
+  flags: Flag[];
 }
 
 const DEFAULT_SUGGESTIONS = [
@@ -30,6 +39,7 @@ export default function ChatMessages({
   toolStatus,
   isLoading,
   onSendSuggestion,
+  flags,
 }: ChatMessagesProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
   const [recentQuestions, setRecentQuestions] = useState<string[]>([]);
@@ -93,6 +103,17 @@ export default function ChatMessages({
         {messages.map((msg) => (
           <MessageBubble key={msg.id} role={msg.role} content={msg.content} />
         ))}
+        {flags
+          .filter((f) => f.status === 'RESPONDED' && f.adminResponse)
+          .map((flag) => (
+            <MessageBubble
+              key={`flag-${flag.id}`}
+              role="admin"
+              content={flag.adminResponse!}
+              adminName={flag.admin?.name}
+              timestamp={flag.respondedAt ?? undefined}
+            />
+          ))}
         {streamingContent && (
           <MessageBubble role="assistant" content={streamingContent} />
         )}
