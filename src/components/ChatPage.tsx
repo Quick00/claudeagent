@@ -14,6 +14,15 @@ interface Message {
   content: string;
 }
 
+interface Flag {
+  id: string;
+  status: string;
+  adminResponse: string | null;
+  respondedAt: string | null;
+  admin: { name: string } | null;
+  seenByUser: boolean;
+}
+
 export default function ChatPage({ initialConversationId }: { initialConversationId?: string }) {
   const { status } = useSession();
 
@@ -25,6 +34,10 @@ export default function ChatPage({ initialConversationId }: { initialConversatio
   const [refreshTrigger, setRefreshTrigger] = useState(0);
   const [claudeLinked, setClaudeLinked] = useState<boolean | null>(null);
   const [showLinkModal, setShowLinkModal] = useState(false);
+  const [flags, setFlags] = useState<Flag[]>([]);
+  const [showFlagForm, setShowFlagForm] = useState(false);
+  const [flagReason, setFlagReason] = useState('');
+  const [flagSubmitting, setFlagSubmitting] = useState(false);
 
   const fetchClaudeStatus = () => {
     fetch('/api/auth/claude/status')
@@ -32,6 +45,15 @@ export default function ChatPage({ initialConversationId }: { initialConversatio
       .then((data) => setClaudeLinked(data.linked))
       .catch(() => setClaudeLinked(false));
   };
+
+  const processFlags = useCallback((flagsData: Flag[]) => {
+    setFlags(flagsData);
+    for (const flag of flagsData) {
+      if (flag.status === 'RESPONDED' && !flag.seenByUser) {
+        fetch(`/api/flags/${flag.id}/seen`, { method: 'PATCH' }).catch(() => {});
+      }
+    }
+  }, []);
 
   useEffect(() => {
     fetchClaudeStatus();
@@ -43,6 +65,9 @@ export default function ChatPage({ initialConversationId }: { initialConversatio
     setStreamingContent('');
     setToolStatus(null);
     setIsLoading(false);
+    setShowFlagForm(false);
+    setFlagReason('');
+    setFlags([]);
     window.history.replaceState(null, '', `/conversation/${id}`);
 
     const res = await fetch(`/api/conversations/${id}`);
@@ -55,7 +80,10 @@ export default function ChatPage({ initialConversationId }: { initialConversatio
         content: m.content,
       }))
     );
-  }, []);
+    if (data.flags) {
+      processFlags(data.flags);
+    }
+  }, [processFlags]);
 
   // Load initial conversation on mount
   useEffect(() => {
@@ -82,6 +110,9 @@ export default function ChatPage({ initialConversationId }: { initialConversatio
         content: m.content,
       }));
       setMessages(msgs);
+      if (data.flags) {
+        processFlags(data.flags);
+      }
 
       const lastMsg = msgs[msgs.length - 1];
       if (lastMsg && lastMsg.role === 'user' && !cancelled) {
@@ -104,7 +135,7 @@ export default function ChatPage({ initialConversationId }: { initialConversatio
       if (pollTimer) clearTimeout(pollTimer);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
-  }, [conversationId, isLoading]);
+  }, [conversationId, isLoading, processFlags]);
 
   if (status === 'loading') {
     return (
@@ -124,6 +155,9 @@ export default function ChatPage({ initialConversationId }: { initialConversatio
     setStreamingContent('');
     setToolStatus(null);
     setIsLoading(false);
+    setFlags([]);
+    setShowFlagForm(false);
+    setFlagReason('');
     window.history.replaceState(null, '', '/');
   };
 
@@ -254,6 +288,28 @@ export default function ChatPage({ initialConversationId }: { initialConversatio
     }
   };
 
+  const hasPendingFlag = flags.some((f) => f.status === 'PENDING');
+
+  const handleFlag = async () => {
+    if (!conversationId || flagSubmitting || hasPendingFlag) return;
+    setFlagSubmitting(true);
+    try {
+      const res = await fetch('/api/flags', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ conversationId, reason: flagReason }),
+      });
+      if (res.ok) {
+        const flag = await res.json();
+        setFlags((prev) => [...prev, flag]);
+        setShowFlagForm(false);
+        setFlagReason('');
+      }
+    } finally {
+      setFlagSubmitting(false);
+    }
+  };
+
   return (
     <div className="flex h-screen">
       <ChatSidebar
@@ -283,12 +339,61 @@ export default function ChatPage({ initialConversationId }: { initialConversatio
           </div>
         ) : (
           <>
+            {conversationId && (
+              <div className="flex items-center justify-between border-b border-gray-200 px-4 py-2">
+                <div />
+                <div className="relative">
+                  <button
+                    onClick={() => { if (!hasPendingFlag && !flagSubmitting) setShowFlagForm(!showFlagForm); }}
+                    disabled={hasPendingFlag || flagSubmitting}
+                    className={`flex items-center gap-1 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${
+                      hasPendingFlag
+                        ? 'bg-red-50 text-red-600'
+                        : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+                    } disabled:cursor-not-allowed disabled:opacity-50`}
+                    title={hasPendingFlag ? 'Already flagged' : 'Flag this conversation'}
+                  >
+                    <svg className="h-3.5 w-3.5" fill={hasPendingFlag ? 'currentColor' : 'none'} stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 21v-4m0 0V5a2 2 0 012-2h6.5l1 1H21l-3 6 3 6h-8.5l-1-1H5a2 2 0 00-2 2zm9-13.5V9" />
+                    </svg>
+                    {hasPendingFlag ? 'Flagged' : 'Flag'}
+                  </button>
+                  {showFlagForm && (
+                    <div className="absolute right-0 top-full z-10 mt-1 w-72 rounded-lg border border-gray-200 bg-white p-3 shadow-lg">
+                      <textarea
+                        value={flagReason}
+                        onChange={(e) => setFlagReason(e.target.value)}
+                        placeholder="What was wrong? (optional)"
+                        className="w-full resize-none rounded-md border border-gray-200 p-2 text-sm focus:border-blue-300 focus:outline-none"
+                        rows={2}
+                      />
+                      <div className="mt-2 flex justify-end gap-2">
+                        <button
+                          onClick={() => { setShowFlagForm(false); setFlagReason(''); }}
+                          className="rounded-md px-3 py-1 text-xs text-gray-500 hover:bg-gray-100"
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          onClick={handleFlag}
+                          disabled={flagSubmitting}
+                          className="rounded-md bg-red-600 px-3 py-1 text-xs text-white hover:bg-red-700 disabled:opacity-50"
+                        >
+                          {flagSubmitting ? 'Flagging...' : 'Submit Flag'}
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
             <ChatMessages
               messages={messages}
               streamingContent={streamingContent}
               toolStatus={toolStatus}
               isLoading={isLoading}
               onSendSuggestion={handleSend}
+              flags={flags}
             />
             <ChatInput onSend={handleSend} disabled={isLoading} />
           </>

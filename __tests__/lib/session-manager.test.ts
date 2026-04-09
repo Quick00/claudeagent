@@ -12,6 +12,11 @@ jest.mock('fs', () => ({
   mkdirSync: jest.fn(),
 }));
 
+// Mock fs
+jest.mock('fs', () => ({
+  mkdirSync: jest.fn(),
+}));
+
 // Mock config
 jest.mock('@/lib/config', () => ({
   config: {
@@ -84,7 +89,7 @@ describe('SessionManager', () => {
     expect(manager.queueSize).toBe(0);
 
     // Third should be queued
-    manager.startSession('msg-3', 'Hello 3', '', 'test-token', 'user-1');
+    queued = manager.startSession('msg-3', 'Hello 3', '', 'test-token', 'user-1');
     expect(manager.queueSize).toBe(1);
 
     // Complete first process — queued one should start
