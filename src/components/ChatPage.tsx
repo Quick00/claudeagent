@@ -65,6 +65,8 @@ export default function ChatPage({ initialConversationId }: { initialConversatio
     setStreamingContent('');
     setToolStatus(null);
     setIsLoading(false);
+    setShowFlagForm(false);
+    setFlagReason('');
     setFlags([]);
     window.history.replaceState(null, '', `/conversation/${id}`);
 
@@ -155,6 +157,7 @@ export default function ChatPage({ initialConversationId }: { initialConversatio
     setIsLoading(false);
     setFlags([]);
     setShowFlagForm(false);
+    setFlagReason('');
     window.history.replaceState(null, '', '/');
   };
 
