@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useSession } from 'next-auth/react';
 import { redirect } from 'next/navigation';
+import Link from 'next/link';
 import LinkClaudeModal from '@/components/LinkClaudeModal';
 
 export default function SettingsPage() {
@@ -105,9 +106,9 @@ export default function SettingsPage() {
         </div>
 
         <div className="mt-6 border-t border-gray-200 pt-4">
-          <a href="/" className="text-sm text-blue-600 hover:text-blue-700">
+          <Link href="/" className="text-sm text-blue-600 hover:text-blue-700">
             &larr; Back to chat
-          </a>
+          </Link>
         </div>
       </div>
 
