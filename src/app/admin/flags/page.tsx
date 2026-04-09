@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useSession } from 'next-auth/react';
 import { redirect } from 'next/navigation';
+import Link from "next/link";
 
 interface FlagRow {
   id: string;
@@ -60,7 +61,7 @@ export default function AdminFlagsPage() {
                 status: updated.status,
                 adminResponse: updated.adminResponse,
                 respondedAt: updated.respondedAt,
-                admin: { id: (session?.user as any)?.id, name: session?.user?.name || 'Admin' },
+                admin: { id: (session?.user as Record<string, string>)?.id, name: session?.user?.name || 'Admin' },
               }
             : f
         )
@@ -145,12 +146,12 @@ export default function AdminFlagsPage() {
                       >
                         {flag.status}
                       </span>
-                      <a
+                      <Link
                         href={`/conversation/${flag.conversation.id}`}
                         className="text-sm font-medium text-blue-600 hover:text-blue-700"
                       >
                         {flag.conversation.title}
-                      </a>
+                      </Link>
                     </div>
                     <div className="mt-1 text-xs text-gray-500">
                       Flagged by <span className="font-medium">{flag.user.name}</span> ({flag.user.email})

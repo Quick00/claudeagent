@@ -137,7 +137,7 @@ export default function ChatSidebar({
             Users
           </a>
         )}
-        {(session?.user as any)?.role === 'admin' && (
+        {(session?.user as Record<string, unknown>)?.role === 'admin' && (
           <a
             href="/admin/flags"
             className="flex w-full items-center justify-center gap-2 rounded-lg bg-gray-100 px-3 py-2 text-sm text-gray-600 hover:bg-gray-200"

@@ -54,5 +54,5 @@ jobs:
 
       - run: npm ci
 
-      - name: Lint (warnings only — has pre-existing errors)
-        run: npm run lint || true
+      - name: Lint
+        run: npm run lint
