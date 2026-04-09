@@ -28,6 +28,14 @@ export async function GET(
       messages: {
         orderBy: { createdAt: 'asc' },
       },
+      flags: {
+        include: {
+          admin: {
+            select: { id: true, name: true },
+          },
+        },
+        orderBy: { createdAt: 'asc' },
+      },
     },
   });
 
