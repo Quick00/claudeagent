@@ -1,0 +1,108 @@
+/**
+ * @jest-environment jsdom
+ */
+import { render, screen, fireEvent } from '@testing-library/react';
+
+// Mock next-auth/react
+jest.mock('next-auth/react', () => ({
+  useSession: jest.fn(),
+}));
+
+// Mock next/script — render as a div and call onReady synchronously
+jest.mock('next/script', () => ({
+  __esModule: true,
+  default: function MockScript(props: any) {
+    if (props.onReady) {
+      props.onReady();
+    }
+    return <div data-testid="mock-script" data-src={props.src} data-strategy={props.strategy} />;
+  },
+}));
+
+import FeedbackWidget from '../FeedbackWidget';
+import { useSession } from 'next-auth/react';
+
+const mockUseSession = useSession as jest.MockedFunction<typeof useSession>;
+
+describe('FeedbackWidget', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    // Clean up any global Featurebase mock
+    delete (window as any).Featurebase;
+  });
+
+  it('renders the Feedback button', () => {
+    mockUseSession.mockReturnValue({
+      data: { user: { name: 'Test User', email: 'test@example.com' }, expires: '' },
+      status: 'authenticated',
+      update: jest.fn() as any,
+    });
+
+    render(<FeedbackWidget />);
+    expect(screen.getByText('Feedback')).toBeDefined();
+  });
+
+  it('loads the Featurebase SDK script with lazyOnload strategy', () => {
+    mockUseSession.mockReturnValue({
+      data: { user: { name: 'Test User', email: 'test@example.com' }, expires: '' },
+      status: 'authenticated',
+      update: jest.fn() as any,
+    });
+
+    render(<FeedbackWidget />);
+    const script = screen.getByTestId('mock-script');
+    expect(script.getAttribute('data-src')).toBe('https://do.featurebase.app/js/sdk.js');
+    expect(script.getAttribute('data-strategy')).toBe('lazyOnload');
+  });
+
+  it('initializes Featurebase with user data when SDK loads', () => {
+    const mockFeaturebase = jest.fn();
+    (window as any).Featurebase = mockFeaturebase;
+
+    mockUseSession.mockReturnValue({
+      data: { user: { name: 'Test User', email: 'test@example.com' }, expires: '' },
+      status: 'authenticated',
+      update: jest.fn() as any,
+    });
+
+    process.env.NEXT_PUBLIC_FEATUREBASE_ORG = 'test-org';
+
+    render(<FeedbackWidget />);
+
+    expect(mockFeaturebase).toHaveBeenCalledWith('initialize_feedback_widget', expect.objectContaining({
+      organization: 'test-org',
+      email: 'test@example.com',
+      name: 'Test User',
+      placement: 'manual',
+    }));
+  });
+
+  it('calls Featurebase to open widget on button click', () => {
+    const mockFeaturebase = jest.fn();
+    (window as any).Featurebase = mockFeaturebase;
+
+    mockUseSession.mockReturnValue({
+      data: { user: { name: 'Test User', email: 'test@example.com' }, expires: '' },
+      status: 'authenticated',
+      update: jest.fn() as any,
+    });
+
+    render(<FeedbackWidget />);
+    mockFeaturebase.mockClear();
+
+    fireEvent.click(screen.getByText('Feedback'));
+
+    expect(mockFeaturebase).toHaveBeenCalledWith('manually_open_feedback_widget');
+  });
+
+  it('renders button even when session is loading', () => {
+    mockUseSession.mockReturnValue({
+      data: null,
+      status: 'loading',
+      update: jest.fn() as any,
+    });
+
+    render(<FeedbackWidget />);
+    expect(screen.getByText('Feedback')).toBeDefined();
+  });
+});
