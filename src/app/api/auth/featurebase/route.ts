@@ -23,5 +23,14 @@ export async function GET() {
     { algorithm: 'HS256' }
   );
 
-  return NextResponse.json({ token });
+  return NextResponse.json(
+      { token },
+      {
+        headers: {
+          'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+          Pragma: 'no-cache',
+          Expires: '0',
+        },
+      }
+  );
 }
