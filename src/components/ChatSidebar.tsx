@@ -47,7 +47,7 @@ export default function ChatSidebar({
       <div className="p-4">
         <button
           onClick={onNewChat}
-          className="w-full rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100"
+          className="w-full rounded-lg cursor-pointer border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100"
         >
           + New Chat
         </button>
