@@ -6,6 +6,7 @@ import { render, screen, fireEvent } from '@testing-library/react';
 // Mock next-auth/react
 jest.mock('next-auth/react', () => ({
   useSession: jest.fn(),
+  signOut: jest.fn(),
 }));
 
 // Mock next/script — render as a div and call onReady synchronously
@@ -20,6 +21,7 @@ jest.mock('next/script', () => ({
 }));
 
 import FeedbackWidget from '../FeedbackWidget';
+import ChatSidebar from '../ChatSidebar';
 import { useSession } from 'next-auth/react';
 
 const mockUseSession = useSession as jest.MockedFunction<typeof useSession>;
@@ -104,6 +106,39 @@ describe('FeedbackWidget', () => {
     });
 
     render(<FeedbackWidget />);
+    expect(screen.getByText('Feedback')).toBeDefined();
+  });
+});
+
+describe('ChatSidebar feedback integration', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    // Mock fetch for ChatSidebar's /api/conversations call
+    global.fetch = jest.fn().mockResolvedValue({
+      json: () => Promise.resolve([]),
+    }) as any;
+  });
+
+  afterEach(() => {
+    (global.fetch as jest.Mock).mockRestore?.();
+  });
+
+  it('renders the FeedbackWidget in the sidebar', () => {
+    mockUseSession.mockReturnValue({
+      data: { user: { name: 'Test User', email: 'test@example.com' }, expires: '' },
+      status: 'authenticated',
+      update: jest.fn() as any,
+    });
+
+    render(
+      <ChatSidebar
+        activeConversationId={null}
+        onSelectConversation={jest.fn()}
+        onNewChat={jest.fn()}
+        refreshTrigger={0}
+      />
+    );
+
     expect(screen.getByText('Feedback')).toBeDefined();
   });
 });

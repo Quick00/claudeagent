@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useSession, signOut } from 'next-auth/react';
+import FeedbackWidget from './FeedbackWidget';
 
 interface Conversation {
   id: string;
@@ -112,6 +113,7 @@ export default function ChatSidebar({
           </svg>
           Settings
         </a>
+        <FeedbackWidget />
       </div>
       <div className="border-t border-gray-200 p-4">
         <div className="flex items-center gap-3">
