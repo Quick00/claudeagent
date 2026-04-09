@@ -17,7 +17,8 @@ export default function FeedbackWidget() {
 
     window.Featurebase('initialize_feedback_widget', {
       organization: process.env.NEXT_PUBLIC_FEATUREBASE_ORG,
-      placement: 'manual',
+      placement: 'right',
+      theme: 'light',
       email: session?.user?.email ?? undefined,
       name: session?.user?.name ?? undefined,
     });

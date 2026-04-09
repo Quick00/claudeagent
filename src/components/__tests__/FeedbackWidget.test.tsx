@@ -76,7 +76,8 @@ describe('FeedbackWidget', () => {
       organization: 'test-org',
       email: 'test@example.com',
       name: 'Test User',
-      placement: 'manual',
+      placement: 'right',
+      theme: 'light',
     }));
   });
 
