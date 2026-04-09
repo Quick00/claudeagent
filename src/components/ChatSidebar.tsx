@@ -24,12 +24,28 @@ export default function ChatSidebar({
 }: ChatSidebarProps) {
   const { data: session } = useSession();
   const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [notificationConvIds, setNotificationConvIds] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     fetch('/api/conversations')
       .then((res) => res.json())
       .then(setConversations)
       .catch(console.error);
+  }, [refreshTrigger]);
+
+  useEffect(() => {
+    const fetchNotifications = () => {
+      fetch('/api/flags/notifications')
+        .then((res) => res.json())
+        .then((data) => {
+          setNotificationConvIds(new Set(data.conversationIds || []));
+        })
+        .catch(() => {});
+    };
+
+    fetchNotifications();
+    const interval = setInterval(fetchNotifications, 30000);
+    return () => clearInterval(interval);
   }, [refreshTrigger]);
 
   const handleDelete = async (e: React.MouseEvent, id: string) => {
@@ -61,7 +77,12 @@ export default function ChatSidebar({
               activeConversationId === conv.id ? 'bg-gray-200' : ''
             }`}
           >
-            <span className="truncate">{conv.title}</span>
+            <span className="flex items-center gap-1.5 truncate">
+              {conv.title}
+              {notificationConvIds.has(conv.id) && (
+                <span className="inline-block h-2 w-2 flex-shrink-0 rounded-full bg-red-500" />
+              )}
+            </span>
             <button
               onClick={(e) => handleDelete(e, conv.id)}
               className="hidden text-gray-400 hover:text-red-500 group-hover:block"
@@ -100,6 +121,17 @@ export default function ChatSidebar({
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197" />
             </svg>
             Users
+          </a>
+        )}
+        {(session?.user as any)?.role === 'admin' && (
+          <a
+            href="/admin/flags"
+            className="flex w-full items-center justify-center gap-2 rounded-lg bg-gray-100 px-3 py-2 text-sm text-gray-600 hover:bg-gray-200"
+          >
+            <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 21v-4m0 0V5a2 2 0 012-2h6.5l1 1H21l-3 6 3 6h-8.5l-1-1H5a2 2 0 00-2 2zm9-13.5V9" />
+            </svg>
+            Flags
           </a>
         )}
         <a
