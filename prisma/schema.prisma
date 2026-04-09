@@ -16,6 +16,8 @@ model User {
   role                 String    @default("user")
   createdAt            DateTime  @default(now())
   conversations        Conversation[]
+  flags            Flag[] @relation("UserFlags")
+  adminFlags       Flag[] @relation("AdminFlags")
 }
 
 model Conversation {
@@ -27,6 +29,7 @@ model Conversation {
   updatedAt       DateTime  @updatedAt
   user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   messages        Message[]
+  flags           Flag[]
 }
 
 model Message {
@@ -46,4 +49,21 @@ model KnowledgeEntry {
   source    String?
   embedding Unsupported("vector(1024)")?
   createdAt DateTime                        @default(now())
+}
+
+model Flag {
+  id             String    @id @default(uuid())
+  conversationId String
+  userId         String
+  reason         String    @default("")
+  status         String    @default("PENDING")
+  adminResponse  String?
+  adminId        String?
+  respondedAt    DateTime?
+  seenByUser     Boolean   @default(false)
+  createdAt      DateTime  @default(now())
+
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  user           User         @relation("UserFlags", fields: [userId], references: [id], onDelete: Cascade)
+  admin          User?        @relation("AdminFlags", fields: [adminId], references: [id], onDelete: SetNull)
 }
