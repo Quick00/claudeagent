@@ -72,12 +72,16 @@ describe('FeedbackWidget', () => {
 
     render(<FeedbackWidget />);
 
-    expect(mockFeaturebase).toHaveBeenCalledWith('initialize_feedback_widget', expect.objectContaining({
+    expect(mockFeaturebase).toHaveBeenCalledWith('initialize_feedback_widget', {
+      organization: 'test-org',
+      theme: 'light',
+    });
+
+    expect(mockFeaturebase).toHaveBeenCalledWith('identify', {
       organization: 'test-org',
       email: 'test@example.com',
       name: 'Test User',
-      theme: 'light',
-    }));
+    });
   });
 
   it('posts message to open widget on button click', () => {

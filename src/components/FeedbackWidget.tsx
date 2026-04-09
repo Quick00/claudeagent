@@ -18,9 +18,15 @@ export default function FeedbackWidget() {
     window.Featurebase('initialize_feedback_widget', {
       organization: process.env.NEXT_PUBLIC_FEATUREBASE_ORG,
       theme: 'light',
-      email: session?.user?.email ?? undefined,
-      name: session?.user?.name ?? undefined,
     });
+
+    if (session?.user?.email) {
+      window.Featurebase('identify', {
+        organization: process.env.NEXT_PUBLIC_FEATUREBASE_ORG,
+        email: session.user.email,
+        name: session.user.name ?? undefined,
+      });
+    }
   };
 
   const handleClick = () => {
