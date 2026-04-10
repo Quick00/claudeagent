@@ -6,6 +6,7 @@ import { config } from '@/lib/config';
 import { decrypt } from '@/lib/crypto';
 import { ChildProcess } from 'child_process';
 import { findRelevantEntries } from '@/lib/embeddings';
+import path from 'path';
 
 const MAX_RETRIES = 2;
 
@@ -93,10 +94,12 @@ export async function POST(request: Request) {
         data: { messageId: userMessage.id },
       });
 
-      // Append image paths to the message for Claude CLI
+      // Append absolute image paths to the message for Claude CLI
+      // (CLI runs with cwd=repoPath, so relative paths would resolve incorrectly)
       const imageLines = attachments.map((a) => {
+        const absolutePath = path.resolve(a.storagePath);
         const sizeKB = (a.size / 1024).toFixed(1);
-        return `- ${a.storagePath} (${a.filename}, ${sizeKB}KB)`;
+        return `- ${absolutePath} (${a.filename}, ${sizeKB}KB)`;
       });
       cliMessage += `\n\n---\nThe user attached ${attachments.length} image(s). Read each one with the Read tool before responding:\n${imageLines.join('\n')}`;
     }
