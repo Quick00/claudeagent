@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import confetti from 'canvas-confetti';
 import { useSession } from 'next-auth/react';
 import { redirect } from 'next/navigation';
 import ChatSidebar from '@/components/ChatSidebar';
@@ -38,6 +39,7 @@ export default function ChatPage({ initialConversationId }: { initialConversatio
   const [showFlagForm, setShowFlagForm] = useState(false);
   const [flagReason, setFlagReason] = useState('');
   const [flagSubmitting, setFlagSubmitting] = useState(false);
+  const knowledgeConfettiFired = useRef(false);
 
   const fetchClaudeStatus = () => {
     fetch('/api/auth/claude/status')
@@ -69,6 +71,7 @@ export default function ChatPage({ initialConversationId }: { initialConversatio
     setFlagReason('');
     setFlags([]);
     window.history.replaceState(null, '', `/conversation/${id}`);
+    knowledgeConfettiFired.current = false;
 
     const res = await fetch(`/api/conversations/${id}`);
     if (!res.ok) return;
@@ -159,6 +162,7 @@ export default function ChatPage({ initialConversationId }: { initialConversatio
     setShowFlagForm(false);
     setFlagReason('');
     window.history.replaceState(null, '', '/');
+    knowledgeConfettiFired.current = false;
   };
 
   const handleSend = async (message: string) => {
@@ -222,6 +226,10 @@ export default function ChatPage({ initialConversationId }: { initialConversatio
             }
 
             if (event.type === 'tool_use') {
+              if (event.tool === 'mcp__knowledge__save_knowledge' && !knowledgeConfettiFired.current) {
+                knowledgeConfettiFired.current = true;
+                confetti({ particleCount: 50, spread: 60, origin: { y: 0.7 }, colors: ['#fbbf24', '#f59e0b', '#d97706'] });
+              }
               const labels: Record<string, string> = {
                 Glob: 'Searching for files...',
                 Grep: 'Searching code...',
@@ -247,6 +255,15 @@ export default function ChatPage({ initialConversationId }: { initialConversatio
               ]);
               setStreamingContent('');
               setRefreshTrigger((prev) => prev + 1);
+
+              // Confetti on conversation milestones (1, 10, 25, 50, 100, 200, ...)
+              const convRes = await fetch('/api/conversations');
+              const convs = await convRes.json();
+              const count = convs.length;
+              const milestones = [1, 10, 25, 50];
+              if (milestones.includes(count) || (count >= 100 && count % 100 === 0)) {
+                confetti({ particleCount: 100, spread: 70, origin: { y: 0.6 } });
+              }
             }
 
             if (event.type === 'error') {
