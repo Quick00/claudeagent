@@ -3,19 +3,49 @@
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 
+interface Attachment {
+  id: string;
+  filename: string;
+  mimeType: string;
+  size: number;
+}
+
 interface MessageBubbleProps {
   role: 'user' | 'assistant' | 'admin';
   content: string;
   adminName?: string;
   timestamp?: string;
+  attachments?: Attachment[];
 }
 
-export default function MessageBubble({ role, content, adminName, timestamp }: MessageBubbleProps) {
+export default function MessageBubble({ role, content, adminName, timestamp, attachments }: MessageBubbleProps) {
+  const imageAttachments = attachments?.filter((a) => a.mimeType.startsWith('image/')) ?? [];
+
   if (role === 'user') {
     return (
       <div className="flex justify-end">
-        <div className="max-w-[75%] rounded-2xl bg-blue-600 px-4 py-3 text-white">
-          <p className="whitespace-pre-wrap">{content}</p>
+        <div className="max-w-[75%]">
+          {imageAttachments.length > 0 && (
+            <div className="mb-2 flex flex-wrap justify-end gap-2">
+              {imageAttachments.map((att) => (
+                <a
+                  key={att.id}
+                  href={`/api/upload/${att.id}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  <img
+                    src={`/api/upload/${att.id}`}
+                    alt={att.filename}
+                    className="max-h-[200px] max-w-[300px] rounded-xl border border-blue-400 object-contain"
+                  />
+                </a>
+              ))}
+            </div>
+          )}
+          <div className="rounded-2xl bg-blue-600 px-4 py-3 text-white">
+            <p className="whitespace-pre-wrap">{content}</p>
+          </div>
         </div>
       </div>
     );

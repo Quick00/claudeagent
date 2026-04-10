@@ -6,6 +6,7 @@ import { config } from '@/lib/config';
 import { decrypt } from '@/lib/crypto';
 import { ChildProcess } from 'child_process';
 import { findRelevantEntries } from '@/lib/embeddings';
+import path from 'path';
 
 const MAX_RETRIES = 2;
 
@@ -43,9 +44,10 @@ export async function POST(request: Request) {
   const userClaudeToken = tokenResult.token;
 
   const body = await request.json();
-  const { conversationId, message } = body as {
+  const { conversationId, message, attachmentIds } = body as {
     conversationId: string | null;
     message: string;
+    attachmentIds?: string[];
   };
 
   if (!message?.trim()) {
@@ -70,13 +72,38 @@ export async function POST(request: Request) {
     });
   }
 
-  await prisma.message.create({
+  const userMessage = await prisma.message.create({
     data: {
       conversationId: conversation.id,
       role: 'user',
       content: message,
     },
   });
+
+  // Link attachments to the user message and build image references for CLI
+  let cliMessage = message;
+  if (attachmentIds && attachmentIds.length > 0) {
+    const attachments = await prisma.attachment.findMany({
+      where: { id: { in: attachmentIds.slice(0, config.maxFilesPerMessage) } },
+    });
+
+    if (attachments.length > 0) {
+      // Link attachments to the message
+      await prisma.attachment.updateMany({
+        where: { id: { in: attachments.map((a) => a.id) } },
+        data: { messageId: userMessage.id },
+      });
+
+      // Append absolute image paths to the message for Claude CLI
+      // (CLI runs with cwd=repoPath, so relative paths would resolve incorrectly)
+      const imageLines = attachments.map((a) => {
+        const absolutePath = path.resolve(a.storagePath);
+        const sizeKB = (a.size / 1024).toFixed(1);
+        return `- ${absolutePath} (${a.filename}, ${sizeKB}KB)`;
+      });
+      cliMessage += `\n\n---\nThe user attached ${attachments.length} image(s). Read each one with the Read tool before responding:\n${imageLines.join('\n')}`;
+    }
+  }
 
   let knowledgeEntries: { id: string; category: string; content: string; tags: string; source: string | null; createdAt: Date }[] = [];
   try {
@@ -231,8 +258,8 @@ export async function POST(request: Request) {
                   retrying = true;
                   const retryRequestId = `${conversation.id}-retry-${Date.now()}`;
                   const retryProcOrPromise = conversation.claudeSessionId
-                    ? sessionManager.resumeSession(retryRequestId, conversation.claudeSessionId, message, userClaudeToken, userId)
-                    : sessionManager.startSession(retryRequestId, message, systemPrompt, userClaudeToken, userId);
+                    ? sessionManager.resumeSession(retryRequestId, conversation.claudeSessionId, cliMessage, userClaudeToken, userId)
+                    : sessionManager.startSession(retryRequestId, cliMessage, systemPrompt, userClaudeToken, userId);
 
                   if (retryProcOrPromise instanceof Promise) {
                     retryProcOrPromise.then((retryProc) => attachProcess(retryProc, retryCount + 1)).catch((err) => {
@@ -311,8 +338,8 @@ export async function POST(request: Request) {
       console.log(`[chat] Starting request (requestId=${requestId}, conversationId=${conversation.id}, resume=${!!conversation.claudeSessionId}, knowledgeEntries=${knowledgeEntries.length})`);
 
       const procOrPromise = conversation.claudeSessionId
-        ? sessionManager.resumeSession(requestId, conversation.claudeSessionId, message, userClaudeToken, userId)
-        : sessionManager.startSession(requestId, message, systemPrompt, userClaudeToken, userId);
+        ? sessionManager.resumeSession(requestId, conversation.claudeSessionId, cliMessage, userClaudeToken, userId)
+        : sessionManager.startSession(requestId, cliMessage, systemPrompt, userClaudeToken, userId);
 
       if (procOrPromise instanceof Promise) {
         procOrPromise.then((proc) => {
