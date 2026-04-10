@@ -176,6 +176,10 @@ export default function ChatPage({ initialConversationId }: { initialConversatio
   };
 
   const handleSend = async (message: string, attachments: Attachment[] = []) => {
+    if (message === '/confetti') {
+      confetti({ particleCount: 150, spread: 90, origin: { y: 0.6 } });
+      return;
+    }
     const attachmentIds = attachments.map((a) => a.id);
     const tempId = `temp-${Date.now()}`;
     setMessages((prev) => [
