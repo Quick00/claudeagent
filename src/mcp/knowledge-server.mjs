@@ -68,7 +68,7 @@ rl.on('line', async (line) => {
                 content: {
                   type: 'string',
                   description:
-                    'The knowledge to save. Keep it concise (1-2 sentences). Write it as a fact, not as a conversation reference.',
+                    'The knowledge to save. Keep it concise (1-2 sentences). Write it as a fact, not as a conversation reference. ALWAYS write in English, even if the conversation is in another language.',
                 },
                 tags: {
                   type: 'string',

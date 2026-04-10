@@ -133,7 +133,8 @@ Do NOT save:
 - Things already listed in the KNOWLEDGE BASE section above
 - Generic facts ("the platform manages events")
 
-Keep entries concise (1-2 sentences). Always include 1-3 lowercase tags.`;
+Keep entries concise (1-2 sentences). Always include 1-3 lowercase tags.
+IMPORTANT: ALWAYS write knowledge entries in English, even if the conversation is in another language. The knowledge base must stay in one language so entries are findable and reusable across all users.`;
 
   const encoder = new TextEncoder();
   const stream = new ReadableStream({
