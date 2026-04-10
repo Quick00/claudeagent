@@ -114,27 +114,7 @@ export async function POST(request: Request) {
     systemPrompt += knowledgeBlock;
   }
 
-  systemPrompt += `\n\n---
-KNOWLEDGE TOOLS:
-You have two knowledge tools:
-- "search_knowledge" — search the knowledge base by topic. Use this when the user asks what you know, asks about a specific topic, or when you want to check existing knowledge before answering.
-- "save_knowledge" — save new knowledge. You MUST use it after EVERY answer where you investigated the codebase.
-
-RULE: If you read any files or searched the codebase to answer a question, you MUST call save_knowledge at least once before finishing your response. This is not optional. The knowledge base is how the team builds shared understanding — every investigation adds value.
-
-What to save (one call per distinct insight):
-- How a feature works (e.g. "Badge printing supports 5 custom badge types per event, each tied to a registration category")
-- Business rules you discovered (e.g. "HubSpot data takes priority over Summit data when both exist for the same contact")
-- What product terms mean (e.g. "A 'coupling' in the platform means a connection to an external system like HubSpot or Summit")
-- Corrections from the user (if they tell you something was wrong, save the correct version immediately)
-- Developer insights (use category "developer"): architecture patterns, how components connect, gotchas, technical decisions. IMPORTANT: also save the code flow — which files are involved and in what order, so you don't need to re-read them next time. E.g. "HubSpot import flow: cronjobs/OgzHubspotImport.php → HubspotImportHelper → HubspotApiHelper. Uses per-event mapping configs from Helpers/Mappings/ to map HubSpot fields to registration fields."
-
-Do NOT save:
-- Things already listed in the KNOWLEDGE BASE section above
-- Generic facts ("the platform manages events")
-
-Keep entries concise (1-2 sentences). Always include 1-3 lowercase tags.
-IMPORTANT: ALWAYS write knowledge entries in English, even if the conversation is in another language. The knowledge base must stay in one language so entries are findable and reusable across all users.`;
+  systemPrompt += `\n\n${config.knowledgeToolsPrompt}`;
 
   const encoder = new TextEncoder();
   const stream = new ReadableStream({
