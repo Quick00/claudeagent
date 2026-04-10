@@ -49,23 +49,23 @@ export default function LinkClaudeModal({ onClose, onLinked }: LinkClaudeModalPr
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={onClose}>
       <div
-        className="mx-4 w-full max-w-lg rounded-xl bg-white p-6 shadow-xl"
+        className="mx-4 w-full max-w-lg rounded-xl bg-white p-6 shadow-xl dark:bg-gray-900"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="mb-4 flex items-center justify-between">
-          <h2 className="text-lg font-semibold text-gray-900">Link your Claude account</h2>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600">&times;</button>
+          <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Link your Claude account</h2>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300">&times;</button>
         </div>
 
-        <p className="mb-4 text-sm text-gray-500">
+        <p className="mb-4 text-sm text-gray-500 dark:text-gray-400">
           To use this app, you need a Claude subscription (Max, Pro, or Team) and a setup token.
           Follow the steps below to generate one.
         </p>
 
         <div className="mb-5 space-y-4">
-          <div className="rounded-lg bg-gray-50 p-4">
-            <h3 className="mb-2 text-sm font-semibold text-gray-800">Step 1: Install Claude Code</h3>
-            <p className="mb-2 text-sm text-gray-600">
+          <div className="rounded-lg bg-gray-50 p-4 dark:bg-gray-800">
+            <h3 className="mb-2 text-sm font-semibold text-gray-800 dark:text-gray-200">Step 1: Install Claude Code</h3>
+            <p className="mb-2 text-sm text-gray-600 dark:text-gray-400">
               Open a terminal on your computer and run:
             </p>
             <div className="flex items-center justify-between rounded-md bg-gray-900 px-3 py-2">
@@ -79,9 +79,9 @@ export default function LinkClaudeModal({ onClose, onLinked }: LinkClaudeModalPr
             </div>
           </div>
 
-          <div className="rounded-lg bg-gray-50 p-4">
-            <h3 className="mb-2 text-sm font-semibold text-gray-800">Step 2: Generate a token</h3>
-            <p className="mb-2 text-sm text-gray-600">
+          <div className="rounded-lg bg-gray-50 p-4 dark:bg-gray-800">
+            <h3 className="mb-2 text-sm font-semibold text-gray-800 dark:text-gray-200">Step 2: Generate a token</h3>
+            <p className="mb-2 text-sm text-gray-600 dark:text-gray-400">
               Run this command and follow the instructions in your browser:
             </p>
             <div className="flex items-center justify-between rounded-md bg-gray-900 px-3 py-2">
@@ -93,15 +93,15 @@ export default function LinkClaudeModal({ onClose, onLinked }: LinkClaudeModalPr
                 {copied === 'token' ? 'Copied!' : 'Copy'}
               </button>
             </div>
-            <p className="mt-2 text-xs text-gray-400">
+            <p className="mt-2 text-xs text-gray-400 dark:text-gray-500">
               This will open a browser window where you log in with your Claude account.
               After authorizing, a long token string will be displayed in your terminal.
             </p>
           </div>
 
-          <div className="rounded-lg bg-gray-50 p-4">
-            <h3 className="mb-2 text-sm font-semibold text-gray-800">Step 3: Paste your token</h3>
-            <p className="mb-2 text-sm text-gray-600">
+          <div className="rounded-lg bg-gray-50 p-4 dark:bg-gray-800">
+            <h3 className="mb-2 text-sm font-semibold text-gray-800 dark:text-gray-200">Step 3: Paste your token</h3>
+            <p className="mb-2 text-sm text-gray-600 dark:text-gray-400">
               Copy the token from your terminal and paste it below:
             </p>
             <textarea
@@ -109,13 +109,13 @@ export default function LinkClaudeModal({ onClose, onLinked }: LinkClaudeModalPr
               onChange={(e) => setToken(e.target.value)}
               placeholder="Paste your Claude token here..."
               rows={3}
-              className="w-full resize-none rounded-lg border border-gray-300 px-3 py-2 text-sm font-mono focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              className="w-full resize-none rounded-lg border border-gray-300 px-3 py-2 text-sm font-mono focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 dark:focus:border-blue-400"
             />
           </div>
         </div>
 
         {error && (
-          <div className="mb-4 rounded-lg bg-red-50 p-3 text-sm text-red-700">
+          <div className="mb-4 rounded-lg bg-red-50 p-3 text-sm text-red-700 dark:bg-red-950 dark:text-red-300">
             {error}
           </div>
         )}
@@ -123,7 +123,7 @@ export default function LinkClaudeModal({ onClose, onLinked }: LinkClaudeModalPr
         <div className="flex justify-end gap-3">
           <button
             onClick={onClose}
-            className="rounded-lg border border-gray-300 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
+            className="rounded-lg border border-gray-300 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-800"
           >
             Cancel
           </button>

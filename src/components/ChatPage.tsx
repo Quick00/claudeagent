@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import confetti from 'canvas-confetti';
 import { useSession } from 'next-auth/react';
 import { redirect } from 'next/navigation';
 import ChatSidebar from '@/components/ChatSidebar';
@@ -46,6 +47,8 @@ export default function ChatPage({ initialConversationId }: { initialConversatio
   const [showFlagForm, setShowFlagForm] = useState(false);
   const [flagReason, setFlagReason] = useState('');
   const [flagSubmitting, setFlagSubmitting] = useState(false);
+  const [copiedId, setCopiedId] = useState(false);
+  const knowledgeConfettiFired = useRef(false);
 
   const fetchClaudeStatus = () => {
     fetch('/api/auth/claude/status')
@@ -77,6 +80,7 @@ export default function ChatPage({ initialConversationId }: { initialConversatio
     setFlagReason('');
     setFlags([]);
     window.history.replaceState(null, '', `/conversation/${id}`);
+    knowledgeConfettiFired.current = false;
 
     const res = await fetch(`/api/conversations/${id}`);
     if (!res.ok) return;
@@ -150,7 +154,7 @@ export default function ChatPage({ initialConversationId }: { initialConversatio
   if (status === 'loading') {
     return (
       <div className="flex h-screen items-center justify-center">
-        <div className="text-gray-400">Loading...</div>
+        <div className="text-gray-400 dark:text-gray-500">Loading...</div>
       </div>
     );
   }
@@ -169,9 +173,14 @@ export default function ChatPage({ initialConversationId }: { initialConversatio
     setShowFlagForm(false);
     setFlagReason('');
     window.history.replaceState(null, '', '/');
+    knowledgeConfettiFired.current = false;
   };
 
   const handleSend = async (message: string, attachments: Attachment[] = []) => {
+    if (message === '/confetti') {
+      confetti({ particleCount: 150, spread: 90, origin: { y: 0.6 } });
+      return;
+    }
     const attachmentIds = attachments.map((a) => a.id);
     const tempId = `temp-${Date.now()}`;
     setMessages((prev) => [
@@ -233,6 +242,10 @@ export default function ChatPage({ initialConversationId }: { initialConversatio
             }
 
             if (event.type === 'tool_use') {
+              if (event.tool === 'mcp__knowledge__save_knowledge' && !knowledgeConfettiFired.current) {
+                knowledgeConfettiFired.current = true;
+                confetti({ particleCount: 50, spread: 60, origin: { y: 0.7 }, colors: ['#fbbf24', '#f59e0b', '#d97706'] });
+              }
               const labels: Record<string, string> = {
                 Glob: 'Searching for files...',
                 Grep: 'Searching code...',
@@ -258,6 +271,15 @@ export default function ChatPage({ initialConversationId }: { initialConversatio
               ]);
               setStreamingContent('');
               setRefreshTrigger((prev) => prev + 1);
+
+              // Confetti on conversation milestones (1, 10, 25, 50, 100, 200, ...)
+              const convRes = await fetch('/api/conversations');
+              const convs = await convRes.json();
+              const count = convs.length;
+              const milestones = [1, 10, 25, 50];
+              if (milestones.includes(count) || (count >= 100 && count % 100 === 0)) {
+                confetti({ particleCount: 100, spread: 70, origin: { y: 0.6 } });
+              }
             }
 
             if (event.type === 'error') {
@@ -333,10 +355,10 @@ export default function ChatPage({ initialConversationId }: { initialConversatio
         {claudeLinked === false ? (
           <div className="flex flex-1 flex-col items-center justify-center gap-4 p-8">
             <div className="text-center">
-              <h2 className="mb-2 text-lg font-semibold text-gray-900">
+              <h2 className="mb-2 text-lg font-semibold text-gray-900 dark:text-gray-100">
                 Link your Claude account
               </h2>
-              <p className="mb-4 max-w-sm text-sm text-gray-500">
+              <p className="mb-4 max-w-sm text-sm text-gray-500 dark:text-gray-400">
                 To start asking questions, you need to link your Claude account.
                 This requires a Claude Max, Pro, or Team subscription.
               </p>
@@ -351,8 +373,23 @@ export default function ChatPage({ initialConversationId }: { initialConversatio
         ) : (
           <>
             {conversationId && (
-              <div className="flex items-center justify-between border-b border-gray-200 px-4 py-2">
+              <div className="flex items-center justify-between border-b border-gray-200 px-4 py-2 dark:border-gray-700">
                 <div />
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => {
+                      navigator.clipboard.writeText(conversationId);
+                      setCopiedId(true);
+                      setTimeout(() => setCopiedId(false), 2000);
+                    }}
+                    className="flex items-center gap-1 rounded-lg bg-gray-100 px-3 py-1.5 text-xs font-medium text-gray-500 transition-colors hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-400 dark:hover:bg-gray-700"
+                    title="Copy conversation ID"
+                  >
+                    <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                    </svg>
+                    {copiedId ? 'Copied!' : 'ID'}
+                  </button>
                 <div className="relative">
                   <button
                     onClick={() => { if (!hasPendingFlag && !flagSubmitting) setShowFlagForm(!showFlagForm); }}
@@ -360,7 +397,7 @@ export default function ChatPage({ initialConversationId }: { initialConversatio
                     className={`flex items-center gap-1 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${
                       hasPendingFlag
                         ? 'bg-red-50 text-red-600'
-                        : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+                        : 'bg-gray-100 text-gray-500 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-400 dark:hover:bg-gray-700'
                     } disabled:cursor-not-allowed disabled:opacity-50`}
                     title={hasPendingFlag ? 'Already flagged' : 'Flag this conversation'}
                   >
@@ -370,18 +407,18 @@ export default function ChatPage({ initialConversationId }: { initialConversatio
                     {hasPendingFlag ? 'Flagged' : 'Flag'}
                   </button>
                   {showFlagForm && (
-                    <div className="absolute right-0 top-full z-10 mt-1 w-72 rounded-lg border border-gray-200 bg-white p-3 shadow-lg">
+                    <div className="absolute right-0 top-full z-10 mt-1 w-72 rounded-lg border border-gray-200 bg-white p-3 shadow-lg dark:border-gray-700 dark:bg-gray-800">
                       <textarea
                         value={flagReason}
                         onChange={(e) => setFlagReason(e.target.value)}
                         placeholder="What was wrong? (optional)"
-                        className="w-full resize-none rounded-md border border-gray-200 p-2 text-sm focus:border-blue-300 focus:outline-none"
+                        className="w-full resize-none rounded-md border border-gray-200 p-2 text-sm focus:border-blue-300 focus:outline-none dark:border-gray-600 dark:bg-gray-900 dark:text-gray-100"
                         rows={2}
                       />
                       <div className="mt-2 flex justify-end gap-2">
                         <button
                           onClick={() => { setShowFlagForm(false); setFlagReason(''); }}
-                          className="rounded-md px-3 py-1 text-xs text-gray-500 hover:bg-gray-100"
+                          className="rounded-md px-3 py-1 text-xs text-gray-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-700"
                         >
                           Cancel
                         </button>
@@ -395,6 +432,7 @@ export default function ChatPage({ initialConversationId }: { initialConversatio
                       </div>
                     </div>
                   )}
+                </div>
                 </div>
               </div>
             )}

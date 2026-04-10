@@ -123,7 +123,7 @@ export default function ChatInput({ onSend, disabled }: ChatInputProps) {
   }, []);
 
   return (
-    <div className="border-t border-gray-200 bg-white p-4">
+    <div className="border-t border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-900">
       <div className="mx-auto max-w-3xl">
         {images.length > 0 && (
           <div className="mb-3 flex gap-2">
@@ -132,7 +132,7 @@ export default function ChatInput({ onSend, disabled }: ChatInputProps) {
                 <img
                   src={img.preview}
                   alt={img.file.name}
-                  className="h-16 w-16 rounded-lg border border-gray-200 object-cover"
+                  className="h-16 w-16 rounded-lg border border-gray-200 object-cover dark:border-gray-600"
                 />
                 <button
                   onClick={() => removeImage(i)}
@@ -152,7 +152,7 @@ export default function ChatInput({ onSend, disabled }: ChatInputProps) {
           <button
             onClick={() => fileInputRef.current?.click()}
             disabled={disabled || uploading || images.length >= MAX_FILES}
-            className="mb-1 rounded-lg p-2 text-gray-400 hover:bg-gray-100 hover:text-gray-600 disabled:cursor-not-allowed disabled:opacity-50"
+            className="mb-1 rounded-lg p-2 text-gray-400 hover:bg-gray-100 hover:text-gray-600 disabled:cursor-not-allowed disabled:opacity-50 dark:hover:bg-gray-800 dark:hover:text-gray-300"
             title="Attach image"
           >
             <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -178,12 +178,12 @@ export default function ChatInput({ onSend, disabled }: ChatInputProps) {
             placeholder="Ask a question about the platform..."
             disabled={disabled || uploading}
             rows={1}
-            className="flex-1 resize-none rounded-xl border border-gray-300 px-4 py-3 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:bg-gray-50 disabled:text-gray-400"
+            className="flex-1 resize-none rounded-xl border border-gray-300 px-4 py-3 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:bg-gray-50 disabled:text-gray-400 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 dark:placeholder-gray-500 dark:focus:border-blue-400 dark:disabled:bg-gray-800 dark:disabled:text-gray-500"
           />
           <button
             onClick={handleSubmit}
             disabled={disabled || uploading || (!input.trim() && images.length === 0)}
-            className="rounded-xl bg-blue-600 px-5 py-3 text-sm font-medium text-white hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed"
+            className="rounded-xl bg-blue-600 px-5 py-3 text-sm font-medium text-white hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed dark:disabled:bg-gray-700 dark:disabled:text-gray-500"
           >
             {uploading ? 'Uploading...' : 'Send'}
           </button>
