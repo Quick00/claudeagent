@@ -171,11 +171,12 @@ export default function ChatPage({ initialConversationId }: { initialConversatio
     window.history.replaceState(null, '', '/');
   };
 
-  const handleSend = async (message: string, attachmentIds: string[] = []) => {
+  const handleSend = async (message: string, attachments: Attachment[] = []) => {
+    const attachmentIds = attachments.map((a) => a.id);
     const tempId = `temp-${Date.now()}`;
     setMessages((prev) => [
       ...prev,
-      { id: tempId, role: 'user', content: message, attachments: [] },
+      { id: tempId, role: 'user', content: message, attachments },
     ]);
     setIsLoading(true);
     setStreamingContent('');

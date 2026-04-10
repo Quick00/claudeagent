@@ -7,8 +7,15 @@ interface PendingImage {
   preview: string;
 }
 
+interface UploadedAttachment {
+  id: string;
+  filename: string;
+  mimeType: string;
+  size: number;
+}
+
 interface ChatInputProps {
-  onSend: (message: string, attachmentIds: string[]) => void;
+  onSend: (message: string, attachments: UploadedAttachment[]) => void;
   disabled: boolean;
 }
 
@@ -51,7 +58,7 @@ export default function ChatInput({ onSend, disabled }: ChatInputProps) {
     const trimmed = input.trim();
     if ((!trimmed && images.length === 0) || disabled || uploading) return;
 
-    let attachmentIds: string[] = [];
+    let uploaded: UploadedAttachment[] = [];
 
     if (images.length > 0) {
       setUploading(true);
@@ -62,9 +69,14 @@ export default function ChatInput({ onSend, disabled }: ChatInputProps) {
           const res = await fetch('/api/upload', { method: 'POST', body: formData });
           if (!res.ok) throw new Error('Upload failed');
           const data = await res.json();
-          return data.id as string;
+          return {
+            id: data.id as string,
+            filename: data.filename as string,
+            mimeType: img.file.type,
+            size: img.file.size,
+          };
         });
-        attachmentIds = await Promise.all(uploadPromises);
+        uploaded = await Promise.all(uploadPromises);
       } catch {
         setUploading(false);
         return;
@@ -77,7 +89,7 @@ export default function ChatInput({ onSend, disabled }: ChatInputProps) {
       URL.revokeObjectURL(img.preview);
     }
 
-    onSend(trimmed || 'Please look at the attached image(s).', attachmentIds);
+    onSend(trimmed || 'Please look at the attached image(s).', uploaded);
     setInput('');
     setImages([]);
     if (textareaRef.current) {
