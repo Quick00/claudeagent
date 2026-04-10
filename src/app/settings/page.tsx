@@ -12,7 +12,7 @@ export default function SettingsPage() {
   const [claudeStatus, setClaudeStatus] = useState<{ linked: boolean; email: string | null } | null>(null);
   const [unlinking, setUnlinking] = useState(false);
   const [showModal, setShowModal] = useState(false);
-  const { theme, toggleTheme } = useTheme();
+  const { preference, setPreference } = useTheme();
 
   const fetchStatus = () => {
     fetch('/api/auth/claude/status')
@@ -109,21 +109,28 @@ export default function SettingsPage() {
 
         <div className="border-t border-gray-200 pt-4 dark:border-gray-700">
           <h2 className="mb-3 text-sm font-medium text-gray-700 dark:text-gray-300">Appearance</h2>
-          <button
-            onClick={toggleTheme}
-            className="flex items-center gap-3 rounded-lg border border-gray-200 px-4 py-3 text-sm text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800"
-          >
-            {theme === 'light' ? (
-              <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
-              </svg>
-            ) : (
-              <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
-              </svg>
-            )}
-            {theme === 'light' ? 'Switch to Dark Mode' : 'Switch to Light Mode'}
-          </button>
+          <div className="flex gap-2">
+            {([
+              { value: 'system' as const, label: 'System', icon: 'M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z' },
+              { value: 'light' as const, label: 'Light', icon: 'M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z' },
+              { value: 'dark' as const, label: 'Dark', icon: 'M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z' },
+            ]).map(({ value, label, icon }) => (
+              <button
+                key={value}
+                onClick={() => setPreference(value)}
+                className={`flex flex-1 flex-col items-center gap-1.5 rounded-lg border px-3 py-3 text-xs font-medium transition-colors ${
+                  preference === value
+                    ? 'border-blue-500 bg-blue-50 text-blue-700 dark:bg-blue-950 dark:text-blue-300'
+                    : 'border-gray-200 text-gray-500 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-400 dark:hover:bg-gray-800'
+                }`}
+              >
+                <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={icon} />
+                </svg>
+                {label}
+              </button>
+            ))}
+          </div>
         </div>
 
         <div className="mt-6 border-t border-gray-200 pt-4 dark:border-gray-700">
