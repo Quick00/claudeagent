@@ -101,21 +101,26 @@ export default function ChatMessages({
     <div className="flex-1 overflow-y-auto p-6">
       <div className="mx-auto max-w-3xl space-y-4">
         {messages.map((msg) => (
-          <MessageBubble key={msg.id} role={msg.role} content={msg.content} />
+          <div key={msg.id} className="animate-message-in">
+            <MessageBubble role={msg.role} content={msg.content} />
+          </div>
         ))}
         {flags
           .filter((f) => f.status === 'RESPONDED' && f.adminResponse)
           .map((flag) => (
-            <MessageBubble
-              key={`flag-${flag.id}`}
-              role="admin"
-              content={flag.adminResponse!}
-              adminName={flag.admin?.name}
-              timestamp={flag.respondedAt ?? undefined}
-            />
+            <div key={`flag-${flag.id}`} className="animate-message-in">
+              <MessageBubble
+                role="admin"
+                content={flag.adminResponse!}
+                adminName={flag.admin?.name}
+                timestamp={flag.respondedAt ?? undefined}
+              />
+            </div>
           ))}
         {streamingContent && (
-          <MessageBubble role="assistant" content={streamingContent} />
+          <div className="animate-message-in">
+            <MessageBubble role="assistant" content={streamingContent} />
+          </div>
         )}
         {(showThinking || (toolStatus && !streamingContent)) && (
           <div className="flex items-center gap-3 px-4 py-3">
