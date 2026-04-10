@@ -3,10 +3,18 @@
 import { useEffect, useRef, useState } from 'react';
 import MessageBubble from './MessageBubble';
 
+interface Attachment {
+  id: string;
+  filename: string;
+  mimeType: string;
+  size: number;
+}
+
 interface Message {
   id: string;
   role: 'user' | 'assistant';
   content: string;
+  attachments?: Attachment[];
 }
 
 interface Flag {
@@ -101,7 +109,7 @@ export default function ChatMessages({
     <div className="flex-1 overflow-y-auto p-6">
       <div className="mx-auto max-w-3xl space-y-4">
         {messages.map((msg) => (
-          <MessageBubble key={msg.id} role={msg.role} content={msg.content} />
+          <MessageBubble key={msg.id} role={msg.role} content={msg.content} attachments={msg.attachments} />
         ))}
         {flags
           .filter((f) => f.status === 'RESPONDED' && f.adminResponse)
