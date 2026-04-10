@@ -9,12 +9,12 @@ export default function LoginPage() {
   const isTestMode = process.env.NEXT_PUBLIC_AUTH_TEST_MODE === 'true';
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-gray-50">
-      <div className="w-full max-w-sm rounded-lg bg-white p-8 shadow-md">
-        <h1 className="mb-2 text-center text-2xl font-bold text-gray-900">
+    <div className="flex min-h-screen items-center justify-center bg-gray-50 dark:bg-gray-950">
+      <div className="w-full max-w-sm rounded-lg bg-white p-8 shadow-md dark:bg-gray-900 dark:shadow-gray-900">
+        <h1 className="mb-2 text-center text-2xl font-bold text-gray-900 dark:text-gray-100">
           Codebase Q&A
         </h1>
-        <p className="mb-8 text-center text-sm text-gray-500">
+        <p className="mb-8 text-center text-sm text-gray-500 dark:text-gray-400">
           Ask questions about how the product works
         </p>
 
@@ -27,25 +27,25 @@ export default function LoginPage() {
             className="space-y-4"
           >
             <div>
-              <label className="mb-1 block text-sm font-medium text-gray-700">
+              <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">
                 Name
               </label>
               <input
                 type="text"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 dark:focus:border-blue-400"
               />
             </div>
             <div>
-              <label className="mb-1 block text-sm font-medium text-gray-700">
+              <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">
                 Email
               </label>
               <input
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 dark:focus:border-blue-400"
               />
             </div>
             <button
@@ -61,7 +61,7 @@ export default function LoginPage() {
         ) : (
           <button
             onClick={() => signIn('google', { callbackUrl: '/' })}
-            className="flex w-full items-center justify-center gap-3 rounded-lg border border-gray-300 bg-white px-4 py-3 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50"
+            className="flex w-full items-center justify-center gap-3 rounded-lg border border-gray-300 bg-white px-4 py-3 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-900 dark:text-gray-300 dark:hover:bg-gray-800"
           >
             <svg className="h-5 w-5" viewBox="0 0 24 24">
               <path

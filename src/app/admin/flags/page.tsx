@@ -76,7 +76,7 @@ export default function AdminFlagsPage() {
   if (status === 'loading' || loading) {
     return (
       <div className="flex h-screen items-center justify-center">
-        <div className="text-gray-400">Loading...</div>
+        <div className="text-gray-400 dark:text-gray-500">Loading...</div>
       </div>
     );
   }
@@ -98,11 +98,11 @@ export default function AdminFlagsPage() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-gray-50">
-      <div className="w-full max-w-5xl rounded-lg bg-white p-8 shadow-md">
+    <div className="flex min-h-screen items-center justify-center bg-gray-50 dark:bg-gray-950">
+      <div className="w-full max-w-5xl rounded-lg bg-white p-8 shadow-md dark:bg-gray-900 dark:shadow-gray-900">
         <div className="mb-6 flex items-center justify-between">
-          <h1 className="text-xl font-bold text-gray-900">Flagged Conversations</h1>
-          <div className="flex gap-1 rounded-lg bg-gray-100 p-1">
+          <h1 className="text-xl font-bold text-gray-900 dark:text-gray-100">Flagged Conversations</h1>
+          <div className="flex gap-1 rounded-lg bg-gray-100 p-1 dark:bg-gray-800">
             {(['PENDING', 'RESPONDED', 'ALL'] as const).map((value) => {
               const count = value === 'ALL' ? flags.length : flags.filter((f) => f.status === value).length;
               return (
@@ -111,12 +111,12 @@ export default function AdminFlagsPage() {
                   onClick={() => setFilter(value)}
                   className={`rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
                     filter === value
-                      ? 'bg-white text-gray-900 shadow-sm'
-                      : 'text-gray-500 hover:text-gray-700'
+                      ? 'bg-white text-gray-900 shadow-sm dark:bg-gray-700 dark:text-gray-100'
+                      : 'text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300'
                   }`}
                 >
                   {value === 'ALL' ? 'All' : value === 'PENDING' ? 'Pending' : 'Responded'}
-                  <span className="ml-1.5 text-gray-400">{count}</span>
+                  <span className="ml-1.5 text-gray-400 dark:text-gray-500">{count}</span>
                 </button>
               );
             })}
@@ -124,14 +124,16 @@ export default function AdminFlagsPage() {
         </div>
 
         {flags.length === 0 ? (
-          <p className="text-gray-500">No flagged conversations yet.</p>
+          <p className="text-gray-500 dark:text-gray-400">No flagged conversations yet.</p>
         ) : (
           <div className="space-y-4">
             {flags.filter((f) => filter === 'ALL' || f.status === filter).map((flag) => (
               <div
                 key={flag.id}
                 className={`rounded-lg border p-4 ${
-                  flag.status === 'PENDING' ? 'border-red-200 bg-red-50' : 'border-green-200 bg-green-50'
+                  flag.status === 'PENDING'
+                    ? 'border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-950'
+                    : 'border-green-200 bg-green-50 dark:border-green-800 dark:bg-green-950'
                 }`}
               >
                 <div className="flex items-start justify-between">
@@ -140,20 +142,20 @@ export default function AdminFlagsPage() {
                       <span
                         className={`rounded-full px-2 py-0.5 text-xs font-medium ${
                           flag.status === 'PENDING'
-                            ? 'bg-red-100 text-red-700'
-                            : 'bg-green-100 text-green-700'
+                            ? 'bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300'
+                            : 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300'
                         }`}
                       >
                         {flag.status}
                       </span>
                       <Link
                         href={`/conversation/${flag.conversation.id}`}
-                        className="text-sm font-medium text-blue-600 hover:text-blue-700"
+                        className="text-sm font-medium text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300"
                       >
                         {flag.conversation.title}
                       </Link>
                     </div>
-                    <div className="mt-1 text-xs text-gray-500">
+                    <div className="mt-1 text-xs text-gray-500 dark:text-gray-400">
                       Flagged by <span className="font-medium">{flag.user.name}</span> ({flag.user.email})
                       {' — '}
                       {new Date(flag.createdAt).toLocaleDateString('en-GB', {
@@ -164,16 +166,16 @@ export default function AdminFlagsPage() {
                       })}
                     </div>
                     {flag.reason && (
-                      <p className="mt-2 text-sm text-gray-700">
+                      <p className="mt-2 text-sm text-gray-700 dark:text-gray-300">
                         <span className="font-medium">Reason:</span> {flag.reason}
                       </p>
                     )}
                     {flag.adminResponse && (
-                      <div className="mt-3 rounded-md border border-green-200 bg-white p-3">
-                        <div className="text-xs font-medium text-green-700">
+                      <div className="mt-3 rounded-md border border-green-200 bg-white p-3 dark:border-green-800 dark:bg-gray-900">
+                        <div className="text-xs font-medium text-green-700 dark:text-green-400">
                           Response by {flag.admin?.name || 'Admin'}
                           {flag.respondedAt && (
-                            <span className="ml-2 font-normal text-gray-400">
+                            <span className="ml-2 font-normal text-gray-400 dark:text-gray-500">
                               {new Date(flag.respondedAt).toLocaleDateString('en-GB', {
                                 day: 'numeric',
                                 month: 'short',
@@ -183,7 +185,7 @@ export default function AdminFlagsPage() {
                             </span>
                           )}
                         </div>
-                        <p className="mt-1 text-sm text-gray-700">{flag.adminResponse}</p>
+                        <p className="mt-1 text-sm text-gray-700 dark:text-gray-300">{flag.adminResponse}</p>
                       </div>
                     )}
                   </div>
@@ -202,18 +204,18 @@ export default function AdminFlagsPage() {
                   </div>
                 </div>
                 {respondingTo === flag.id && (
-                  <div className="mt-3 border-t border-red-200 pt-3">
+                  <div className="mt-3 border-t border-red-200 pt-3 dark:border-red-800">
                     <textarea
                       value={responseText}
                       onChange={(e) => setResponseText(e.target.value)}
                       placeholder="Write your response to the user..."
-                      className="w-full resize-none rounded-md border border-gray-200 p-2 text-sm focus:border-blue-300 focus:outline-none"
+                      className="w-full resize-none rounded-md border border-gray-200 p-2 text-sm focus:border-blue-300 focus:outline-none dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 dark:focus:border-blue-400"
                       rows={3}
                     />
                     <div className="mt-2 flex justify-end gap-2">
                       <button
                         onClick={() => { setRespondingTo(null); setResponseText(''); }}
-                        className="rounded-md px-3 py-1.5 text-xs text-gray-500 hover:bg-gray-100"
+                        className="rounded-md px-3 py-1.5 text-xs text-gray-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-800"
                       >
                         Cancel
                       </button>
@@ -230,13 +232,13 @@ export default function AdminFlagsPage() {
               </div>
             ))}
             {flags.length > 0 && flags.filter((f) => filter === 'ALL' || f.status === filter).length === 0 && (
-              <p className="text-gray-500">No {filter.toLowerCase()} flags.</p>
+              <p className="text-gray-500 dark:text-gray-400">No {filter.toLowerCase()} flags.</p>
             )}
           </div>
         )}
 
-        <div className="mt-6 border-t border-gray-200 pt-4">
-          <Link href="/" className="text-sm text-blue-600 hover:text-blue-700">
+        <div className="mt-6 border-t border-gray-200 pt-4 dark:border-gray-700">
+          <Link href="/" className="text-sm text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300">
             &larr; Back to chat
           </Link>
         </div>

@@ -56,7 +56,7 @@ export default function DashboardPage() {
 
   if (!data) {
     return (
-      <div className="flex h-screen items-center justify-center text-gray-400">
+      <div className="flex h-screen items-center justify-center text-gray-400 dark:text-gray-500">
         Loading dashboard...
       </div>
     );
@@ -74,22 +74,22 @@ export default function DashboardPage() {
   const maxTagCount = data.tags.length > 0 ? data.tags[0].count : 1;
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-950">
       {/* Header */}
-      <div className="border-b border-gray-200 bg-white px-6 py-4">
+      <div className="border-b border-gray-200 bg-white px-6 py-4 dark:border-gray-700 dark:bg-gray-900">
         <div className="mx-auto flex max-w-6xl items-center justify-between">
           <div className="flex items-center gap-4">
             <Link
               href="/"
-              className="rounded-lg bg-gray-100 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-200"
+              className="rounded-lg bg-gray-100 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
             >
               &larr; Chat
             </Link>
-            <h1 className="text-lg font-semibold text-gray-800">Dashboard</h1>
+            <h1 className="text-lg font-semibold text-gray-800 dark:text-gray-200">Dashboard</h1>
           </div>
           <a
             href="/knowledge"
-            className="rounded-lg bg-gray-100 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-200"
+            className="rounded-lg bg-gray-100 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
           >
             Knowledge Map &rarr;
           </a>
@@ -110,7 +110,7 @@ export default function DashboardPage() {
 
         {/* Category breakdown */}
         <div className="mb-8">
-          <h2 className="mb-3 text-sm font-semibold uppercase text-gray-500">
+          <h2 className="mb-3 text-sm font-semibold uppercase text-gray-500 dark:text-gray-400">
             By Category
           </h2>
           <div className="flex gap-3">
@@ -121,16 +121,16 @@ export default function DashboardPage() {
               return (
                 <div
                   key={key}
-                  className="flex-1 rounded-xl border border-gray-200 bg-white p-4"
+                  className="flex-1 rounded-xl border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-900"
                 >
                   <div className="flex items-center gap-2">
                     <span
                       className="h-3 w-3 rounded-full"
                       style={{ backgroundColor: CATEGORY_COLORS[key] }}
                     />
-                    <span className="text-sm text-gray-600">{label}</span>
+                    <span className="text-sm text-gray-600 dark:text-gray-400">{label}</span>
                   </div>
-                  <div className="mt-1 text-2xl font-bold text-gray-900">
+                  <div className="mt-1 text-2xl font-bold text-gray-900 dark:text-gray-100">
                     {count}
                   </div>
                 </div>
@@ -142,18 +142,18 @@ export default function DashboardPage() {
         <div className="grid grid-cols-1 gap-8 lg:grid-cols-3">
           {/* Tag Cloud */}
           <div className="lg:col-span-1">
-            <h2 className="mb-3 text-sm font-semibold uppercase text-gray-500">
+            <h2 className="mb-3 text-sm font-semibold uppercase text-gray-500 dark:text-gray-400">
               Topics
               {selectedTag && (
                 <button
                   onClick={() => setSelectedTag(null)}
-                  className="ml-2 text-xs font-normal normal-case text-blue-500 hover:text-blue-700"
+                  className="ml-2 text-xs font-normal normal-case text-blue-500 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300"
                 >
                   Clear filter
                 </button>
               )}
             </h2>
-            <div className="rounded-xl border border-gray-200 bg-white p-5">
+            <div className="rounded-xl border border-gray-200 bg-white p-5 dark:border-gray-700 dark:bg-gray-900">
               {data.tags.length > 0 ? (
                 <div className="flex flex-wrap gap-2">
                   {data.tags.map(({ tag, count }) => {
@@ -168,14 +168,14 @@ export default function DashboardPage() {
                         className={`rounded-full px-3 py-1 transition-colors ${
                           isActive
                             ? 'bg-blue-500 text-white'
-                            : 'bg-gray-100 text-gray-700 hover:bg-blue-50 hover:text-blue-600'
+                            : 'bg-gray-100 text-gray-700 hover:bg-blue-50 hover:text-blue-600 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700'
                         }`}
                         style={{ fontSize: `${scale}rem` }}
                       >
                         {tag}
                         <span
                           className={`ml-1 text-xs ${
-                            isActive ? 'text-blue-200' : 'text-gray-400'
+                            isActive ? 'text-blue-200' : 'text-gray-400 dark:text-gray-500'
                           }`}
                         >
                           {count}
@@ -185,45 +185,45 @@ export default function DashboardPage() {
                   })}
                 </div>
               ) : (
-                <p className="text-sm text-gray-400">No topics yet</p>
+                <p className="text-sm text-gray-400 dark:text-gray-500">No topics yet</p>
               )}
             </div>
 
             {/* Recent conversations */}
-            <h2 className="mb-3 mt-8 text-sm font-semibold uppercase text-gray-500">
+            <h2 className="mb-3 mt-8 text-sm font-semibold uppercase text-gray-500 dark:text-gray-400">
               Recent Conversations
             </h2>
-            <div className="rounded-xl border border-gray-200 bg-white">
+            <div className="rounded-xl border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900">
               {data.recentConversations.length > 0 ? (
                 data.recentConversations.map((conv, i) => (
                   <a
                     key={conv.id}
                     href={`/conversation/${conv.id}`}
-                    className={`block px-4 py-3 text-sm text-gray-700 hover:bg-gray-50 ${
-                      i > 0 ? 'border-t border-gray-100' : ''
+                    className={`block px-4 py-3 text-sm text-gray-700 hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-800 ${
+                      i > 0 ? 'border-t border-gray-100 dark:border-gray-800' : ''
                     }`}
                   >
                     <div className="truncate font-medium">{conv.title}</div>
-                    <div className="text-xs text-gray-400">
+                    <div className="text-xs text-gray-400 dark:text-gray-500">
                       {data.isAdmin && (
-                        <span className="mr-1 text-gray-500">{conv.userName} &middot;</span>
+                        <span className="mr-1 text-gray-500 dark:text-gray-400">{conv.userName} &middot;</span>
                       )}
                       {new Date(conv.createdAt).toLocaleDateString('en-GB')}
                     </div>
                   </a>
                 ))
               ) : (
-                <p className="p-4 text-sm text-gray-400">No conversations yet</p>
+                <p className="p-4 text-sm text-gray-400 dark:text-gray-500">No conversations yet</p>
               )}
             </div>
           </div>
 
           {/* Timeline */}
           <div className="lg:col-span-2">
-            <h2 className="mb-3 text-sm font-semibold uppercase text-gray-500">
+            <h2 className="mb-3 text-sm font-semibold uppercase text-gray-500 dark:text-gray-400">
               Knowledge Timeline
               {selectedTag && (
-                <span className="ml-2 text-xs font-normal normal-case text-gray-400">
+                <span className="ml-2 text-xs font-normal normal-case text-gray-400 dark:text-gray-500">
                   Filtered by: {selectedTag}
                 </span>
               )}
@@ -233,7 +233,7 @@ export default function DashboardPage() {
                 filteredEntries.map((entry) => (
                   <div
                     key={entry.id}
-                    className="rounded-xl border border-gray-200 bg-white p-4"
+                    className="rounded-xl border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-900"
                   >
                     <div className="mb-2 flex items-center justify-between">
                       <div className="flex items-center gap-2">
@@ -244,15 +244,15 @@ export default function DashboardPage() {
                               CATEGORY_COLORS[entry.category] || '#6b7280',
                           }}
                         />
-                        <span className="text-xs font-medium uppercase text-gray-500">
+                        <span className="text-xs font-medium uppercase text-gray-500 dark:text-gray-400">
                           {CATEGORY_LABELS[entry.category] || entry.category}
                         </span>
                       </div>
-                      <span className="text-xs text-gray-400">
+                      <span className="text-xs text-gray-400 dark:text-gray-500">
                         {new Date(entry.createdAt).toLocaleDateString('en-GB')}
                       </span>
                     </div>
-                    <p className="text-sm leading-relaxed text-gray-800">
+                    <p className="text-sm leading-relaxed text-gray-800 dark:text-gray-200">
                       {entry.content}
                     </p>
                     {entry.tags && (
@@ -264,7 +264,7 @@ export default function DashboardPage() {
                             <button
                               key={`${entry.id}-${i}`}
                               onClick={() => setSelectedTag(t.toLowerCase())}
-                              className="rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-500 hover:bg-blue-50 hover:text-blue-600"
+                              className="rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-500 hover:bg-blue-50 hover:text-blue-600 dark:bg-gray-800 dark:text-gray-400 dark:hover:bg-gray-700"
                             >
                               {t}
                             </button>
@@ -275,7 +275,7 @@ export default function DashboardPage() {
                   </div>
                 ))
               ) : (
-                <div className="rounded-xl border border-gray-200 bg-white p-8 text-center text-sm text-gray-400">
+                <div className="rounded-xl border border-gray-200 bg-white p-8 text-center text-sm text-gray-400 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-500">
                   {selectedTag
                     ? `No entries tagged with "${selectedTag}"`
                     : 'No knowledge entries yet — start asking questions!'}
@@ -291,9 +291,9 @@ export default function DashboardPage() {
 
 function StatCard({ label, value }: { label: string; value: number }) {
   return (
-    <div className="rounded-xl border border-gray-200 bg-white p-4">
-      <div className="text-sm text-gray-500">{label}</div>
-      <div className="mt-1 text-3xl font-bold text-gray-900">{value}</div>
+    <div className="rounded-xl border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-900">
+      <div className="text-sm text-gray-500 dark:text-gray-400">{label}</div>
+      <div className="mt-1 text-3xl font-bold text-gray-900 dark:text-gray-100">{value}</div>
     </div>
   );
 }

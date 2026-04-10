@@ -65,7 +65,7 @@ export default function AdminUsersPage() {
   if (status === 'loading' || loading) {
     return (
       <div className="flex h-screen items-center justify-center">
-        <div className="text-gray-400">Loading...</div>
+        <div className="text-gray-400 dark:text-gray-500">Loading...</div>
       </div>
     );
   }
@@ -87,14 +87,14 @@ export default function AdminUsersPage() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-gray-50">
-      <div className="w-full max-w-4xl rounded-lg bg-white p-8 shadow-md">
-        <h1 className="mb-6 text-xl font-bold text-gray-900">Users</h1>
+    <div className="flex min-h-screen items-center justify-center bg-gray-50 dark:bg-gray-950">
+      <div className="w-full max-w-4xl rounded-lg bg-white p-8 shadow-md dark:bg-gray-900 dark:shadow-gray-900">
+        <h1 className="mb-6 text-xl font-bold text-gray-900 dark:text-gray-100">Users</h1>
 
         <div className="overflow-x-auto">
           <table className="w-full text-left text-sm">
             <thead>
-              <tr className="border-b border-gray-200 text-gray-500">
+              <tr className="border-b border-gray-200 text-gray-500 dark:border-gray-700 dark:text-gray-400">
                 <th className="pb-3 pr-4 font-medium">Name</th>
                 <th className="pb-3 pr-4 font-medium">Email</th>
                 <th className="pb-3 pr-4 font-medium">Role</th>
@@ -107,9 +107,9 @@ export default function AdminUsersPage() {
               {users.map((user) => {
                 const isSelf = user.id === currentUserId;
                 return (
-                  <tr key={user.id} className="border-b border-gray-100">
-                    <td className="py-3 pr-4 text-gray-900">{user.name}</td>
-                    <td className="py-3 pr-4 text-gray-500">{user.email}</td>
+                  <tr key={user.id} className="border-b border-gray-100 dark:border-gray-800">
+                    <td className="py-3 pr-4 text-gray-900 dark:text-gray-100">{user.name}</td>
+                    <td className="py-3 pr-4 text-gray-500 dark:text-gray-400">{user.email}</td>
                     <td className="py-3 pr-4">
                       {isSelf ? (
                         <span className="rounded-full bg-blue-100 px-2 py-0.5 text-xs text-blue-700">
@@ -121,7 +121,7 @@ export default function AdminUsersPage() {
                           className={
                             user.role === 'admin'
                               ? 'rounded-full bg-blue-100 px-2 py-0.5 text-xs text-blue-700 hover:bg-blue-200'
-                              : 'rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-600 hover:bg-gray-200'
+                              : 'rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-600 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-400 dark:hover:bg-gray-700'
                           }
                           title={`Click to change to ${user.role === 'admin' ? 'user' : 'admin'}`}
                         >
@@ -134,18 +134,18 @@ export default function AdminUsersPage() {
                         className={
                           user.claudeLinked
                             ? 'inline-block h-2 w-2 rounded-full bg-green-500'
-                            : 'inline-block h-2 w-2 rounded-full bg-gray-300'
+                            : 'inline-block h-2 w-2 rounded-full bg-gray-300 dark:bg-gray-600'
                         }
                       />
                     </td>
-                    <td className="py-3 pr-4 text-gray-500">
+                    <td className="py-3 pr-4 text-gray-500 dark:text-gray-400">
                       {new Date(user.createdAt).toLocaleDateString('en-GB')}
                     </td>
                     <td className="py-3">
                       {!isSelf && (
                         <button
                           onClick={() => deleteUser(user.id, user.name)}
-                          className="text-xs text-gray-400 hover:text-red-500"
+                          className="text-xs text-gray-400 hover:text-red-500 dark:text-gray-500"
                           title="Delete user"
                         >
                           Delete
@@ -159,8 +159,8 @@ export default function AdminUsersPage() {
           </table>
         </div>
 
-        <div className="mt-6 border-t border-gray-200 pt-4">
-          <Link href="/" className="text-sm text-blue-600 hover:text-blue-700">
+        <div className="mt-6 border-t border-gray-200 pt-4 dark:border-gray-700">
+          <Link href="/" className="text-sm text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300">
             &larr; Back to chat
           </Link>
         </div>
