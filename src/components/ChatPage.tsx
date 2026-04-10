@@ -9,10 +9,18 @@ import ChatMessages from '@/components/ChatMessages';
 import ChatInput from '@/components/ChatInput';
 import LinkClaudeModal from '@/components/LinkClaudeModal';
 
+interface Attachment {
+  id: string;
+  filename: string;
+  mimeType: string;
+  size: number;
+}
+
 interface Message {
   id: string;
   role: 'user' | 'assistant';
   content: string;
+  attachments?: Attachment[];
 }
 
 interface Flag {
@@ -77,10 +85,11 @@ export default function ChatPage({ initialConversationId }: { initialConversatio
     if (!res.ok) return;
     const data = await res.json();
     setMessages(
-      data.messages.map((m: { id: string; role: string; content: string }) => ({
+      data.messages.map((m: { id: string; role: string; content: string; attachments?: Attachment[] }) => ({
         id: m.id,
         role: m.role,
         content: m.content,
+        attachments: m.attachments,
       }))
     );
     if (data.flags) {
@@ -107,10 +116,11 @@ export default function ChatPage({ initialConversationId }: { initialConversatio
       const res = await fetch(`/api/conversations/${convId}`);
       if (!res.ok || cancelled) return;
       const data = await res.json();
-      const msgs: Message[] = data.messages.map((m: { id: string; role: string; content: string }) => ({
+      const msgs: Message[] = data.messages.map((m: { id: string; role: string; content: string; attachments?: Attachment[] }) => ({
         id: m.id,
         role: m.role,
         content: m.content,
+        attachments: m.attachments,
       }));
       setMessages(msgs);
       if (data.flags) {
@@ -165,11 +175,12 @@ export default function ChatPage({ initialConversationId }: { initialConversatio
     knowledgeConfettiFired.current = false;
   };
 
-  const handleSend = async (message: string) => {
+  const handleSend = async (message: string, attachments: Attachment[] = []) => {
+    const attachmentIds = attachments.map((a) => a.id);
     const tempId = `temp-${Date.now()}`;
     setMessages((prev) => [
       ...prev,
-      { id: tempId, role: 'user', content: message },
+      { id: tempId, role: 'user', content: message, attachments },
     ]);
     setIsLoading(true);
     setStreamingContent('');
@@ -179,7 +190,7 @@ export default function ChatPage({ initialConversationId }: { initialConversatio
       const res = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ conversationId, message }),
+        body: JSON.stringify({ conversationId, message, attachmentIds }),
       });
 
       if (res.status === 403) {

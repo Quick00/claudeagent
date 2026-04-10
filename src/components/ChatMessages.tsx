@@ -3,10 +3,18 @@
 import { useEffect, useRef, useState } from 'react';
 import MessageBubble from './MessageBubble';
 
+interface Attachment {
+  id: string;
+  filename: string;
+  mimeType: string;
+  size: number;
+}
+
 interface Message {
   id: string;
   role: 'user' | 'assistant';
   content: string;
+  attachments?: Attachment[];
 }
 
 interface Flag {
@@ -102,7 +110,7 @@ export default function ChatMessages({
       <div className="mx-auto max-w-3xl space-y-4">
         {messages.map((msg) => (
           <div key={msg.id} className="animate-message-in">
-            <MessageBubble role={msg.role} content={msg.content} />
+            <MessageBubble role={msg.role} content={msg.content} attachments={msg.attachments} />
           </div>
         ))}
         {flags

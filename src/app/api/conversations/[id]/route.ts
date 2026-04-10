@@ -1,6 +1,7 @@
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
+import { deleteUploadedFile } from '@/lib/upload';
 import { NextResponse } from 'next/server';
 
 export async function GET(
@@ -27,6 +28,11 @@ export async function GET(
     include: {
       messages: {
         orderBy: { createdAt: 'asc' },
+        include: {
+          attachments: {
+            select: { id: true, filename: true, mimeType: true, size: true },
+          },
+        },
       },
       flags: {
         include: {
@@ -70,6 +76,17 @@ export async function DELETE(
 
   if (!conversation) {
     return new Response('Not found', { status: 404 });
+  }
+
+  // Delete uploaded files for this conversation
+  const messages = await prisma.message.findMany({
+    where: { conversationId: id },
+    include: { attachments: true },
+  });
+  for (const msg of messages) {
+    for (const attachment of msg.attachments) {
+      await deleteUploadedFile(attachment.storagePath);
+    }
   }
 
   await prisma.conversation.delete({
