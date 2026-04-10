@@ -68,10 +68,10 @@ export default function ChatMessages({
     return (
       <div className="flex flex-1 items-center justify-center">
         <div className="w-full max-w-2xl px-6">
-          <h2 className="mb-2 text-center text-xl font-medium text-gray-800">
+          <h2 className="mb-2 text-center text-xl font-medium text-gray-800 dark:text-gray-100">
             Codebase Q&A
           </h2>
-          <p className="mb-8 text-center text-sm text-gray-400">
+          <p className="mb-8 text-center text-sm text-gray-400 dark:text-gray-500">
             Ask a question about how the product works
           </p>
           <div className="grid grid-cols-2 gap-3">
@@ -79,14 +79,14 @@ export default function ChatMessages({
               <button
                 key={`${i}-${q}`}
                 onClick={() => onSendSuggestion(q)}
-                className="rounded-xl border cursor-pointer border-gray-200 bg-white px-4 py-3 text-left text-sm text-gray-600 transition-colors hover:border-blue-300 hover:bg-blue-50"
+                className="rounded-xl border cursor-pointer border-gray-200 bg-white px-4 py-3 text-left text-sm text-gray-600 transition-colors hover:border-blue-300 hover:bg-blue-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:border-blue-600 dark:hover:bg-gray-700"
               >
                 {q}
               </button>
             ))}
           </div>
           {recentQuestions.length > 0 && (
-            <p className="mt-4 text-center text-xs text-gray-400">
+            <p className="mt-4 text-center text-xs text-gray-400 dark:text-gray-500">
               Based on recent questions
             </p>
           )}
@@ -124,7 +124,7 @@ export default function ChatMessages({
               <span className="h-2 w-2 animate-bounce rounded-full bg-blue-400 [animation-delay:-0.15s]" />
               <span className="h-2 w-2 animate-bounce rounded-full bg-blue-400" />
             </div>
-            <span className="text-sm text-gray-500">
+            <span className="text-sm text-gray-500 dark:text-gray-400">
               {toolStatus || 'Thinking...'}
             </span>
           </div>

@@ -140,7 +140,7 @@ export default function ChatPage({ initialConversationId }: { initialConversatio
   if (status === 'loading') {
     return (
       <div className="flex h-screen items-center justify-center">
-        <div className="text-gray-400">Loading...</div>
+        <div className="text-gray-400 dark:text-gray-500">Loading...</div>
       </div>
     );
   }
@@ -322,10 +322,10 @@ export default function ChatPage({ initialConversationId }: { initialConversatio
         {claudeLinked === false ? (
           <div className="flex flex-1 flex-col items-center justify-center gap-4 p-8">
             <div className="text-center">
-              <h2 className="mb-2 text-lg font-semibold text-gray-900">
+              <h2 className="mb-2 text-lg font-semibold text-gray-900 dark:text-gray-100">
                 Link your Claude account
               </h2>
-              <p className="mb-4 max-w-sm text-sm text-gray-500">
+              <p className="mb-4 max-w-sm text-sm text-gray-500 dark:text-gray-400">
                 To start asking questions, you need to link your Claude account.
                 This requires a Claude Max, Pro, or Team subscription.
               </p>
@@ -340,7 +340,7 @@ export default function ChatPage({ initialConversationId }: { initialConversatio
         ) : (
           <>
             {conversationId && (
-              <div className="flex items-center justify-between border-b border-gray-200 px-4 py-2">
+              <div className="flex items-center justify-between border-b border-gray-200 px-4 py-2 dark:border-gray-700">
                 <div />
                 <div className="relative">
                   <button
@@ -349,7 +349,7 @@ export default function ChatPage({ initialConversationId }: { initialConversatio
                     className={`flex items-center gap-1 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${
                       hasPendingFlag
                         ? 'bg-red-50 text-red-600'
-                        : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+                        : 'bg-gray-100 text-gray-500 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-400 dark:hover:bg-gray-700'
                     } disabled:cursor-not-allowed disabled:opacity-50`}
                     title={hasPendingFlag ? 'Already flagged' : 'Flag this conversation'}
                   >
@@ -359,18 +359,18 @@ export default function ChatPage({ initialConversationId }: { initialConversatio
                     {hasPendingFlag ? 'Flagged' : 'Flag'}
                   </button>
                   {showFlagForm && (
-                    <div className="absolute right-0 top-full z-10 mt-1 w-72 rounded-lg border border-gray-200 bg-white p-3 shadow-lg">
+                    <div className="absolute right-0 top-full z-10 mt-1 w-72 rounded-lg border border-gray-200 bg-white p-3 shadow-lg dark:border-gray-700 dark:bg-gray-800">
                       <textarea
                         value={flagReason}
                         onChange={(e) => setFlagReason(e.target.value)}
                         placeholder="What was wrong? (optional)"
-                        className="w-full resize-none rounded-md border border-gray-200 p-2 text-sm focus:border-blue-300 focus:outline-none"
+                        className="w-full resize-none rounded-md border border-gray-200 p-2 text-sm focus:border-blue-300 focus:outline-none dark:border-gray-600 dark:bg-gray-900 dark:text-gray-100"
                         rows={2}
                       />
                       <div className="mt-2 flex justify-end gap-2">
                         <button
                           onClick={() => { setShowFlagForm(false); setFlagReason(''); }}
-                          className="rounded-md px-3 py-1 text-xs text-gray-500 hover:bg-gray-100"
+                          className="rounded-md px-3 py-1 text-xs text-gray-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-700"
                         >
                           Cancel
                         </button>
