@@ -61,10 +61,13 @@ export const onRequestError: Instrumentation.onRequestError = (...args) => {
 Next.js client instrumentation hook. Runs before React hydration.
 
 ```ts
-import "./sentry.client.config";
+import * as Sentry from "@sentry/nextjs";
+import "../sentry.client.config";
+
+export const onRouterTransitionStart = Sentry.captureRouterTransitionStart;
 ```
 
-Note: The import path will be `../sentry.client.config` since this file is in `src/`.
+The `onRouterTransitionStart` export gives Sentry navigation breadcrumbs for richer error context.
 
 ### `src/app/global-error.tsx`
 Root error boundary. Catches uncaught React rendering errors and reports to Sentry.
@@ -111,7 +114,6 @@ const nextConfig = {
 
 export default withSentryConfig(nextConfig, {
   silent: true, // suppress source map upload logs
-  disableLogger: true,
 });
 ```
 
