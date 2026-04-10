@@ -43,9 +43,10 @@ export async function POST(request: Request) {
   const userClaudeToken = tokenResult.token;
 
   const body = await request.json();
-  const { conversationId, message } = body as {
+  const { conversationId, message, attachmentIds } = body as {
     conversationId: string | null;
     message: string;
+    attachmentIds?: string[];
   };
 
   if (!message?.trim()) {
@@ -70,13 +71,36 @@ export async function POST(request: Request) {
     });
   }
 
-  await prisma.message.create({
+  const userMessage = await prisma.message.create({
     data: {
       conversationId: conversation.id,
       role: 'user',
       content: message,
     },
   });
+
+  // Link attachments to the user message and build image references for CLI
+  let cliMessage = message;
+  if (attachmentIds && attachmentIds.length > 0) {
+    const attachments = await prisma.attachment.findMany({
+      where: { id: { in: attachmentIds.slice(0, config.maxFilesPerMessage) } },
+    });
+
+    if (attachments.length > 0) {
+      // Link attachments to the message
+      await prisma.attachment.updateMany({
+        where: { id: { in: attachments.map((a) => a.id) } },
+        data: { messageId: userMessage.id },
+      });
+
+      // Append image paths to the message for Claude CLI
+      const imageLines = attachments.map((a) => {
+        const sizeKB = (a.size / 1024).toFixed(1);
+        return `- ${a.storagePath} (${a.filename}, ${sizeKB}KB)`;
+      });
+      cliMessage += `\n\n---\nThe user attached ${attachments.length} image(s). Read each one with the Read tool before responding:\n${imageLines.join('\n')}`;
+    }
+  }
 
   let knowledgeEntries: { id: string; category: string; content: string; tags: string; source: string | null; createdAt: Date }[] = [];
   try {
@@ -250,8 +274,8 @@ Keep entries concise (1-2 sentences). Always include 1-3 lowercase tags.`;
                   retrying = true;
                   const retryRequestId = `${conversation.id}-retry-${Date.now()}`;
                   const retryProcOrPromise = conversation.claudeSessionId
-                    ? sessionManager.resumeSession(retryRequestId, conversation.claudeSessionId, message, userClaudeToken, userId)
-                    : sessionManager.startSession(retryRequestId, message, systemPrompt, userClaudeToken, userId);
+                    ? sessionManager.resumeSession(retryRequestId, conversation.claudeSessionId, cliMessage, userClaudeToken, userId)
+                    : sessionManager.startSession(retryRequestId, cliMessage, systemPrompt, userClaudeToken, userId);
 
                   if (retryProcOrPromise instanceof Promise) {
                     retryProcOrPromise.then((retryProc) => attachProcess(retryProc, retryCount + 1)).catch((err) => {
@@ -330,8 +354,8 @@ Keep entries concise (1-2 sentences). Always include 1-3 lowercase tags.`;
       console.log(`[chat] Starting request (requestId=${requestId}, conversationId=${conversation.id}, resume=${!!conversation.claudeSessionId}, knowledgeEntries=${knowledgeEntries.length})`);
 
       const procOrPromise = conversation.claudeSessionId
-        ? sessionManager.resumeSession(requestId, conversation.claudeSessionId, message, userClaudeToken, userId)
-        : sessionManager.startSession(requestId, message, systemPrompt, userClaudeToken, userId);
+        ? sessionManager.resumeSession(requestId, conversation.claudeSessionId, cliMessage, userClaudeToken, userId)
+        : sessionManager.startSession(requestId, cliMessage, systemPrompt, userClaudeToken, userId);
 
       if (procOrPromise instanceof Promise) {
         procOrPromise.then((proc) => {
