@@ -2,7 +2,7 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { config } from '@/lib/config';
-import { validateMagicBytes, getExtensionFromMime, sanitizeFilename, saveUploadedFile } from '@/lib/upload';
+import { validateMagicBytes, getExtensionFromMime, sanitizeFilename, saveUploadedFile, deleteUploadedFile } from '@/lib/upload';
 import { NextResponse } from 'next/server';
 
 export async function POST(request: Request) {
@@ -42,15 +42,21 @@ export async function POST(request: Request) {
   const dirKey = conversationId || 'temp';
   const { storagePath, id: fileId } = await saveUploadedFile(buffer, dirKey, ext);
 
-  const attachment = await prisma.attachment.create({
-    data: {
-      id: fileId,
-      filename: sanitizeFilename(file.name),
-      storagePath,
-      mimeType: detectedMime,
-      size: buffer.length,
-    },
-  });
+  let attachment;
+  try {
+    attachment = await prisma.attachment.create({
+      data: {
+        id: fileId,
+        filename: sanitizeFilename(file.name),
+        storagePath,
+        mimeType: detectedMime,
+        size: buffer.length,
+      },
+    });
+  } catch (err) {
+    await deleteUploadedFile(storagePath);
+    throw err;
+  }
 
   return NextResponse.json({
     id: attachment.id,
