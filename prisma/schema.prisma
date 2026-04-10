@@ -39,6 +39,18 @@ model Message {
   content        String
   createdAt      DateTime     @default(now())
   conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  attachments    Attachment[]
+}
+
+model Attachment {
+  id          String   @id @default(uuid())
+  messageId   String?
+  filename    String
+  storagePath String
+  mimeType    String
+  size        Int
+  createdAt   DateTime @default(now())
+  message     Message? @relation(fields: [messageId], references: [id], onDelete: Cascade)
 }
 
 model KnowledgeEntry {
