@@ -1,6 +1,3 @@
--- DropIndex
-DROP INDEX "KnowledgeEntry_embedding_idx";
-
 -- CreateTable
 CREATE TABLE "Attachment" (
     "id" TEXT NOT NULL,
