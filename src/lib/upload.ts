@@ -58,10 +58,14 @@ export async function saveUploadedFile(
   ext: string
 ): Promise<{ storagePath: string; id: string }> {
   const id = randomUUID();
-  const dir = path.join(config.uploadPath, conversationId);
+  const uploadRoot = path.resolve(config.uploadPath);
+  const dir = path.resolve(path.join(uploadRoot, conversationId));
+  if (dir !== uploadRoot && !dir.startsWith(uploadRoot + path.sep)) {
+    throw new Error('Invalid upload path');
+  }
   await mkdir(dir, { recursive: true });
   const filename = `${id}.${ext}`;
-  const storagePath = path.join(dir, filename);
+  const storagePath = path.resolve(path.join(dir, filename));
   await writeFile(storagePath, buffer);
   return { storagePath, id };
 }
