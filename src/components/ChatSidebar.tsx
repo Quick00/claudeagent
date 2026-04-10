@@ -26,6 +26,8 @@ export default function ChatSidebar({
   const { data: session } = useSession();
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [rawNotificationConvIds, setRawNotificationConvIds] = useState<Set<string>>(new Set());
+  const [pendingFlagCount, setPendingFlagCount] = useState(0);
+  const isAdmin = (session?.user as Record<string, unknown>)?.role === 'admin';
 
   useEffect(() => {
     fetch('/api/conversations')
@@ -48,6 +50,21 @@ export default function ChatSidebar({
     const interval = setInterval(fetchNotifications, 30000);
     return () => clearInterval(interval);
   }, [refreshTrigger]);
+
+  useEffect(() => {
+    if (!isAdmin) return;
+
+    const fetchPendingFlags = () => {
+      fetch('/api/flags/admin-notifications')
+        .then((res) => res.json())
+        .then((data) => setPendingFlagCount(data.count ?? 0))
+        .catch(() => {});
+    };
+
+    fetchPendingFlags();
+    const interval = setInterval(fetchPendingFlags, 30000);
+    return () => clearInterval(interval);
+  }, [isAdmin, refreshTrigger]);
 
   const notificationConvIds = useMemo(() => {
     if (!activeConversationId) return rawNotificationConvIds;
@@ -121,7 +138,7 @@ export default function ChatSidebar({
           </svg>
           Knowledge Map
         </a>
-        {(session?.user as Record<string, unknown>)?.role === 'admin' && (
+        {isAdmin && (
           <a
             href="/admin/users"
             className="flex w-full items-center justify-center gap-2 rounded-lg bg-gray-100 px-3 py-2 text-sm text-gray-600 hover:bg-gray-200"
@@ -132,7 +149,7 @@ export default function ChatSidebar({
             Users
           </a>
         )}
-        {(session?.user as Record<string, unknown>)?.role === 'admin' && (
+        {isAdmin && (
           <a
             href="/admin/flags"
             className="flex w-full items-center justify-center gap-2 rounded-lg bg-gray-100 px-3 py-2 text-sm text-gray-600 hover:bg-gray-200"
@@ -141,6 +158,11 @@ export default function ChatSidebar({
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 21v-4m0 0V5a2 2 0 012-2h6.5l1 1H21l-3 6 3 6h-8.5l-1-1H5a2 2 0 00-2 2zm9-13.5V9" />
             </svg>
             Flags
+            {pendingFlagCount > 0 && (
+              <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-red-500 px-1.5 text-xs font-medium text-white">
+                {pendingFlagCount}
+              </span>
+            )}
           </a>
         )}
         <a
