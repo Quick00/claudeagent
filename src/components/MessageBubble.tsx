@@ -24,7 +24,7 @@ export default function MessageBubble({ role, content, adminName, timestamp, att
   if (role === 'user') {
     return (
       <div className="flex justify-end">
-        <div className="max-w-[75%]">
+        <div className="max-w-[90%] lg:max-w-[75%]">
           {imageAttachments.length > 0 && (
             <div className="mb-2 flex flex-wrap justify-end gap-2">
               {imageAttachments.map((att) => (
@@ -37,7 +37,7 @@ export default function MessageBubble({ role, content, adminName, timestamp, att
                   <img
                     src={`/api/upload/${att.id}`}
                     alt={att.filename}
-                    className="max-h-[200px] max-w-[300px] rounded-xl border border-blue-400 object-contain"
+                    className="max-h-[200px] max-w-[200px] lg:max-w-[300px] rounded-xl border border-blue-400 object-contain"
                   />
                 </a>
               ))}
