@@ -89,7 +89,7 @@ export default function ChatSidebar({
 
   return (
     <>
-      {/* Backdrop — only visible on mobile when open */}
+      {/* Backdrop — visible on mobile when open */}
       {isOpen && (
         <div
           className="fixed inset-0 z-40 bg-black/50 lg:hidden"
@@ -97,24 +97,24 @@ export default function ChatSidebar({
         />
       )}
 
-      {/* Sidebar container */}
+      {/* Sidebar container: mobile=overlay, desktop=in-place collapse */}
       <div
         className={`
-          fixed inset-y-0 left-0 z-50 flex w-64 flex-col border-r border-gray-200 bg-gray-50 transition-transform duration-200 ease-in-out dark:border-gray-700 dark:bg-gray-900
-          lg:static lg:translate-x-0 lg:transition-none
-          ${isOpen ? 'translate-x-0' : '-translate-x-full'}
+          flex w-64 flex-shrink-0 flex-col border-r border-gray-200 bg-gray-50 transition-all duration-200 ease-in-out dark:border-gray-700 dark:bg-gray-900
+          max-lg:fixed max-lg:inset-y-0 max-lg:left-0 max-lg:z-50
+          ${isOpen ? 'translate-x-0' : 'max-lg:-translate-x-full lg:ml-[-256px] lg:overflow-hidden lg:border-r-0'}
         `}
       >
       <div className="p-4">
-        <div className="mb-2 flex items-center justify-between lg:hidden">
+        <div className="mb-2 flex items-center justify-between">
           <span className="text-sm font-medium text-gray-700 dark:text-gray-200">Conversations</span>
           <button
             onClick={onClose}
             className="rounded-lg p-1.5 text-gray-500 hover:bg-gray-200 dark:text-gray-400 dark:hover:bg-gray-700"
-            aria-label="Close sidebar"
+            aria-label="Collapse sidebar"
           >
             <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 19l-7-7 7-7m8 14l-7-7 7-7" />
             </svg>
           </button>
         </div>
