@@ -51,10 +51,10 @@ export async function syncRepo({ localPath, branch, token, gitlabUrl }: SyncOpti
   makeWritable(localPath);
 
   try {
+    // Fetch using the authed URL directly — avoids persisting the token in .git/config
     const authedUrl = injectToken(gitlabUrl, token);
-    execFileSync('git', ['remote', 'set-url', 'origin', authedUrl], { cwd: localPath, stdio: 'pipe' });
-    execFileSync('git', ['fetch', 'origin', branch], { cwd: localPath, timeout: 120000, stdio: 'pipe' });
-    execFileSync('git', ['reset', '--hard', `origin/${branch}`], { cwd: localPath, stdio: 'pipe' });
+    execFileSync('git', ['fetch', authedUrl, branch], { cwd: localPath, timeout: 120000, stdio: 'pipe' });
+    execFileSync('git', ['reset', '--hard', 'FETCH_HEAD'], { cwd: localPath, stdio: 'pipe' });
   } finally {
     makeReadOnly(localPath);
   }

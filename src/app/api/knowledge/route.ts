@@ -82,7 +82,7 @@ export async function GET() {
   const entries = await prisma.knowledgeEntry.findMany({
     where,
     orderBy: { createdAt: 'desc' },
-    include: { repository: { select: { name: true } } },
+    ...(session?.user?.email ? { include: { repository: { select: { name: true } } } } : {}),
   });
   return NextResponse.json(entries);
 }

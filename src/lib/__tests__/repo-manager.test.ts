@@ -69,18 +69,18 @@ describe('repo-manager', () => {
       // chmod u+w (make writable)
       expect(calls[0][0]).toBe('chmod');
       expect(calls[0][1]).toEqual(['-R', 'u+w', repoPath]);
-      // git remote set-url
+      // git fetch with authed URL (no set-url — avoids persisting token in .git/config)
       expect(calls[1][0]).toBe('git');
-      expect(calls[1][1]).toEqual(expect.arrayContaining(['remote', 'set-url', 'origin']));
-      // git fetch
+      expect(calls[1][1]).toEqual(expect.arrayContaining(['fetch']));
+      const fetchArgs = calls[1][1] as string[];
+      expect(fetchArgs.some((a: string) => a.includes('oauth2:'))).toBe(true);
+      expect(fetchArgs).toContain('main');
+      // git reset --hard FETCH_HEAD
       expect(calls[2][0]).toBe('git');
-      expect(calls[2][1]).toEqual(expect.arrayContaining(['fetch', 'origin', 'main']));
-      // git reset --hard
-      expect(calls[3][0]).toBe('git');
-      expect(calls[3][1]).toEqual(expect.arrayContaining(['reset', '--hard', 'origin/main']));
+      expect(calls[2][1]).toEqual(expect.arrayContaining(['reset', '--hard', 'FETCH_HEAD']));
       // chmod a-w (make read-only)
-      expect(calls[4][0]).toBe('chmod');
-      expect(calls[4][1]).toEqual(['-R', 'a-w', repoPath]);
+      expect(calls[3][0]).toBe('chmod');
+      expect(calls[3][1]).toEqual(['-R', 'a-w', repoPath]);
     });
   });
 });
