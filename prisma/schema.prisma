@@ -25,9 +25,11 @@ model Conversation {
   userId          String
   title           String
   claudeSessionId String?
+  repositoryId    String?
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
   user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  repository      Repository? @relation(fields: [repositoryId], references: [id])
   messages        Message[]
   flags           Flag[]
 }
@@ -59,8 +61,10 @@ model KnowledgeEntry {
   content   String
   tags      String                          @default("")
   source    String?
+  repositoryId String?
   embedding Unsupported("vector(1024)")?
   createdAt DateTime                        @default(now())
+  repository Repository? @relation(fields: [repositoryId], references: [id])
 }
 
 model Flag {
@@ -78,4 +82,21 @@ model Flag {
   conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
   user           User         @relation("UserFlags", fields: [userId], references: [id], onDelete: Cascade)
   admin          User?        @relation("AdminFlags", fields: [adminId], references: [id], onDelete: SetNull)
+}
+
+model Repository {
+  id               String    @id @default(uuid())
+  name             String
+  description      String
+  gitlabProjectId  Int       @unique
+  gitlabUrl        String
+  defaultBranch    String    @default("main")
+  localPath        String
+  lastPulledAt     DateTime?
+  active           Boolean   @default(true)
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  conversations    Conversation[]
+  knowledgeEntries KnowledgeEntry[]
 }
