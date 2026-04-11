@@ -40,6 +40,12 @@
 | `src/mcp/knowledge-server.mjs` | Pass `repositoryId` in save_knowledge calls |
 | `.env.example` | Add `GITLAB_TOKEN`, `REPOS_DIR`; remove `GITLAB_WEBHOOK_SECRET` |
 
+### Modified Files (Docker/Infra)
+| File | Change |
+|---|---|
+| `docker-entrypoint.sh` | Remove SSH keyscan block, update single-repo chown to multi-repo REPOS_DIR |
+| `docker-compose.yml` | Remove `~/.ssh` volume mount, replace `repo` volume with `repos`, add REPOS_DIR env |
+
 ### Deleted Files
 | File | Reason |
 |---|---|
@@ -1655,12 +1661,14 @@ git commit -m "feat: add periodic repo sync script for cron execution"
 
 ---
 
-## Task 12: Cleanup — Remove Old Webhook and Update Env
+## Task 12: Cleanup — Remove Old Webhook, SSH, and Update Env
 
 **Files:**
 - Delete: `src/app/api/webhook/gitlab/route.ts`
 - Delete: `src/lib/git-pull.ts`
 - Modify: `.env.example`
+- Modify: `docker-entrypoint.sh`
+- Modify: `docker-compose.yml`
 
 - [ ] **Step 1: Delete old webhook route and git-pull utility**
 
@@ -1682,7 +1690,94 @@ grep -r "git-pull" src/ --include="*.ts" --include="*.tsx"
 
 Expected: No results (only the webhook route imported it, which was just deleted).
 
-- [ ] **Step 3: Update `.env.example`**
+- [ ] **Step 3: Remove SSH keyscan from docker-entrypoint.sh**
+
+We no longer use SSH for git — all clones use HTTPS with token auth. Also update the single `/app/repo` chown to use `REPOS_DIR`.
+
+In `docker-entrypoint.sh`, remove the SSH block (lines 11-14):
+
+```sh
+# Ensure SSH known hosts exist for git operations
+if [ -d /home/nextjs/.ssh ] && [ ! -f /home/nextjs/.ssh/known_hosts ]; then
+  su-exec nextjs ssh-keyscan gitlab.com >> /home/nextjs/.ssh/known_hosts 2>/dev/null
+fi
+```
+
+And replace the single-repo chown (line 5):
+
+```sh
+chown -R nextjs:nodejs /app/repo
+```
+
+With multi-repo support:
+
+```sh
+# Fix ownership of repos directory
+if [ -d "${REPOS_DIR:-/app/repos}" ]; then
+  chown -R nextjs:nodejs "${REPOS_DIR:-/app/repos}"
+fi
+```
+
+The final `docker-entrypoint.sh` should be:
+
+```sh
+#!/bin/sh
+set -e
+
+# Fix ownership of repos directory
+if [ -d "${REPOS_DIR:-/app/repos}" ]; then
+  chown -R nextjs:nodejs "${REPOS_DIR:-/app/repos}"
+fi
+
+# Ensure uploads directory exists and is writable
+mkdir -p /app/uploads
+chown -R nextjs:nodejs /app/uploads
+
+echo "Syncing database schema..."
+su-exec nextjs npx prisma db push
+
+echo "Starting server..."
+exec su-exec nextjs node server.js
+```
+
+- [ ] **Step 4: Remove SSH volume mount from docker-compose.yml**
+
+In `docker-compose.yml`, remove the SSH mount (line 27):
+
+```yaml
+      - ~/.ssh:/home/nextjs/.ssh:ro
+```
+
+And replace the single `repo` volume with `repos`:
+
+Change:
+
+```yaml
+    volumes:
+      - repo:/app/repo
+      - claude-sessions:/app/claude-sessions
+      - ~/.ssh:/home/nextjs/.ssh:ro
+      - ./uploads:/app/uploads
+```
+
+To:
+
+```yaml
+    volumes:
+      - repos:/app/repos
+      - claude-sessions:/app/claude-sessions
+      - ./uploads:/app/uploads
+    environment:
+      - SESSIONS_DIR=/app/claude-sessions
+      - UPLOAD_PATH=/app/uploads
+      - REPOS_DIR=/app/repos
+```
+
+And update the volumes section at the bottom:
+
+Change `repo:` to `repos:`.
+
+- [ ] **Step 5: Update `.env.example`**
 
 Replace the GitLab webhook section and add new vars. Change:
 
@@ -1706,7 +1801,7 @@ Mark `REPO_PATH` as legacy/fallback:
 REPO_PATH=/path/to/your/codebase
 ```
 
-- [ ] **Step 4: Update `src/lib/CLAUDE.md`**
+- [ ] **Step 6: Update `src/lib/CLAUDE.md`**
 
 Replace the `git-pull.ts` entry:
 
@@ -1723,7 +1818,7 @@ To:
 - `repo-router.ts` — Route user questions to the best matching repository via OpenRouter.
 ```
 
-- [ ] **Step 5: Verify build**
+- [ ] **Step 7: Verify build**
 
 ```bash
 npm run build 2>&1 | tail -10
@@ -1731,7 +1826,7 @@ npm run build 2>&1 | tail -10
 
 Expected: Build succeeds.
 
-- [ ] **Step 6: Run all tests**
+- [ ] **Step 8: Run all tests**
 
 ```bash
 npm test 2>&1
@@ -1739,11 +1834,22 @@ npm test 2>&1
 
 Expected: All tests pass.
 
-- [ ] **Step 7: Commit**
+- [ ] **Step 9: Verify no SSH or webhook references remain**
+
+```bash
+grep -ri "ssh" src/ docker-entrypoint.sh docker-compose.yml --include="*.ts" --include="*.tsx" --include="*.sh" --include="*.yml"
+grep -r "webhook/gitlab" src/ --include="*.ts" --include="*.tsx"
+grep -r "git-pull" src/ --include="*.ts" --include="*.tsx"
+grep -r "GITLAB_WEBHOOK_SECRET" . --include="*.ts" --include="*.tsx" --include="*.env*"
+```
+
+Expected: No results for any of these.
+
+- [ ] **Step 10: Commit**
 
 ```bash
 git add -A
-git commit -m "chore: remove old GitLab webhook, update env config for multi-repo"
+git commit -m "chore: remove SSH, old GitLab webhook, update Docker for multi-repo"
 ```
 
 ---
@@ -1766,17 +1872,7 @@ npm test 2>&1
 
 Expected: All tests pass.
 
-- [ ] **Step 3: Verify no references to deleted files**
-
-```bash
-grep -r "webhook/gitlab" src/ --include="*.ts" --include="*.tsx"
-grep -r "git-pull" src/ --include="*.ts" --include="*.tsx"
-grep -r "GITLAB_WEBHOOK_SECRET" . --include="*.ts" --include="*.tsx" --include="*.env*"
-```
-
-Expected: No results for any of these.
-
-- [ ] **Step 4: Push branch**
+- [ ] **Step 3: Push branch**
 
 ```bash
 git push origin feature/gitlab-integration
