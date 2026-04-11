@@ -110,7 +110,7 @@ export class SessionManager {
 
     const proc = spawn('claude', args, {
       stdio: ['pipe', 'pipe', 'pipe'],
-      cwd: config.repoPath,
+      cwd: process.cwd(),
       env: {
         ...process.env,
         HOME: userHome,

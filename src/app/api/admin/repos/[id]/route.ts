@@ -66,17 +66,21 @@ export async function DELETE(
     return new Response('Not found', { status: 404 });
   }
 
-  await prisma.conversation.updateMany({
-    where: { repositoryId: id },
-    data: { repositoryId: null },
-  });
-  await prisma.knowledgeEntry.updateMany({
-    where: { repositoryId: id },
-    data: { repositoryId: null },
-  });
-
-  await prisma.repository.delete({ where: { id } });
+  // Remove files first — if this fails, DB stays intact
   await removeRepo(repo.localPath);
+
+  // DB cleanup in a transaction so it's atomic
+  await prisma.$transaction([
+    prisma.conversation.updateMany({
+      where: { repositoryId: id },
+      data: { repositoryId: null },
+    }),
+    prisma.knowledgeEntry.updateMany({
+      where: { repositoryId: id },
+      data: { repositoryId: null },
+    }),
+    prisma.repository.delete({ where: { id } }),
+  ]);
 
   return new Response(null, { status: 204 });
 }

@@ -2,7 +2,6 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { NextResponse } from 'next/server';
-import { config } from '@/lib/config';
 
 // GET: Search GitLab projects
 export async function GET(request: Request) {
@@ -17,24 +16,22 @@ export async function GET(request: Request) {
     return new Response('Forbidden', { status: 403 });
   }
 
-  if (!config.gitlabToken) {
+  if (!process.env.GITLAB_TOKEN) {
     return Response.json({ error: 'GITLAB_TOKEN is not configured' }, { status: 500 });
   }
 
   const { searchParams } = new URL(request.url);
   const query = searchParams.get('q');
-  if (!query) {
-    return new Response('q parameter is required', { status: 400 });
-  }
 
-  const response = await fetch(
-    `https://gitlab.com/api/v4/projects?search=${encodeURIComponent(query)}&membership=true&per_page=20&order_by=last_activity_at`,
-    {
-      headers: {
-        'PRIVATE-TOKEN': config.gitlabToken,
-      },
+  const url = query
+    ? `https://gitlab.com/api/v4/projects?search=${encodeURIComponent(query)}&membership=true&per_page=100&order_by=last_activity_at`
+    : `https://gitlab.com/api/v4/projects?membership=true&per_page=100&order_by=last_activity_at`;
+
+  const response = await fetch(url, {
+    headers: {
+      'PRIVATE-TOKEN': process.env.GITLAB_TOKEN,
     },
-  );
+  });
 
   if (!response.ok) {
     const text = await response.text();

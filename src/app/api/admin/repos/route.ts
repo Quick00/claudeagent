@@ -89,7 +89,7 @@ export async function POST(request: Request) {
     gitlabUrl,
     localPath,
     branch: defaultBranch || 'main',
-    token: config.gitlabToken,
+    token: process.env.GITLAB_TOKEN || '',
   })
     .then(async () => {
       await prisma.repository.update({
