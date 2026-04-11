@@ -93,6 +93,13 @@ export default function KnowledgeGraph() {
     return { nodes: filteredNodes, links: filteredLinks };
   }, [hiddenCategories, allGraphData]);
 
+  useEffect(() => {
+    if (!graphRef.current) return;
+    graphRef.current.d3Force('charge')?.strength(-120);
+    graphRef.current.d3Force('link')?.distance(80);
+    graphRef.current.d3ReheatSimulation();
+  }, [graphData]);
+
   const toggleCategory = (cat: string) => {
     setHiddenCategories((prev) => {
       const next = new Set(prev);
