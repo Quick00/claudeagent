@@ -1,5 +1,18 @@
 import { execFileSync } from 'child_process';
 import fs from 'fs';
+import path from 'path';
+
+function getReposRoot(): string {
+  return path.resolve(process.env.REPOS_DIR || './repos');
+}
+
+function assertWithinReposRoot(dirPath: string): void {
+  const reposRoot = getReposRoot();
+  const resolved = path.resolve(dirPath);
+  if (!resolved.startsWith(reposRoot + path.sep) && resolved !== reposRoot) {
+    throw new Error(`Path "${resolved}" is outside managed repos root "${reposRoot}"`);
+  }
+}
 
 interface CloneOptions {
   gitlabUrl: string;
@@ -61,14 +74,17 @@ export async function syncRepo({ localPath, branch, token, gitlabUrl }: SyncOpti
 }
 
 export function makeReadOnly(dirPath: string): void {
+  assertWithinReposRoot(dirPath);
   execFileSync('chmod', ['-R', 'a-w', dirPath], { stdio: 'pipe' });
 }
 
 export function makeWritable(dirPath: string): void {
+  assertWithinReposRoot(dirPath);
   execFileSync('chmod', ['-R', 'u+w', dirPath], { stdio: 'pipe' });
 }
 
 export async function removeRepo(localPath: string): Promise<void> {
+  assertWithinReposRoot(localPath);
   if (!fs.existsSync(localPath)) return;
   makeWritable(localPath);
   fs.rmSync(localPath, { recursive: true, force: true });

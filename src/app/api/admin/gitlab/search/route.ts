@@ -17,7 +17,7 @@ export async function GET(request: Request) {
   }
 
   if (!process.env.GITLAB_TOKEN) {
-    return Response.json({ error: 'GITLAB_TOKEN is not configured' }, { status: 500 });
+    return NextResponse.json({ error: 'GITLAB_TOKEN is not configured' }, { status: 500 });
   }
 
   const { searchParams } = new URL(request.url);
@@ -27,16 +27,28 @@ export async function GET(request: Request) {
     ? `https://gitlab.com/api/v4/projects?search=${encodeURIComponent(query)}&membership=true&per_page=100&order_by=last_activity_at`
     : `https://gitlab.com/api/v4/projects?membership=true&per_page=100&order_by=last_activity_at`;
 
-  const response = await fetch(url, {
-    headers: {
-      'PRIVATE-TOKEN': process.env.GITLAB_TOKEN,
-    },
-  });
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 10000);
+
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      headers: { 'PRIVATE-TOKEN': process.env.GITLAB_TOKEN },
+      signal: controller.signal,
+    });
+  } catch (err) {
+    if ((err as Error).name === 'AbortError') {
+      return NextResponse.json({ error: 'GitLab API request timed out' }, { status: 504 });
+    }
+    return NextResponse.json({ error: 'Failed to reach GitLab API' }, { status: 502 });
+  } finally {
+    clearTimeout(timeout);
+  }
 
   if (!response.ok) {
     const text = await response.text();
     console.error('[gitlab] Search failed:', response.status, text);
-    return Response.json({ error: 'GitLab API request failed' }, { status: response.status });
+    return NextResponse.json({ error: 'GitLab API request failed' }, { status: response.status });
   }
 
   const projects = await response.json();

@@ -1,3 +1,7 @@
+import os from 'os';
+// Set REPOS_DIR before importing repo-manager (REPOS_ROOT is evaluated at load time)
+process.env.REPOS_DIR = os.tmpdir() + '/repo-manager-test';
+
 import { cloneRepo, syncRepo } from '@/lib/repo-manager';
 import { execFileSync } from 'child_process';
 import fs from 'fs';
