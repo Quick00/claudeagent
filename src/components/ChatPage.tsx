@@ -374,7 +374,7 @@ export default function ChatPage({ initialConversationId }: { initialConversatio
           </div>
         )}
         {claudeLinked === false ? (
-          <div className="flex flex-1 flex-col items-center justify-center gap-4 p-8">
+          <div className="flex flex-1 flex-col items-center justify-center gap-4 p-4 lg:p-8">
             <div className="text-center">
               <h2 className="mb-2 text-lg font-semibold text-gray-900 dark:text-gray-100">
                 Link your Claude account
@@ -394,7 +394,7 @@ export default function ChatPage({ initialConversationId }: { initialConversatio
         ) : (
           <>
             {conversationId && (
-              <div className="flex items-center justify-between border-b border-gray-200 px-4 py-2 dark:border-gray-700">
+              <div className="flex items-center justify-between border-b border-gray-200 px-2 lg:px-4 py-2 dark:border-gray-700">
                 <div />
                 <div className="flex items-center gap-2">
                   <button
@@ -428,7 +428,7 @@ export default function ChatPage({ initialConversationId }: { initialConversatio
                     {hasPendingFlag ? 'Flagged' : 'Flag'}
                   </button>
                   {showFlagForm && (
-                    <div className="absolute right-0 top-full z-10 mt-1 w-72 rounded-lg border border-gray-200 bg-white p-3 shadow-lg dark:border-gray-700 dark:bg-gray-800">
+                    <div className="absolute right-0 top-full z-10 mt-1 w-64 lg:w-72 rounded-lg border border-gray-200 bg-white p-3 shadow-lg dark:border-gray-700 dark:bg-gray-800">
                       <textarea
                         value={flagReason}
                         onChange={(e) => setFlagReason(e.target.value)}
