@@ -22,9 +22,14 @@ function applyTheme(resolved: ResolvedTheme) {
   document.documentElement.classList.toggle('dark', resolved === 'dark');
 }
 
+const VALID_PREFERENCES: readonly ThemePreference[] = ['system', 'light', 'dark'];
+
 function getStoredPreference(): ThemePreference {
   if (typeof window === 'undefined') return 'system';
-  return (localStorage.getItem('theme') as ThemePreference | null) || 'system';
+  const stored = localStorage.getItem('theme');
+  return stored && VALID_PREFERENCES.includes(stored as ThemePreference)
+    ? (stored as ThemePreference)
+    : 'system';
 }
 
 export default function ThemeProvider({ children }: { children: React.ReactNode }) {
@@ -43,7 +48,7 @@ export default function ThemeProvider({ children }: { children: React.ReactNode 
 
     const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
     const handleChange = () => {
-      const currentPref = localStorage.getItem('theme') as ThemePreference | null || 'system';
+      const currentPref = getStoredPreference();
       if (currentPref === 'system') {
         const resolved = getSystemTheme();
         setTheme(resolved);
