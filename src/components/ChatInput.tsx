@@ -123,7 +123,7 @@ export default function ChatInput({ onSend, disabled }: ChatInputProps) {
   }, []);
 
   return (
-    <div className="border-t border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-900">
+    <div className="border-t border-gray-200 bg-white p-2 lg:p-4 dark:border-gray-700 dark:bg-gray-900">
       <div className="mx-auto max-w-3xl">
         {images.length > 0 && (
           <div className="mb-3 flex gap-2">
@@ -152,7 +152,7 @@ export default function ChatInput({ onSend, disabled }: ChatInputProps) {
           <button
             onClick={() => fileInputRef.current?.click()}
             disabled={disabled || uploading || images.length >= MAX_FILES}
-            className="mb-1 rounded-lg p-2 text-gray-400 hover:bg-gray-100 hover:text-gray-600 disabled:cursor-not-allowed disabled:opacity-50 dark:hover:bg-gray-800 dark:hover:text-gray-300"
+            className="mb-1 min-h-[44px] min-w-[44px] rounded-lg p-2 text-gray-400 hover:bg-gray-100 hover:text-gray-600 disabled:cursor-not-allowed disabled:opacity-50 dark:hover:bg-gray-800 dark:hover:text-gray-300"
             title="Attach image"
           >
             <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -183,7 +183,7 @@ export default function ChatInput({ onSend, disabled }: ChatInputProps) {
           <button
             onClick={handleSubmit}
             disabled={disabled || uploading || (!input.trim() && images.length === 0)}
-            className="rounded-xl bg-blue-600 px-5 py-3 text-sm font-medium text-white hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed dark:disabled:bg-gray-700 dark:disabled:text-gray-500"
+            className="min-h-[44px] min-w-[44px] rounded-xl bg-blue-600 px-4 py-3 text-sm font-medium text-white hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed lg:px-5 dark:disabled:bg-gray-700 dark:disabled:text-gray-500"
           >
             {uploading ? 'Uploading...' : 'Send'}
           </button>
