@@ -12,6 +12,7 @@ export default function SettingsPage() {
   const [claudeStatus, setClaudeStatus] = useState<{ linked: boolean; email: string | null } | null>(null);
   const [unlinking, setUnlinking] = useState(false);
   const [showModal, setShowModal] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
   const { preference, setPreference } = useTheme();
 
   const fetchStatus = () => {
@@ -23,6 +24,9 @@ export default function SettingsPage() {
 
   useEffect(() => {
     fetchStatus();
+    fetch('/api/admin/repos').then((res) => {
+      if (res.ok) setIsAdmin(true);
+    }).catch(() => {});
   }, []);
 
   if (status === 'loading') {
@@ -132,6 +136,41 @@ export default function SettingsPage() {
             ))}
           </div>
         </div>
+
+        {isAdmin && (
+          <div className="mt-4 border-t border-gray-200 pt-4 dark:border-gray-700">
+            <h2 className="mb-3 text-sm font-medium text-gray-700 dark:text-gray-300">Admin</h2>
+            <div className="space-y-2">
+              <Link
+                href="/admin/repos"
+                className="flex items-center gap-2 rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-600 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800"
+              >
+                <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
+                </svg>
+                Manage Repositories
+              </Link>
+              <Link
+                href="/admin/users"
+                className="flex items-center gap-2 rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-600 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800"
+              >
+                <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
+                </svg>
+                Manage Users
+              </Link>
+              <Link
+                href="/admin/flags"
+                className="flex items-center gap-2 rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-600 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800"
+              >
+                <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 21v-4m0 0V5a2 2 0 012-2h6.5l1 1H21l-3 6 3 6h-8.5l-1-1H5a2 2 0 00-2 2zm9-13.5V9" />
+                </svg>
+                Manage Flags
+              </Link>
+            </div>
+          </div>
+        )}
 
         <div className="mt-6 border-t border-gray-200 pt-4 dark:border-gray-700">
           <Link href="/" className="text-sm text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300">
