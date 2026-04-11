@@ -11,6 +11,7 @@ import { createInterface } from 'readline';
 const API_URL = process.env.KNOWLEDGE_API_URL || 'http://localhost:3000/api/knowledge';
 const SEARCH_URL = process.env.KNOWLEDGE_SEARCH_URL || 'http://localhost:3000/api/knowledge/search';
 const API_SECRET = process.env.KNOWLEDGE_API_SECRET || '';
+const REPOSITORY_ID = process.env.REPOSITORY_ID || '';
 
 const rl = createInterface({ input: process.stdin });
 
@@ -166,6 +167,7 @@ rl.on('line', async (line) => {
             category: args.category,
             content: args.content,
             tags: args.tags || '',
+            repositoryId: REPOSITORY_ID || undefined,
           }),
         });
 

@@ -6,7 +6,7 @@ import { config } from '@/lib/config';
 const PROJECT_ROOT = path.resolve(process.cwd());
 const SESSIONS_DIR = process.env.SESSIONS_DIR || path.join('/tmp', 'claude-sessions');
 
-function getMcpConfig(): string {
+function getMcpConfig(repositoryId?: string): string {
   return JSON.stringify({
     mcpServers: {
       knowledge: {
@@ -16,6 +16,7 @@ function getMcpConfig(): string {
           KNOWLEDGE_API_URL: `${process.env.NEXTAUTH_URL || 'http://localhost:3000'}/api/knowledge`,
           KNOWLEDGE_SEARCH_URL: `${process.env.NEXTAUTH_URL || 'http://localhost:3000'}/api/knowledge/search`,
           KNOWLEDGE_API_SECRET: process.env.KNOWLEDGE_API_SECRET || '',
+          REPOSITORY_ID: repositoryId || '',
         },
       },
     },
@@ -42,30 +43,30 @@ export class SessionManager {
     return this.queue.length;
   }
 
-  startSession(requestId: string, message: string, systemPrompt: string, claudeToken: string, userId: string): ChildProcess | Promise<ChildProcess> {
+  startSession(requestId: string, message: string, systemPrompt: string, claudeToken: string, userId: string, repoPath: string, repositoryId?: string): ChildProcess | Promise<ChildProcess> {
     const args = [
       '--print',
       '--verbose',
       '--output-format', 'stream-json',
       '--include-partial-messages',
       '--max-turns', String(config.claudeMaxTurns),
-      '--add-dir', config.repoPath,
+      '--add-dir', repoPath,
       '--system-prompt', systemPrompt,
-      '--mcp-config', getMcpConfig(),
+      '--mcp-config', getMcpConfig(repositoryId),
       '--permission-mode', 'bypassPermissions',
     ];
 
     return this.spawnOrQueue(requestId, args, message, claudeToken, userId);
   }
 
-  resumeSession(requestId: string, claudeSessionId: string, message: string, claudeToken: string, userId: string): ChildProcess | Promise<ChildProcess> {
+  resumeSession(requestId: string, claudeSessionId: string, message: string, claudeToken: string, userId: string, repositoryId?: string): ChildProcess | Promise<ChildProcess> {
     const args = [
       '--resume', claudeSessionId,
       '--print',
       '--verbose',
       '--output-format', 'stream-json',
       '--include-partial-messages',
-      '--mcp-config', getMcpConfig(),
+      '--mcp-config', getMcpConfig(repositoryId),
       '--permission-mode', 'bypassPermissions',
     ];
 
@@ -109,7 +110,7 @@ export class SessionManager {
 
     const proc = spawn('claude', args, {
       stdio: ['pipe', 'pipe', 'pipe'],
-      cwd: config.repoPath,
+      cwd: process.cwd(),
       env: {
         ...process.env,
         HOME: userHome,

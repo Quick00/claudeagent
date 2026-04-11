@@ -22,18 +22,18 @@ services:
     env_file:
       - .env.local
     volumes:
-      - repo:/app/repo
+      - repos:/app/repos
       - claude-sessions:/app/claude-sessions
-      - ~/.ssh:/home/nextjs/.ssh:ro
       - ./uploads:/app/uploads
     environment:
       - SESSIONS_DIR=/app/claude-sessions
       - UPLOAD_PATH=/app/uploads
+      - REPOS_DIR=/app/repos
     depends_on:
       - postgres
     restart: unless-stopped
 
 volumes:
   pgdata:
-  repo:
+  repos:
   claude-sessions:

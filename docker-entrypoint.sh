@@ -1,17 +1,14 @@
 #!/bin/sh
 set -e
 
-# Fix ownership of mounted volumes
-chown -R nextjs:nodejs /app/repo
+# Fix ownership of repos directory
+if [ -d "${REPOS_DIR:-/app/repos}" ]; then
+  chown -R nextjs:nodejs "${REPOS_DIR:-/app/repos}"
+fi
 
 # Ensure uploads directory exists and is writable
 mkdir -p /app/uploads
 chown -R nextjs:nodejs /app/uploads
-
-# Ensure SSH known hosts exist for git operations
-if [ -d /home/nextjs/.ssh ] && [ ! -f /home/nextjs/.ssh/known_hosts ]; then
-  su-exec nextjs ssh-keyscan gitlab.com >> /home/nextjs/.ssh/known_hosts 2>/dev/null
-fi
 
 echo "Syncing database schema..."
 su-exec nextjs npx prisma db push

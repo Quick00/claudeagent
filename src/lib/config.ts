@@ -1,5 +1,6 @@
 export const config = {
   repoPath: process.env.REPO_PATH || '',
+  reposDir: process.env.REPOS_DIR || './repos',
   maxConcurrentSessions: parseInt(process.env.MAX_CONCURRENT_SESSIONS || '5', 10),
   sessionIdleTimeoutMs: parseInt(process.env.SESSION_IDLE_TIMEOUT_MS || '300000', 10),
   claudeMaxTurns: parseInt(process.env.CLAUDE_MAX_TURNS || '25', 10),

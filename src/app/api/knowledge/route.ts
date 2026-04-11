@@ -14,11 +14,12 @@ export async function POST(request: Request) {
   }
 
   const body = await request.json();
-  const { category, content, tags, source } = body as {
+  const { category, content, tags, source, repositoryId } = body as {
     category: string;
     content: string;
     tags?: string;
     source?: string;
+    repositoryId?: string;
   };
 
   if (!category || !content) {
@@ -49,7 +50,7 @@ export async function POST(request: Request) {
   }
 
   const entry = await prisma.knowledgeEntry.create({
-    data: { category, content, tags: tags || '', source },
+    data: { category, content, tags: tags || '', source, repositoryId: repositoryId || null },
   });
 
   if (embedding) {
@@ -81,6 +82,7 @@ export async function GET() {
   const entries = await prisma.knowledgeEntry.findMany({
     where,
     orderBy: { createdAt: 'desc' },
+    ...(session?.user?.email ? { include: { repository: { select: { name: true } } } } : {}),
   });
   return NextResponse.json(entries);
 }

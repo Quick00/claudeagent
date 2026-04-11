@@ -7,6 +7,7 @@ import { decrypt } from '@/lib/crypto';
 import { ChildProcess } from 'child_process';
 import { findRelevantEntries } from '@/lib/embeddings';
 import path from 'path';
+import { routeQuestion } from '@/lib/repo-router';
 
 const MAX_RETRIES = 2;
 
@@ -105,7 +106,67 @@ export async function POST(request: Request) {
     }
   }
 
-  let knowledgeEntries: { id: string; category: string; content: string; tags: string; source: string | null; createdAt: Date }[] = [];
+  // --- Repo routing ---
+  let repoPath = config.repoPath; // fallback to legacy single-repo
+  let repositoryId: string | null = null;
+
+  if (conversation.claudeSessionId && conversationId) {
+    // Resuming: use the repo already linked to this conversation
+    const existingConv = await prisma.conversation.findUnique({
+      where: { id: conversation.id },
+      select: { repositoryId: true, repository: { select: { localPath: true, name: true, description: true, lastPulledAt: true } } },
+    });
+    if (existingConv?.repository) {
+      repoPath = existingConv.repository.localPath;
+      repositoryId = existingConv.repositoryId;
+    }
+  } else {
+    // New conversation: route to the best repo
+    const activeRepos = await prisma.repository.findMany({
+      where: { active: true },
+      select: { id: true, name: true, description: true, localPath: true, lastPulledAt: true },
+    });
+
+    if (activeRepos.length > 0) {
+      try {
+        const chosenId = await routeQuestion(message, activeRepos);
+        const chosen = activeRepos.find((r) => r.id === chosenId);
+        if (chosen) {
+          repoPath = chosen.localPath;
+          repositoryId = chosen.id;
+
+          await prisma.conversation.update({
+            where: { id: conversation.id },
+            data: { repositoryId: chosen.id },
+          });
+        }
+      } catch (err) {
+        console.error('[chat] Routing failed, using fallback:', (err as Error).message);
+      }
+    }
+  }
+
+  // Get repo info for system prompt context
+  let repoContext = '';
+  if (repositoryId) {
+    const repo = await prisma.repository.findUnique({
+      where: { id: repositoryId },
+      select: { name: true, description: true, lastPulledAt: true },
+    });
+    if (repo) {
+      repoContext = `\n\nYou are answering questions about the "${repo.name}" codebase: ${repo.description}`;
+      if (repo.lastPulledAt) {
+        repoContext += `\nCode last synced: ${repo.lastPulledAt.toISOString()}`;
+      }
+      repoContext += `\nIf a knowledge entry contradicts what you see in the current code, trust the code — the entry may be outdated. Use save_knowledge to save an updated correction.`;
+    }
+  }
+
+  if (!repoPath) {
+    return Response.json({ error: 'No repositories configured. Please ask an admin to add a repository.' }, { status: 503 });
+  }
+
+  let knowledgeEntries: { id: string; category: string; content: string; tags: string; source: string | null; createdAt: Date; repositoryName?: string | null }[] = [];
   try {
     knowledgeEntries = await findRelevantEntries(message, 10);
   } catch (err) {
@@ -118,10 +179,10 @@ export async function POST(request: Request) {
   let systemPrompt = config.systemPrompt;
 
   if (knowledgeEntries.length > 0) {
-    const grouped: Record<string, string[]> = {};
+    const grouped: Record<string, { content: string; repositoryName: string | null }[]> = {};
     for (const entry of knowledgeEntries) {
       if (!grouped[entry.category]) grouped[entry.category] = [];
-      grouped[entry.category].push(entry.content);
+      grouped[entry.category].push({ content: entry.content, repositoryName: entry.repositoryName || null });
     }
 
     const categoryLabels: Record<string, string> = {
@@ -135,11 +196,14 @@ export async function POST(request: Request) {
     for (const [cat, entries] of Object.entries(grouped)) {
       knowledgeBlock += `\n## ${categoryLabels[cat] || cat}\n`;
       for (const entry of entries) {
-        knowledgeBlock += `- ${entry}\n`;
+        const source = entry.repositoryName ? `[from: ${entry.repositoryName}]` : '[global]';
+        knowledgeBlock += `- ${source} ${entry.content}\n`;
       }
     }
     systemPrompt += knowledgeBlock;
   }
+
+  systemPrompt += repoContext;
 
   systemPrompt += `\n\n${config.knowledgeToolsPrompt}`;
 
@@ -258,8 +322,8 @@ export async function POST(request: Request) {
                   retrying = true;
                   const retryRequestId = `${conversation.id}-retry-${Date.now()}`;
                   const retryProcOrPromise = conversation.claudeSessionId
-                    ? sessionManager.resumeSession(retryRequestId, conversation.claudeSessionId, cliMessage, userClaudeToken, userId)
-                    : sessionManager.startSession(retryRequestId, cliMessage, systemPrompt, userClaudeToken, userId);
+                    ? sessionManager.resumeSession(retryRequestId, conversation.claudeSessionId, cliMessage, userClaudeToken, userId, repositoryId || undefined)
+                    : sessionManager.startSession(retryRequestId, cliMessage, systemPrompt, userClaudeToken, userId, repoPath, repositoryId || undefined);
 
                   if (retryProcOrPromise instanceof Promise) {
                     retryProcOrPromise.then((retryProc) => attachProcess(retryProc, retryCount + 1)).catch((err) => {
@@ -338,8 +402,8 @@ export async function POST(request: Request) {
       console.log(`[chat] Starting request (requestId=${requestId}, conversationId=${conversation.id}, resume=${!!conversation.claudeSessionId}, knowledgeEntries=${knowledgeEntries.length})`);
 
       const procOrPromise = conversation.claudeSessionId
-        ? sessionManager.resumeSession(requestId, conversation.claudeSessionId, cliMessage, userClaudeToken, userId)
-        : sessionManager.startSession(requestId, cliMessage, systemPrompt, userClaudeToken, userId);
+        ? sessionManager.resumeSession(requestId, conversation.claudeSessionId, cliMessage, userClaudeToken, userId, repositoryId || undefined)
+        : sessionManager.startSession(requestId, cliMessage, systemPrompt, userClaudeToken, userId, repoPath, repositoryId || undefined);
 
       if (procOrPromise instanceof Promise) {
         procOrPromise.then((proc) => {
