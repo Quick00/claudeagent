@@ -38,6 +38,7 @@ interface KnowledgeEntryResult {
   tags: string;
   source: string | null;
   createdAt: Date;
+  repositoryName: string | null;
 }
 
 export async function findRelevantEntries(
@@ -46,9 +47,10 @@ export async function findRelevantEntries(
 ): Promise<KnowledgeEntryResult[]> {
   // Always include all corrections
   const corrections: KnowledgeEntryResult[] = await prisma.$queryRaw`
-    SELECT id, category, content, tags, source, "createdAt"
-    FROM "KnowledgeEntry"
-    WHERE category = 'correction'
+    SELECT ke.id, ke.category, ke.content, ke.tags, ke.source, ke."createdAt", r.name as "repositoryName"
+    FROM "KnowledgeEntry" ke
+    LEFT JOIN "Repository" r ON ke."repositoryId" = r.id
+    WHERE ke.category = 'correction'
   `;
 
   const remainingSlots = limit - corrections.length;
@@ -60,11 +62,12 @@ export async function findRelevantEntries(
   const vectorStr = `[${queryEmbedding.join(',')}]`;
 
   const semanticResults: KnowledgeEntryResult[] = await prisma.$queryRaw`
-    SELECT id, category, content, tags, source, "createdAt"
-    FROM "KnowledgeEntry"
-    WHERE embedding IS NOT NULL
-    AND category != 'correction'
-    ORDER BY embedding <=> ${vectorStr}::vector
+    SELECT ke.id, ke.category, ke.content, ke.tags, ke.source, ke."createdAt", r.name as "repositoryName"
+    FROM "KnowledgeEntry" ke
+    LEFT JOIN "Repository" r ON ke."repositoryId" = r.id
+    WHERE ke.embedding IS NOT NULL
+    AND ke.category != 'correction'
+    ORDER BY ke.embedding <=> ${vectorStr}::vector
     LIMIT ${remainingSlots}
   `;
 
