@@ -75,14 +75,14 @@ export default function ChatMessages({
 
     return (
       <div className="flex flex-1 items-center justify-center">
-        <div className="w-full max-w-2xl px-6">
+        <div className="w-full max-w-2xl px-3 lg:px-6">
           <h2 className="mb-2 text-center text-xl font-medium text-gray-800 dark:text-gray-100">
             Codebase Q&A
           </h2>
           <p className="mb-8 text-center text-sm text-gray-400 dark:text-gray-500">
             Ask a question about how the product works
           </p>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 sm:gap-3">
             {suggestions.map((q, i) => (
               <button
                 key={`${i}-${q}`}
@@ -106,7 +106,7 @@ export default function ChatMessages({
   const showThinking = isLoading && !streamingContent && !toolStatus;
 
   return (
-    <div className="flex-1 overflow-y-auto p-6">
+    <div className="flex-1 overflow-y-auto p-3 lg:p-6">
       <div className="mx-auto max-w-3xl space-y-4">
         {messages.map((msg) => (
           <div key={msg.id} className="animate-message-in">
