@@ -162,7 +162,7 @@ export async function POST(request: Request) {
     }
   }
 
-  let knowledgeEntries: { id: string; category: string; content: string; tags: string; source: string | null; createdAt: Date }[] = [];
+  let knowledgeEntries: { id: string; category: string; content: string; tags: string; source: string | null; createdAt: Date; repositoryName?: string | null }[] = [];
   try {
     knowledgeEntries = await findRelevantEntries(message, 10);
   } catch (err) {
@@ -178,7 +178,7 @@ export async function POST(request: Request) {
     const grouped: Record<string, { content: string; repositoryName: string | null }[]> = {};
     for (const entry of knowledgeEntries) {
       if (!grouped[entry.category]) grouped[entry.category] = [];
-      grouped[entry.category].push({ content: entry.content, repositoryName: (entry as any).repositoryName || null });
+      grouped[entry.category].push({ content: entry.content, repositoryName: entry.repositoryName || null });
     }
 
     const categoryLabels: Record<string, string> = {

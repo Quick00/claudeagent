@@ -1,4 +1,4 @@
-import { cloneRepo, makeReadOnly, makeWritable, syncRepo } from '@/lib/repo-manager';
+import { cloneRepo, syncRepo } from '@/lib/repo-manager';
 import { execSync } from 'child_process';
 import fs from 'fs';
 import path from 'path';

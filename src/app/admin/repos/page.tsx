@@ -29,7 +29,7 @@ interface GitLabProject {
 }
 
 export default function AdminReposPage() {
-  const { data: session, status } = useSession();
+  const { status } = useSession();
   const [repos, setRepos] = useState<Repository[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<GitLabProject[]>([]);
