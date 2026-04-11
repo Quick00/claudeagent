@@ -1,13 +1,16 @@
 /**
  * Periodic repo sync script.
- * Run on cron (e.g. every 10 minutes): npx tsx scripts/sync-repos.ts
+ * Production: npx tsx scripts/sync-repos.ts
+ * Development: npx tsx scripts/sync-repos.ts --env-local
  *
  * Pulls latest changes for all active repositories and updates lastPulledAt.
  * Repos are made read-only after each pull.
  */
 
-import { config } from 'dotenv';
-config({ path: '.env.local' });
+import { config as loadEnv } from 'dotenv';
+if (process.argv.includes('--env-local')) {
+  loadEnv({ path: '.env.local' });
+}
 
 import { PrismaClient } from '@prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
