@@ -6,6 +6,9 @@
  * Repos are made read-only after each pull.
  */
 
+import { config } from 'dotenv';
+config({ path: '.env.local' });
+
 import { PrismaClient } from '@prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { syncRepo } from '../src/lib/repo-manager';
