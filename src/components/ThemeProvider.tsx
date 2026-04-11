@@ -22,21 +22,24 @@ function applyTheme(resolved: ResolvedTheme) {
   document.documentElement.classList.toggle('dark', resolved === 'dark');
 }
 
+function getStoredPreference(): ThemePreference {
+  if (typeof window === 'undefined') return 'system';
+  return (localStorage.getItem('theme') as ThemePreference | null) || 'system';
+}
+
 export default function ThemeProvider({ children }: { children: React.ReactNode }) {
-  const [preference, setPreferenceState] = useState<ThemePreference>('system');
-  const [theme, setTheme] = useState<ResolvedTheme>('light');
+  const [preference, setPreferenceState] = useState<ThemePreference>(getStoredPreference);
+  const [theme, setTheme] = useState<ResolvedTheme>(() => {
+    const pref = getStoredPreference();
+    return pref === 'system' ? getSystemTheme() : pref;
+  });
 
   const resolve = useCallback((pref: ThemePreference): ResolvedTheme => {
     return pref === 'system' ? getSystemTheme() : pref;
   }, []);
 
   useEffect(() => {
-    const stored = localStorage.getItem('theme') as ThemePreference | null;
-    const pref = stored || 'system';
-    setPreferenceState(pref);
-    const resolved = resolve(pref);
-    setTheme(resolved);
-    applyTheme(resolved);
+    applyTheme(theme);
 
     const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
     const handleChange = () => {
@@ -49,7 +52,7 @@ export default function ThemeProvider({ children }: { children: React.ReactNode 
     };
     mediaQuery.addEventListener('change', handleChange);
     return () => mediaQuery.removeEventListener('change', handleChange);
-  }, [resolve]);
+  }, [theme]);
 
   const setPreference = (pref: ThemePreference) => {
     setPreferenceState(pref);

@@ -3,6 +3,7 @@
 import { useEffect, useState, useRef, useCallback, useMemo } from 'react';
 import Link from 'next/link';
 import ForceGraph2D from 'react-force-graph-2d';
+import { useTheme } from '@/components/ThemeProvider';
 
 interface GraphNode {
   id: string;
@@ -54,6 +55,7 @@ export default function KnowledgeGraph() {
   const [entries, setEntries] = useState<KnowledgeEntry[]>([]);
   const [hiddenCategories, setHiddenCategories] = useState<Set<string>>(new Set());
   const [availableCategories, setAvailableCategories] = useState<string[]>([]);
+  const { theme } = useTheme();
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const graphRef = useRef<any>(null);
 
@@ -121,7 +123,7 @@ export default function KnowledgeGraph() {
       ctx.fill();
 
       if (selectedNode?.id === n.id) {
-        ctx.strokeStyle = '#000';
+        ctx.strokeStyle = theme === 'dark' ? '#fff' : '#000';
         ctx.lineWidth = 2 / globalScale;
         ctx.stroke();
       }
@@ -129,10 +131,10 @@ export default function KnowledgeGraph() {
       ctx.font = `${n.type === 'topic' ? 'bold ' : ''}${fontSize}px Sans-Serif`;
       ctx.textAlign = 'center';
       ctx.textBaseline = 'top';
-      ctx.fillStyle = '#374151';
+      ctx.fillStyle = theme === 'dark' ? '#d1d5db' : '#374151';
       ctx.fillText(n.label, node.x!, node.y! + radius + 2);
     },
-    [selectedNode]
+    [selectedNode, theme]
   );
 
   const selectedEntry =
@@ -152,22 +154,22 @@ export default function KnowledgeGraph() {
 
   return (
     <div className="relative h-screen">
-      <div className="h-full bg-gray-50">
+      <div className="h-full bg-gray-50 dark:bg-gray-900">
         <div className="absolute left-4 top-4 z-10 flex items-center gap-4">
           <Link
             href="/"
-            className="rounded-lg bg-white px-3 py-2 text-sm font-medium text-gray-700 shadow hover:bg-gray-100"
+            className="rounded-lg bg-white px-3 py-2 text-sm font-medium text-gray-700 shadow hover:bg-gray-100 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
           >
             &larr; Back to Chat
           </Link>
-          <h1 className="text-lg font-semibold text-gray-800">Knowledge Map</h1>
-          <span className="text-sm text-gray-500">
+          <h1 className="text-lg font-semibold text-gray-800 dark:text-gray-100">Knowledge Map</h1>
+          <span className="text-sm text-gray-500 dark:text-gray-400">
             {graphData.nodes.filter((n) => n.type === 'entry').length} entries,{' '}
             {graphData.nodes.filter((n) => n.type === 'topic').length} topics
           </span>
         </div>
 
-        <div className="absolute bottom-4 left-4 z-10 flex gap-2 rounded-lg bg-white p-3 shadow">
+        <div className="absolute bottom-4 left-4 z-10 flex gap-2 rounded-lg bg-white p-3 shadow dark:bg-gray-800">
           {availableCategories.map((cat) => {
             const hidden = hiddenCategories.has(cat);
             return (
@@ -182,7 +184,7 @@ export default function KnowledgeGraph() {
                   className="inline-block h-3 w-3 rounded-full"
                   style={{ backgroundColor: CATEGORY_COLORS[cat] || '#6b7280' }}
                 />
-                <span className="text-gray-600">
+                <span className="text-gray-600 dark:text-gray-300">
                   {CATEGORY_LABELS[cat] || cat.replace('_', ' ')}
                 </span>
               </button>
@@ -196,7 +198,7 @@ export default function KnowledgeGraph() {
             graphData={graphData}
             nodeCanvasObject={nodeCanvasObject}
             onNodeClick={handleNodeClick}
-            linkColor={() => '#d1d5db'}
+            linkColor={() => theme === 'dark' ? '#4b5563' : '#d1d5db'}
             linkWidth={1.5}
             nodePointerAreaPaint={(node: GraphNode & { x?: number; y?: number }, color: string, ctx: CanvasRenderingContext2D) => {
               ctx.beginPath();
@@ -209,7 +211,7 @@ export default function KnowledgeGraph() {
             d3VelocityDecay={0.3}
           />
         ) : (
-          <div className="flex h-full items-center justify-center text-gray-400">
+          <div className="flex h-full items-center justify-center text-gray-400 dark:text-gray-500">
             <div className="text-center">
               <p className="mb-2 text-lg">No knowledge entries yet</p>
               <p className="text-sm">
@@ -222,10 +224,10 @@ export default function KnowledgeGraph() {
       </div>
 
       {selectedNode && (
-        <div className="absolute right-0 top-0 z-20 h-full w-96 overflow-y-auto border-l border-gray-200 bg-white p-6 shadow-lg">
+        <div className="absolute right-0 top-0 z-20 h-full w-96 overflow-y-auto border-l border-gray-200 bg-white p-6 shadow-lg dark:border-gray-700 dark:bg-gray-800">
           <button
             onClick={() => setSelectedNode(null)}
-            className="mb-4 text-sm text-gray-400 hover:text-gray-600"
+            className="mb-4 text-sm text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300"
           >
             &times; Close
           </button>
@@ -235,17 +237,17 @@ export default function KnowledgeGraph() {
               <div className="mb-1 text-xs font-medium uppercase text-blue-500">
                 Topic
               </div>
-              <h2 className="mb-4 text-xl font-bold text-gray-900">
+              <h2 className="mb-4 text-xl font-bold text-gray-900 dark:text-gray-100">
                 {selectedNode.label}
               </h2>
-              <div className="text-sm text-gray-500">
+              <div className="text-sm text-gray-500 dark:text-gray-400">
                 {connectedEntries.length} related entries
               </div>
               <div className="mt-4 space-y-3">
                 {connectedEntries.map((entry) => (
                   <div
                     key={entry.id}
-                    className="rounded-lg border border-gray-100 p-3"
+                    className="rounded-lg border border-gray-100 p-3 dark:border-gray-700"
                   >
                     <div
                       className="mb-1 text-xs font-medium uppercase"
@@ -255,7 +257,7 @@ export default function KnowledgeGraph() {
                     >
                       {entry.category.replace('_', ' ')}
                     </div>
-                    <p className="text-sm text-gray-700">{entry.content}</p>
+                    <p className="text-sm text-gray-700 dark:text-gray-300">{entry.content}</p>
                   </div>
                 ))}
               </div>
@@ -270,7 +272,7 @@ export default function KnowledgeGraph() {
               >
                 {selectedEntry.category.replace('_', ' ')}
               </div>
-              <p className="mb-4 text-sm leading-relaxed text-gray-800">
+              <p className="mb-4 text-sm leading-relaxed text-gray-800 dark:text-gray-200">
                 {selectedEntry.content}
               </p>
               {selectedEntry.tags && (
@@ -278,7 +280,7 @@ export default function KnowledgeGraph() {
                   {selectedEntry.tags.split(',').map((tag: string) => (
                     <span
                       key={tag}
-                      className="rounded-full bg-blue-50 px-2.5 py-0.5 text-xs font-medium text-blue-600"
+                      className="rounded-full bg-blue-50 px-2.5 py-0.5 text-xs font-medium text-blue-600 dark:bg-blue-900/30 dark:text-blue-400"
                     >
                       {tag.trim()}
                     </span>
