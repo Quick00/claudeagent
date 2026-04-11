@@ -68,7 +68,7 @@ export async function POST(request: Request) {
     where: { gitlabProjectId },
   });
   if (existing) {
-    return Response.json({ error: 'This GitLab project has already been added' }, { status: 409 });
+    return NextResponse.json({ error: 'This GitLab project has already been added' }, { status: 409 });
   }
 
   const localPath = path.join(config.reposDir, String(gitlabProjectId));
@@ -101,6 +101,7 @@ export async function POST(request: Request) {
     .catch(async (err) => {
       console.error(`[repos] Failed to clone ${name}:`, (err as Error).message);
       await removeRepo(localPath);
+      await prisma.repository.delete({ where: { id: repo.id } }).catch(() => {});
     });
 
   return NextResponse.json({ ...repo, status: 'cloning' }, { status: 201 });
