@@ -15,6 +15,8 @@ interface ChatSidebarProps {
   onSelectConversation: (id: string) => void;
   onNewChat: () => void;
   refreshTrigger: number;
+  isOpen: boolean;
+  onClose: () => void;
 }
 
 export default function ChatSidebar({
@@ -22,6 +24,8 @@ export default function ChatSidebar({
   onSelectConversation,
   onNewChat,
   refreshTrigger,
+  isOpen,
+  onClose,
 }: ChatSidebarProps) {
   const { data: session } = useSession();
   const [conversations, setConversations] = useState<Conversation[]>([]);
