@@ -1,9 +1,10 @@
 #!/bin/sh
 set -e
 
-# Fix ownership of repos directory
+# Fix ownership of repos directory and mark safe for git
 if [ -d "${REPOS_DIR:-/app/repos}" ]; then
   chown -R nextjs:nodejs "${REPOS_DIR:-/app/repos}"
+  git config --global --add safe.directory '*'
 fi
 
 # Ensure uploads directory exists and is writable
