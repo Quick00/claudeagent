@@ -48,12 +48,11 @@ export default function ChatPage({ initialConversationId }: { initialConversatio
   const [flagReason, setFlagReason] = useState('');
   const [flagSubmitting, setFlagSubmitting] = useState(false);
   const [copiedId, setCopiedId] = useState(false);
-  const [sidebarOpen, setSidebarOpen] = useState(() => {
-    if (typeof window !== 'undefined') {
-      return window.innerWidth >= 1024;
-    }
-    return true;
-  });
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+
+  useEffect(() => {
+    setSidebarOpen(window.innerWidth >= 1024);
+  }, []);
   const knowledgeConfettiFired = useRef(false);
 
   const fetchClaudeStatus = () => {
