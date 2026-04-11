@@ -29,7 +29,7 @@ model Conversation {
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
   user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  repository      Repository? @relation(fields: [repositoryId], references: [id])
+  repository      Repository? @relation(fields: [repositoryId], references: [id], onDelete: SetNull)
   messages        Message[]
   flags           Flag[]
 }
@@ -64,7 +64,7 @@ model KnowledgeEntry {
   repositoryId String?
   embedding Unsupported("vector(1024)")?
   createdAt DateTime                        @default(now())
-  repository Repository? @relation(fields: [repositoryId], references: [id])
+  repository Repository? @relation(fields: [repositoryId], references: [id], onDelete: SetNull)
 }
 
 model Flag {
