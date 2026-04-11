@@ -88,10 +88,41 @@ export default function ChatSidebar({
   };
 
   return (
-    <div className="flex h-full w-64 flex-col border-r border-gray-200 bg-gray-50 dark:bg-gray-900 dark:border-gray-700">
+    <>
+      {/* Backdrop — only visible on mobile when open */}
+      {isOpen && (
+        <div
+          className="fixed inset-0 z-40 bg-black/50 lg:hidden"
+          onClick={onClose}
+        />
+      )}
+
+      {/* Sidebar container */}
+      <div
+        className={`
+          fixed inset-y-0 left-0 z-50 flex w-64 flex-col border-r border-gray-200 bg-gray-50 transition-transform duration-200 ease-in-out dark:border-gray-700 dark:bg-gray-900
+          lg:static lg:translate-x-0 lg:transition-none
+          ${isOpen ? 'translate-x-0' : '-translate-x-full'}
+        `}
+      >
       <div className="p-4">
+        <div className="mb-2 flex items-center justify-between lg:hidden">
+          <span className="text-sm font-medium text-gray-700 dark:text-gray-200">Conversations</span>
+          <button
+            onClick={onClose}
+            className="rounded-lg p-1.5 text-gray-500 hover:bg-gray-200 dark:text-gray-400 dark:hover:bg-gray-700"
+            aria-label="Close sidebar"
+          >
+            <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
         <button
-          onClick={onNewChat}
+          onClick={() => {
+            onNewChat();
+            onClose();
+          }}
           className="w-full rounded-lg cursor-pointer border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
         >
           + New Chat
@@ -102,7 +133,10 @@ export default function ChatSidebar({
         {conversations.map((conv) => (
           <div
             key={conv.id}
-            onClick={() => onSelectConversation(conv.id)}
+            onClick={() => {
+              onSelectConversation(conv.id);
+              onClose();
+            }}
             className={`group flex cursor-pointer items-center justify-between px-4 py-3 text-sm hover:bg-gray-100 dark:hover:bg-gray-800 ${
               activeConversationId === conv.id ? 'bg-gray-200 dark:bg-gray-800' : ''
             }`}
@@ -126,6 +160,7 @@ export default function ChatSidebar({
       <div className="border-t border-gray-200 p-3 space-y-2 dark:border-gray-700">
         <a
           href="/dashboard"
+          onClick={onClose}
           className="flex w-full items-center justify-center gap-2 rounded-lg bg-gray-100 px-3 py-2 text-sm text-gray-600 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
         >
           <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -135,6 +170,7 @@ export default function ChatSidebar({
         </a>
         <a
           href="/knowledge"
+          onClick={onClose}
           className="flex w-full items-center justify-center gap-2 rounded-lg bg-gray-100 px-3 py-2 text-sm text-gray-600 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
         >
           <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -145,6 +181,7 @@ export default function ChatSidebar({
         {isAdmin && (
           <a
             href="/admin/users"
+            onClick={onClose}
             className="flex w-full items-center justify-center gap-2 rounded-lg bg-gray-100 px-3 py-2 text-sm text-gray-600 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
           >
             <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -156,6 +193,7 @@ export default function ChatSidebar({
         {isAdmin && (
           <a
             href="/admin/flags"
+            onClick={onClose}
             className="flex w-full items-center justify-center gap-2 rounded-lg bg-gray-100 px-3 py-2 text-sm text-gray-600 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
           >
             <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -171,6 +209,7 @@ export default function ChatSidebar({
         )}
         <a
           href="/settings"
+          onClick={onClose}
           className="flex w-full items-center justify-center gap-2 rounded-lg bg-gray-100 px-3 py-2 text-sm text-gray-600 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
         >
           <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -202,6 +241,7 @@ export default function ChatSidebar({
           </button>
         </div>
       </div>
-    </div>
+      </div>
+    </>
   );
 }
