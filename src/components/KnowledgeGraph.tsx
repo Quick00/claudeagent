@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useRef, useCallback, useMemo } from 'react';
 import Link from 'next/link';
-import ForceGraph2D from 'react-force-graph-2d';
+import ForceGraph2D, { type ForceGraphMethods } from 'react-force-graph-2d';
 import { useTheme } from '@/components/ThemeProvider';
 
 interface GraphNode {
@@ -56,8 +56,7 @@ export default function KnowledgeGraph() {
   const [hiddenCategories, setHiddenCategories] = useState<Set<string>>(new Set());
   const [availableCategories, setAvailableCategories] = useState<string[]>([]);
   const { theme } = useTheme();
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const graphRef = useRef<any>(null);
+  const graphRef = useRef<ForceGraphMethods<GraphNode> | undefined>(undefined);
 
   useEffect(() => {
     Promise.all([
