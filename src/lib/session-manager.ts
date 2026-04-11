@@ -59,14 +59,14 @@ export class SessionManager {
     return this.spawnOrQueue(requestId, args, message, claudeToken, userId);
   }
 
-  resumeSession(requestId: string, claudeSessionId: string, message: string, claudeToken: string, userId: string): ChildProcess | Promise<ChildProcess> {
+  resumeSession(requestId: string, claudeSessionId: string, message: string, claudeToken: string, userId: string, repositoryId?: string): ChildProcess | Promise<ChildProcess> {
     const args = [
       '--resume', claudeSessionId,
       '--print',
       '--verbose',
       '--output-format', 'stream-json',
       '--include-partial-messages',
-      '--mcp-config', getMcpConfig(),
+      '--mcp-config', getMcpConfig(repositoryId),
       '--permission-mode', 'bypassPermissions',
     ];
 

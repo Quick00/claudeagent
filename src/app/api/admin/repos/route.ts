@@ -3,9 +3,8 @@ import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { NextResponse } from 'next/server';
 import { config } from '@/lib/config';
-import { cloneRepo } from '@/lib/repo-manager';
+import { cloneRepo, removeRepo } from '@/lib/repo-manager';
 import path from 'path';
-import fs from 'fs';
 
 // GET: List all repositories
 export async function GET() {
@@ -101,9 +100,7 @@ export async function POST(request: Request) {
     })
     .catch(async (err) => {
       console.error(`[repos] Failed to clone ${name}:`, (err as Error).message);
-      if (fs.existsSync(localPath)) {
-        fs.rmSync(localPath, { recursive: true, force: true });
-      }
+      await removeRepo(localPath);
     });
 
   return NextResponse.json({ ...repo, status: 'cloning' }, { status: 201 });

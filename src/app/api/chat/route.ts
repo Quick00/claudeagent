@@ -162,6 +162,10 @@ export async function POST(request: Request) {
     }
   }
 
+  if (!repoPath) {
+    return Response.json({ error: 'No repositories configured. Please ask an admin to add a repository.' }, { status: 503 });
+  }
+
   let knowledgeEntries: { id: string; category: string; content: string; tags: string; source: string | null; createdAt: Date; repositoryName?: string | null }[] = [];
   try {
     knowledgeEntries = await findRelevantEntries(message, 10);
@@ -318,7 +322,7 @@ export async function POST(request: Request) {
                   retrying = true;
                   const retryRequestId = `${conversation.id}-retry-${Date.now()}`;
                   const retryProcOrPromise = conversation.claudeSessionId
-                    ? sessionManager.resumeSession(retryRequestId, conversation.claudeSessionId, cliMessage, userClaudeToken, userId)
+                    ? sessionManager.resumeSession(retryRequestId, conversation.claudeSessionId, cliMessage, userClaudeToken, userId, repositoryId || undefined)
                     : sessionManager.startSession(retryRequestId, cliMessage, systemPrompt, userClaudeToken, userId, repoPath, repositoryId || undefined);
 
                   if (retryProcOrPromise instanceof Promise) {
@@ -398,7 +402,7 @@ export async function POST(request: Request) {
       console.log(`[chat] Starting request (requestId=${requestId}, conversationId=${conversation.id}, resume=${!!conversation.claudeSessionId}, knowledgeEntries=${knowledgeEntries.length})`);
 
       const procOrPromise = conversation.claudeSessionId
-        ? sessionManager.resumeSession(requestId, conversation.claudeSessionId, cliMessage, userClaudeToken, userId)
+        ? sessionManager.resumeSession(requestId, conversation.claudeSessionId, cliMessage, userClaudeToken, userId, repositoryId || undefined)
         : sessionManager.startSession(requestId, cliMessage, systemPrompt, userClaudeToken, userId, repoPath, repositoryId || undefined);
 
       if (procOrPromise instanceof Promise) {
