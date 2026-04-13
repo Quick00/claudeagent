@@ -52,6 +52,7 @@ export async function POST(
   }
 
   const ownerClaudeToken = decrypt(conversation.user.claudeToken);
+  const conversationId = conversation.id;
   const ownerUserId = conversation.user.id;
   const repositoryId = conversation.repositoryId ?? undefined;
   const sessionId = conversation.claudeSessionId;
@@ -142,7 +143,7 @@ export async function POST(
           if (fullResponse) {
             await prisma.message.create({
               data: {
-                conversationId: conversation.id,
+                conversationId,
                 role: 'assistant',
                 content: fullResponse,
                 seenByOwner: false,
@@ -150,12 +151,12 @@ export async function POST(
             });
             if (newSessionId && newSessionId !== sessionId) {
               await prisma.conversation.update({
-                where: { id: conversation.id },
+                where: { id: conversationId },
                 data: { claudeSessionId: newSessionId },
               });
             }
           }
-          safeSend(JSON.stringify({ type: 'done', conversationId: conversation.id }));
+          safeSend(JSON.stringify({ type: 'done', conversationId }));
           safeClose();
         });
 
