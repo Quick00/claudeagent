@@ -141,7 +141,13 @@ export default function AdminUsersPage() {
                     <td className="py-3 pr-4 text-gray-500 dark:text-gray-400">
                       {new Date(user.createdAt).toLocaleDateString('en-GB')}
                     </td>
-                    <td className="py-3">
+                    <td className="py-3 space-x-3">
+                      <Link
+                        href={`/admin/users/${user.id}/conversations`}
+                        className="text-xs text-blue-600 hover:text-blue-700 dark:text-blue-400"
+                      >
+                        Conversations
+                      </Link>
                       {!isSelf && (
                         <button
                           onClick={() => deleteUser(user.id, user.name)}
