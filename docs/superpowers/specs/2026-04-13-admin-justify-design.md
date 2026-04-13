@@ -117,7 +117,7 @@ model User {
 
 - **Owner has no `claudeToken`** → 409 with explicit message; UI disables composer.
 - **Owner's token is expired/invalid** → Claude CLI errors on send; SSE returns an error frame; surfaced like existing chat errors. No special-casing.
-- **Conversation has no `claudeSessionId`** (never chatted) → standard Claude Code creates a new session; `claudeSessionId` saved on completion.
+- **Conversation has no `claudeSessionId`** (never chatted) → 409 `"Conversation has not been started by the owner yet"`. Composer disabled with tooltip. Rationale: avoids duplicating the chat route's full setup pipeline (repo routing, knowledge embedding, system-prompt assembly) in the admin endpoint for an edge case that is rare in practice.
 - **Owner deletes their account mid-conversation** → cascade deletes the conversation; admin gets 404 on next send.
 - **Two admins post simultaneously** → no locking; both rows persist with their own `createdAt`. Acceptable; rare.
 - **Admin posts via admin endpoint on their own conversation** → 400. They use `/api/chat`.
