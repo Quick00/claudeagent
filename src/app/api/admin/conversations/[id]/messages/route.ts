@@ -3,11 +3,12 @@ import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { sessionManager } from '@/lib/session-manager';
 import { decrypt } from '@/lib/crypto';
-import { ChildProcess } from 'child_process';
+import { attachClaudeProcess, createSseResponse } from '@/lib/claude-process-stream';
+import type { ChildProcess } from 'child_process';
 
 export async function POST(
   request: Request,
-  { params }: { params: Promise<{ id: string }> }
+  { params }: { params: Promise<{ id: string }> },
 ) {
   const session = await getServerSession(authOptions);
   if (!session?.user?.email) {
@@ -51,17 +52,18 @@ export async function POST(
     return new Response('Conversation has not been started by the owner yet', { status: 409 });
   }
 
-  const ownerClaudeToken = decrypt(conversation.user.claudeToken);
   const conversationId = conversation.id;
   const ownerUserId = conversation.user.id;
+  const ownerClaudeToken = decrypt(conversation.user.claudeToken);
   const repositoryId = conversation.repositoryId ?? undefined;
   const sessionId = conversation.claudeSessionId;
 
-  // Persist admin message + flip PENDING flags atomically
+  // Persist admin message + flip PENDING flags atomically so the admin's
+  // intent is recorded even if the Claude stream later fails.
   await prisma.$transaction([
     prisma.message.create({
       data: {
-        conversationId: conversation.id,
+        conversationId,
         role: 'user',
         content,
         sentByAdminId: currentUser.id,
@@ -69,7 +71,7 @@ export async function POST(
       },
     }),
     prisma.flag.updateMany({
-      where: { conversationId: conversation.id, status: 'PENDING' },
+      where: { conversationId, status: 'PENDING' },
       data: {
         status: 'RESPONDED',
         adminId: currentUser.id,
@@ -78,68 +80,22 @@ export async function POST(
     }),
   ]);
 
-  const encoder = new TextEncoder();
-  const stream = new ReadableStream({
-    start(controller) {
-      let closed = false;
-      const safeSend = (data: string) => {
-        if (closed) return;
-        try {
-          controller.enqueue(encoder.encode(`data: ${data}\n\n`));
-        } catch {
-          closed = true;
-        }
-      };
-      const safeClose = () => {
-        if (closed) return;
-        closed = true;
-        try { controller.close(); } catch { /* already closed */ }
-      };
+  return createSseResponse((sink) => {
+    let fullResponse = '';
+    let newSessionId: string | null = null;
 
-      function attachProcess(proc: ChildProcess) {
-        let fullResponse = '';
-        let newSessionId: string | null = null;
-
-        proc.stdout!.on('data', (chunk: Buffer) => {
-          const lines = chunk.toString().split('\n').filter(Boolean);
-          for (const line of lines) {
-            try {
-              const event = JSON.parse(line);
-
-              if (event.type === 'system' && event.session_id) {
-                newSessionId = event.session_id;
-              }
-
-              if (event.type === 'stream_event' && event.event?.type === 'content_block_delta') {
-                const delta = event.event.delta;
-                if (delta?.type === 'text_delta' && delta.text) {
-                  fullResponse += delta.text;
-                  safeSend(JSON.stringify({ type: 'text', content: delta.text }));
-                }
-              }
-
-              if (event.type === 'assistant' && event.message?.content) {
-                for (const block of event.message.content) {
-                  if (block.type === 'tool_use') {
-                    safeSend(JSON.stringify({ type: 'tool_use', tool: block.name || 'unknown' }));
-                  }
-                }
-              }
-
-              if (event.type === 'result' && event.session_id) {
-                newSessionId = event.session_id;
-              }
-            } catch {
-              // non-JSON line, skip
-            }
-          }
-        });
-
-        proc.stderr!.on('data', (chunk: Buffer) => {
-          console.error('[admin-chat] stderr:', chunk.toString());
-        });
-
-        proc.on('close', async () => {
+    function attach(proc: ChildProcess) {
+      attachClaudeProcess(proc, {
+        logPrefix: '[admin-chat]',
+        onSessionId: (sid) => { newSessionId = sid; },
+        onTextDelta: (delta) => {
+          fullResponse += delta;
+          sink.send(JSON.stringify({ type: 'text', content: delta }));
+        },
+        onToolUse: (tool) => {
+          sink.send(JSON.stringify({ type: 'tool_use', tool }));
+        },
+        onClose: async () => {
           if (fullResponse) {
             await prisma.message.create({
               data: {
@@ -156,50 +112,41 @@ export async function POST(
               });
             }
           }
-          safeSend(JSON.stringify({ type: 'done', conversationId }));
-          safeClose();
-        });
-
-        proc.on('error', (err) => {
+          sink.send(JSON.stringify({ type: 'done', conversationId }));
+          sink.close();
+        },
+        onProcessError: (err) => {
           console.error('[admin-chat] process error:', err.message);
-          safeSend(JSON.stringify({
+          sink.send(JSON.stringify({
             type: 'error',
             content: 'Claude process encountered an error. Please try again.',
           }));
-          safeClose();
-        });
-      }
+          sink.close();
+        },
+      });
+    }
 
-      const requestId = `admin-${conversation.id}-${Date.now()}`;
-      const procOrPromise = sessionManager.resumeSession(
-        requestId,
-        sessionId,
-        content,
-        ownerClaudeToken,
-        ownerUserId,
-        repositoryId,
-      );
+    const requestId = `admin-${conversationId}-${Date.now()}`;
+    const procOrPromise = sessionManager.resumeSession(
+      requestId,
+      sessionId,
+      content,
+      ownerClaudeToken,
+      ownerUserId,
+      repositoryId,
+    );
 
-      if (procOrPromise instanceof Promise) {
-        procOrPromise.then(attachProcess).catch((err) => {
-          console.error('[admin-chat] failed to acquire process:', err.message);
-          safeSend(JSON.stringify({
-            type: 'error',
-            content: 'Failed to start Claude process. Please try again.',
-          }));
-          safeClose();
-        });
-      } else {
-        attachProcess(procOrPromise);
-      }
-    },
-  });
-
-  return new Response(stream, {
-    headers: {
-      'Content-Type': 'text/event-stream',
-      'Cache-Control': 'no-cache',
-      Connection: 'keep-alive',
-    },
+    if (procOrPromise instanceof Promise) {
+      procOrPromise.then(attach).catch((err) => {
+        console.error('[admin-chat] failed to acquire process:', err.message);
+        sink.send(JSON.stringify({
+          type: 'error',
+          content: 'Failed to start Claude process. Please try again.',
+        }));
+        sink.close();
+      });
+    } else {
+      attach(procOrPromise);
+    }
   });
 }
