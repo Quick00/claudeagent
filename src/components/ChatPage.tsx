@@ -20,7 +20,10 @@ interface Message {
   id: string;
   role: 'user' | 'assistant';
   content: string;
+  createdAt?: string;
   attachments?: Attachment[];
+  sentByAdmin?: { id: string; name: string } | null;
+  seenByOwner?: boolean;
 }
 
 interface Flag {
@@ -48,6 +51,13 @@ export default function ChatPage({ initialConversationId }: { initialConversatio
   const [flagReason, setFlagReason] = useState('');
   const [flagSubmitting, setFlagSubmitting] = useState(false);
   const [copiedId, setCopiedId] = useState(false);
+  const [ownership, setOwnership] = useState<{
+    isOwner: boolean;
+    isAdmin: boolean;
+    ownerHasClaudeToken: boolean;
+    ownerName: string;
+    hasSession: boolean;
+  } | null>(null);
   const knowledgeConfettiFired = useRef(false);
 
   const fetchClaudeStatus = () => {
@@ -86,13 +96,23 @@ export default function ChatPage({ initialConversationId }: { initialConversatio
     if (!res.ok) return;
     const data = await res.json();
     setMessages(
-      data.messages.map((m: { id: string; role: string; content: string; attachments?: Attachment[] }) => ({
+      data.messages.map((m: { id: string; role: string; content: string; createdAt?: string; attachments?: Attachment[]; sentByAdmin?: { id: string; name: string } | null; seenByOwner?: boolean }) => ({
         id: m.id,
-        role: m.role,
+        role: m.role as 'user' | 'assistant',
         content: m.content,
+        createdAt: m.createdAt,
         attachments: m.attachments,
+        sentByAdmin: m.sentByAdmin ?? null,
+        seenByOwner: m.seenByOwner,
       }))
     );
+    setOwnership({
+      isOwner: !!data.isOwner,
+      isAdmin: !!data.isAdmin,
+      ownerHasClaudeToken: !!data.ownerHasClaudeToken,
+      ownerName: data.user?.name ?? 'user',
+      hasSession: !!data.claudeSessionId,
+    });
     if (data.flags) {
       processFlags(data.flags);
     }
@@ -117,13 +137,23 @@ export default function ChatPage({ initialConversationId }: { initialConversatio
       const res = await fetch(`/api/conversations/${convId}`);
       if (!res.ok || cancelled) return;
       const data = await res.json();
-      const msgs: Message[] = data.messages.map((m: { id: string; role: string; content: string; attachments?: Attachment[] }) => ({
+      const msgs: Message[] = data.messages.map((m: { id: string; role: string; content: string; createdAt?: string; attachments?: Attachment[]; sentByAdmin?: { id: string; name: string } | null; seenByOwner?: boolean }) => ({
         id: m.id,
-        role: m.role,
+        role: m.role as 'user' | 'assistant',
         content: m.content,
+        createdAt: m.createdAt,
         attachments: m.attachments,
+        sentByAdmin: m.sentByAdmin ?? null,
+        seenByOwner: m.seenByOwner,
       }));
       setMessages(msgs);
+      setOwnership({
+        isOwner: !!data.isOwner,
+        isAdmin: !!data.isAdmin,
+        ownerHasClaudeToken: !!data.ownerHasClaudeToken,
+        ownerName: data.user?.name ?? 'user',
+        hasSession: !!data.claudeSessionId,
+      });
       if (data.flags) {
         processFlags(data.flags);
       }
@@ -172,6 +202,7 @@ export default function ChatPage({ initialConversationId }: { initialConversatio
     setFlags([]);
     setShowFlagForm(false);
     setFlagReason('');
+    setOwnership(null);
     window.history.replaceState(null, '', '/');
     knowledgeConfettiFired.current = false;
   };
@@ -192,11 +223,19 @@ export default function ChatPage({ initialConversationId }: { initialConversatio
     setToolStatus(null);
 
     try {
-      const res = await fetch('/api/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ conversationId, message, attachmentIds }),
-      });
+      const isAdminSend = !!(ownership && !ownership.isOwner && ownership.isAdmin);
+
+      const res = isAdminSend
+        ? await fetch(`/api/admin/conversations/${conversationId}/messages`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ content: message }),
+          })
+        : await fetch('/api/chat', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ conversationId, message, attachmentIds }),
+          });
 
       if (res.status === 403) {
         const data = await res.json();
@@ -390,50 +429,57 @@ export default function ChatPage({ initialConversationId }: { initialConversatio
                     </svg>
                     {copiedId ? 'Copied!' : 'ID'}
                   </button>
-                <div className="relative">
-                  <button
-                    onClick={() => { if (!hasPendingFlag && !flagSubmitting) setShowFlagForm(!showFlagForm); }}
-                    disabled={hasPendingFlag || flagSubmitting}
-                    className={`flex items-center gap-1 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${
-                      hasPendingFlag
-                        ? 'bg-red-50 text-red-600'
-                        : 'bg-gray-100 text-gray-500 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-400 dark:hover:bg-gray-700'
-                    } disabled:cursor-not-allowed disabled:opacity-50`}
-                    title={hasPendingFlag ? 'Already flagged' : 'Flag this conversation'}
-                  >
-                    <svg className="h-3.5 w-3.5" fill={hasPendingFlag ? 'currentColor' : 'none'} stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 21v-4m0 0V5a2 2 0 012-2h6.5l1 1H21l-3 6 3 6h-8.5l-1-1H5a2 2 0 00-2 2zm9-13.5V9" />
-                    </svg>
-                    {hasPendingFlag ? 'Flagged' : 'Flag'}
-                  </button>
-                  {showFlagForm && (
-                    <div className="absolute right-0 top-full z-10 mt-1 w-72 rounded-lg border border-gray-200 bg-white p-3 shadow-lg dark:border-gray-700 dark:bg-gray-800">
-                      <textarea
-                        value={flagReason}
-                        onChange={(e) => setFlagReason(e.target.value)}
-                        placeholder="What was wrong? (optional)"
-                        className="w-full resize-none rounded-md border border-gray-200 p-2 text-sm focus:border-blue-300 focus:outline-none dark:border-gray-600 dark:bg-gray-900 dark:text-gray-100"
-                        rows={2}
-                      />
-                      <div className="mt-2 flex justify-end gap-2">
-                        <button
-                          onClick={() => { setShowFlagForm(false); setFlagReason(''); }}
-                          className="rounded-md px-3 py-1 text-xs text-gray-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-700"
-                        >
-                          Cancel
-                        </button>
-                        <button
-                          onClick={handleFlag}
-                          disabled={flagSubmitting}
-                          className="rounded-md bg-red-600 px-3 py-1 text-xs text-white hover:bg-red-700 disabled:opacity-50"
-                        >
-                          {flagSubmitting ? 'Flagging...' : 'Submit Flag'}
-                        </button>
+                {(!ownership || ownership.isOwner) && (
+                  <div className="relative">
+                    <button
+                      onClick={() => { if (!hasPendingFlag && !flagSubmitting) setShowFlagForm(!showFlagForm); }}
+                      disabled={hasPendingFlag || flagSubmitting}
+                      className={`flex items-center gap-1 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${
+                        hasPendingFlag
+                          ? 'bg-red-50 text-red-600'
+                          : 'bg-gray-100 text-gray-500 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-400 dark:hover:bg-gray-700'
+                      } disabled:cursor-not-allowed disabled:opacity-50`}
+                      title={hasPendingFlag ? 'Already flagged' : 'Flag this conversation'}
+                    >
+                      <svg className="h-3.5 w-3.5" fill={hasPendingFlag ? 'currentColor' : 'none'} stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 21v-4m0 0V5a2 2 0 012-2h6.5l1 1H21l-3 6 3 6h-8.5l-1-1H5a2 2 0 00-2 2zm9-13.5V9" />
+                      </svg>
+                      {hasPendingFlag ? 'Flagged' : 'Flag'}
+                    </button>
+                    {showFlagForm && (
+                      <div className="absolute right-0 top-full z-10 mt-1 w-72 rounded-lg border border-gray-200 bg-white p-3 shadow-lg dark:border-gray-700 dark:bg-gray-800">
+                        <textarea
+                          value={flagReason}
+                          onChange={(e) => setFlagReason(e.target.value)}
+                          placeholder="What was wrong? (optional)"
+                          className="w-full resize-none rounded-md border border-gray-200 p-2 text-sm focus:border-blue-300 focus:outline-none dark:border-gray-600 dark:bg-gray-900 dark:text-gray-100"
+                          rows={2}
+                        />
+                        <div className="mt-2 flex justify-end gap-2">
+                          <button
+                            onClick={() => { setShowFlagForm(false); setFlagReason(''); }}
+                            className="rounded-md px-3 py-1 text-xs text-gray-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-700"
+                          >
+                            Cancel
+                          </button>
+                          <button
+                            onClick={handleFlag}
+                            disabled={flagSubmitting}
+                            className="rounded-md bg-red-600 px-3 py-1 text-xs text-white hover:bg-red-700 disabled:opacity-50"
+                          >
+                            {flagSubmitting ? 'Flagging...' : 'Submit Flag'}
+                          </button>
+                        </div>
                       </div>
-                    </div>
-                  )}
+                    )}
+                  </div>
+                )}
                 </div>
-                </div>
+              </div>
+            )}
+            {ownership && !ownership.isOwner && ownership.isAdmin && (
+              <div className="border-b border-amber-300 bg-amber-50 px-4 py-2 text-xs text-amber-800 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-300">
+                Admin view — you are posting in {ownership.ownerName}&apos;s conversation. Messages you send go to Claude using {ownership.ownerName}&apos;s account.
               </div>
             )}
             <ChatMessages
@@ -444,7 +490,22 @@ export default function ChatPage({ initialConversationId }: { initialConversatio
               onSendSuggestion={handleSend}
               flags={flags}
             />
-            <ChatInput onSend={handleSend} disabled={isLoading} />
+            {(() => {
+              const isAdminSend = !!(ownership && !ownership.isOwner && ownership.isAdmin);
+              const adminBlocked = isAdminSend && (!ownership.ownerHasClaudeToken || !ownership.hasSession);
+              return (
+                <>
+                  {adminBlocked && (
+                    <div className="border-t border-gray-200 px-4 py-2 text-center text-xs text-gray-500 dark:border-gray-700 dark:text-gray-400">
+                      {!ownership!.ownerHasClaudeToken
+                        ? 'Owner has not linked a Claude account.'
+                        : 'Owner has not started this conversation yet.'}
+                    </div>
+                  )}
+                  <ChatInput onSend={handleSend} disabled={isLoading || adminBlocked} />
+                </>
+              );
+            })()}
           </>
         )}
       </div>
