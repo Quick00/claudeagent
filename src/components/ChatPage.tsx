@@ -36,7 +36,7 @@ interface Flag {
 }
 
 export default function ChatPage({ initialConversationId }: { initialConversationId?: string }) {
-  const { status } = useSession();
+  const { data: session, status } = useSession();
 
   const [conversationId, setConversationId] = useState<string | null>(initialConversationId ?? null);
   const [messages, setMessages] = useState<Message[]>([]);
@@ -214,9 +214,23 @@ export default function ChatPage({ initialConversationId }: { initialConversatio
     }
     const attachmentIds = attachments.map((a) => a.id);
     const tempId = `temp-${Date.now()}`;
+    const isAdminSendMode = !!(ownership && !ownership.isOwner && ownership.isAdmin);
+    const adminAttribution = isAdminSendMode && session?.user
+      ? {
+          id: ((session.user as Record<string, unknown>).id as string) ?? '',
+          name: session.user.name ?? 'Admin',
+        }
+      : null;
     setMessages((prev) => [
       ...prev,
-      { id: tempId, role: 'user', content: message, attachments },
+      {
+        id: tempId,
+        role: 'user',
+        content: message,
+        attachments,
+        createdAt: new Date().toISOString(),
+        sentByAdmin: adminAttribution,
+      },
     ]);
     setIsLoading(true);
     setStreamingContent('');
@@ -306,6 +320,7 @@ export default function ChatPage({ initialConversationId }: { initialConversatio
                   id: `assistant-${Date.now()}`,
                   role: 'assistant',
                   content: accumulated,
+                  createdAt: new Date().toISOString(),
                 },
               ]);
               setStreamingContent('');
@@ -336,6 +351,7 @@ export default function ChatPage({ initialConversationId }: { initialConversatio
                     id: `error-${Date.now()}`,
                     role: 'assistant',
                     content: `Error: ${event.content}`,
+                    createdAt: new Date().toISOString(),
                   },
                 ]);
               }
@@ -352,6 +368,7 @@ export default function ChatPage({ initialConversationId }: { initialConversatio
           id: `error-${Date.now()}`,
           role: 'assistant',
           content: 'Failed to connect. Please try again.',
+          createdAt: new Date().toISOString(),
         },
       ]);
       setStreamingContent('');
