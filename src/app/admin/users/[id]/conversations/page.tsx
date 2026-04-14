@@ -36,11 +36,16 @@ export default function AdminUserConversationsPage({
       .finally(() => setLoading(false));
   }, [id]);
 
+  useEffect(() => {
+    if (status === 'unauthenticated') router.replace('/login');
+    if (error === 'Forbidden') router.replace('/');
+  }, [status, error, router]);
+
   if (status === 'loading' || loading) {
     return <div className="flex h-screen items-center justify-center text-gray-400">Loading...</div>;
   }
-  if (status === 'unauthenticated') { router.replace('/login'); return null; }
-  if (error === 'Forbidden') { router.replace('/'); return null; }
+  if (status === 'unauthenticated') return null;
+  if (error === 'Forbidden') return null;
   if (error) {
     return <div className="flex h-screen items-center justify-center text-red-500">{error}</div>;
   }

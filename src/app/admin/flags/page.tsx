@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useSession } from 'next-auth/react';
-import { redirect } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 import Link from "next/link";
 
 interface FlagRow {
@@ -19,6 +19,7 @@ interface FlagRow {
 
 export default function AdminFlagsPage() {
   const { data: session, status } = useSession();
+  const router = useRouter();
   const [flags, setFlags] = useState<FlagRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -81,13 +82,13 @@ export default function AdminFlagsPage() {
     );
   }
 
-  if (status === 'unauthenticated') {
-    redirect('/login');
-  }
+  useEffect(() => {
+    if (status === 'unauthenticated') router.replace('/login');
+    if (error === 'Forbidden') router.replace('/');
+  }, [status, error, router]);
 
-  if (error === 'Forbidden') {
-    redirect('/');
-  }
+  if (status === 'unauthenticated') return null;
+  if (error === 'Forbidden') return null;
 
   if (error) {
     return (
