@@ -74,6 +74,11 @@ export default function AdminFlagsPage() {
     }
   };
 
+  useEffect(() => {
+    if (status === 'unauthenticated') router.replace('/login');
+    if (error === 'Forbidden') router.replace('/');
+  }, [status, error, router]);
+
   if (status === 'loading' || loading) {
     return (
       <div className="flex h-screen items-center justify-center">
@@ -81,11 +86,6 @@ export default function AdminFlagsPage() {
       </div>
     );
   }
-
-  useEffect(() => {
-    if (status === 'unauthenticated') router.replace('/login');
-    if (error === 'Forbidden') router.replace('/');
-  }, [status, error, router]);
 
   if (status === 'unauthenticated') return null;
   if (error === 'Forbidden') return null;
