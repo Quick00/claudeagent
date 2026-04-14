@@ -237,6 +237,7 @@ export async function POST(request: Request) {
 
       function attachProcess(proc: ChildProcess, retryCount: number) {
         let fullResponse = '';
+        let lastSentLength = 0;
         let claudeSessionId: string | null = null;
         let authFailed = false;
         let retrying = false;
@@ -259,11 +260,12 @@ export async function POST(request: Request) {
               if (event.type === 'stream_event' && event.event?.type === 'content_block_delta') {
                 const delta = event.event.delta;
                 if (delta?.type === 'text_delta' && delta.text) {
-                  const cleanText = stripSourceReferences(delta.text);
-                  fullResponse += cleanText;
-                  if (cleanText) {
-                    const sseData = JSON.stringify({ type: 'text', content: cleanText });
-                    safeSend(sseData);
+                  fullResponse += delta.text;
+                  const sanitized = stripSourceReferences(fullResponse);
+                  const newContent = sanitized.slice(lastSentLength);
+                  if (newContent) {
+                    safeSend(JSON.stringify({ type: 'text', content: newContent }));
+                    lastSentLength = sanitized.length;
                   }
                 }
               }
@@ -326,8 +328,8 @@ export async function POST(request: Request) {
                   retrying = true;
                   const retryRequestId = `${conversation.id}-retry-${Date.now()}`;
                   const retryProcOrPromise = conversation.claudeSessionId
-                    ? sessionManager.resumeSession(retryRequestId, conversation.claudeSessionId, cliMessage, userClaudeToken, userId, repositoryId || undefined)
-                    : sessionManager.startSession(retryRequestId, cliMessage, systemPrompt, userClaudeToken, userId, repoPath, repositoryId || undefined);
+                    ? sessionManager.resumeSession(retryRequestId, conversation.claudeSessionId, effectiveMessage, userClaudeToken, userId, repositoryId || undefined)
+                    : sessionManager.startSession(retryRequestId, effectiveMessage, systemPrompt, userClaudeToken, userId, repoPath, repositoryId || undefined);
 
                   if (retryProcOrPromise instanceof Promise) {
                     retryProcOrPromise.then((retryProc) => attachProcess(retryProc, retryCount + 1)).catch((err) => {
@@ -371,7 +373,7 @@ export async function POST(request: Request) {
               data: {
                 conversationId: conversation.id,
                 role: 'assistant',
-                content: fullResponse,
+                content: stripSourceReferences(fullResponse),
               },
             });
 
