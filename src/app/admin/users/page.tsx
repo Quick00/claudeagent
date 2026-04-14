@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useSession } from 'next-auth/react';
-import { redirect } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 
 interface UserRow {
@@ -17,6 +17,7 @@ interface UserRow {
 
 export default function AdminUsersPage() {
   const { data: session, status } = useSession();
+  const router = useRouter();
   const [users, setUsers] = useState<UserRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -62,6 +63,11 @@ export default function AdminUsersPage() {
     setUsers((prev) => prev.filter((u) => u.id !== userId));
   };
 
+  useEffect(() => {
+    if (status === 'unauthenticated') router.replace('/login');
+    if (error === 'Forbidden') router.replace('/');
+  }, [status, error, router]);
+
   if (status === 'loading' || loading) {
     return (
       <div className="flex h-screen items-center justify-center">
@@ -70,13 +76,8 @@ export default function AdminUsersPage() {
     );
   }
 
-  if (status === 'unauthenticated') {
-    redirect('/login');
-  }
-
-  if (error === 'Forbidden') {
-    redirect('/');
-  }
+  if (status === 'unauthenticated') return null;
+  if (error === 'Forbidden') return null;
 
   if (error) {
     return (
@@ -141,7 +142,13 @@ export default function AdminUsersPage() {
                     <td className="py-3 pr-4 text-gray-500 dark:text-gray-400">
                       {new Date(user.createdAt).toLocaleDateString('en-GB')}
                     </td>
-                    <td className="py-3">
+                    <td className="py-3 space-x-3">
+                      <Link
+                        href={`/admin/users/${user.id}/conversations`}
+                        className="text-xs text-blue-600 hover:text-blue-700 dark:text-blue-400"
+                      >
+                        Conversations
+                      </Link>
                       {!isSelf && (
                         <button
                           onClick={() => deleteUser(user.id, user.name)}
