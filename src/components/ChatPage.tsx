@@ -214,8 +214,8 @@ export default function ChatPage({ initialConversationId }: { initialConversatio
     }
     const attachmentIds = attachments.map((a) => a.id);
     const tempId = `temp-${Date.now()}`;
-    const isAdminSendMode = !!(ownership && !ownership.isOwner && ownership.isAdmin);
-    const adminAttribution = isAdminSendMode && session?.user
+    const isAdminSend = !!(ownership && !ownership.isOwner && ownership.isAdmin);
+    const adminAttribution = isAdminSend && session?.user
       ? {
           id: ((session.user as Record<string, unknown>).id as string) ?? '',
           name: session.user.name ?? 'Admin',
@@ -237,8 +237,6 @@ export default function ChatPage({ initialConversationId }: { initialConversatio
     setToolStatus(null);
 
     try {
-      const isAdminSend = !!(ownership && !ownership.isOwner && ownership.isAdmin);
-
       const res = isAdminSend
         ? await fetch(`/api/admin/conversations/${conversationId}/messages`, {
             method: 'POST',
@@ -408,7 +406,7 @@ export default function ChatPage({ initialConversationId }: { initialConversatio
         refreshTrigger={refreshTrigger}
       />
       <div className="flex flex-1 flex-col">
-        {claudeLinked === false ? (
+        {claudeLinked === false && (!ownership || ownership.isOwner) ? (
           <div className="flex flex-1 flex-col items-center justify-center gap-4 p-8">
             <div className="text-center">
               <h2 className="mb-2 text-lg font-semibold text-gray-900 dark:text-gray-100">
@@ -506,6 +504,7 @@ export default function ChatPage({ initialConversationId }: { initialConversatio
               isLoading={isLoading}
               onSendSuggestion={handleSend}
               flags={flags}
+              isOwner={!ownership || ownership.isOwner}
             />
             {(() => {
               const isAdminSend = !!(ownership && !ownership.isOwner && ownership.isAdmin);

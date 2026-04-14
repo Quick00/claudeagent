@@ -277,6 +277,7 @@ export async function POST(request: Request) {
             } else {
               attachProcess(retryProcOrPromise, retryCount + 1);
             }
+            return true; // stop processing remaining lines in this chunk
           }
         },
         onClose: async (code) => {

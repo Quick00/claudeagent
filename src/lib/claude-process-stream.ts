@@ -17,8 +17,10 @@ export interface ClaudeEventHandlers {
   onAuthFailed?: () => void;
   /** Emitted when Claude reports a rate-limit message with user-facing text. */
   onRateLimit?: (content: string) => void;
-  /** Emitted for the `result` event (terminal success or error). */
-  onResult?: (event: { is_error?: boolean; subtype?: string; session_id?: string }) => void;
+  /** Emitted for the `result` event (terminal success or error).
+   *  Return `true` to stop processing remaining lines in this chunk
+   *  (e.g. when scheduling a retry that attaches a new process). */
+  onResult?: (event: { is_error?: boolean; subtype?: string; session_id?: string }) => boolean | void;
   /** Emitted when the child process closes. */
   onClose?: (code: number | null) => void;
   /** Emitted when the child process emits an `error`. */
@@ -81,7 +83,8 @@ export function attachClaudeProcess(
         if (typeof event.session_id === 'string') {
           handlers.onSessionId?.(event.session_id);
         }
-        handlers.onResult?.(event as { is_error?: boolean; subtype?: string; session_id?: string });
+        const stop = handlers.onResult?.(event as { is_error?: boolean; subtype?: string; session_id?: string });
+        if (stop) return; // exit the on('data') callback, stop processing this chunk
       }
     }
   });

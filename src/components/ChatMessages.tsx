@@ -35,6 +35,7 @@ interface ChatMessagesProps {
   isLoading: boolean;
   onSendSuggestion: (message: string) => void;
   flags: Flag[];
+  isOwner?: boolean;
 }
 
 const DEFAULT_SUGGESTIONS = [
@@ -51,6 +52,7 @@ export default function ChatMessages({
   isLoading,
   onSendSuggestion,
   flags,
+  isOwner = true,
 }: ChatMessagesProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
   const [recentQuestions, setRecentQuestions] = useState<string[]>([]);
@@ -139,6 +141,7 @@ export default function ChatMessages({
           return items.map((item) => {
             if (item.kind === 'message') {
               const m = item.message;
+              const unseenByOwner = isOwner && m.seenByOwner === false;
               if (m.sentByAdmin) {
                 return (
                   <div key={m.id} className="animate-message-in">
@@ -148,7 +151,7 @@ export default function ChatMessages({
                       adminName={m.sentByAdmin.name}
                       timestamp={m.createdAt}
                     />
-                    {m.seenByOwner === false && (
+                    {unseenByOwner && (
                       <div className="mt-1 text-right text-xs text-amber-600 dark:text-amber-400">new</div>
                     )}
                   </div>
@@ -157,6 +160,9 @@ export default function ChatMessages({
               return (
                 <div key={m.id} className="animate-message-in">
                   <MessageBubble role={m.role} content={m.content} attachments={m.attachments} />
+                  {unseenByOwner && (
+                    <div className="mt-1 text-right text-xs text-amber-600 dark:text-amber-400">new</div>
+                  )}
                 </div>
               );
             }
