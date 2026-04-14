@@ -1,7 +1,7 @@
 import 'dotenv/config';
 import { PrismaClient } from '@prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
-import { unlink, readdir, stat, rmdir } from 'fs/promises';
+import { unlink, readdir, stat } from 'fs/promises';
 import path from 'path';
 
 function isFsError(err: unknown, code: string): boolean {
@@ -31,16 +31,19 @@ async function main() {
       console.log('Found %d attachment(s) older than %d days.', oldAttachments.length, RETENTION_DAYS);
 
       let filesDeleted = 0;
+      let filesMissing = 0;
       let fileErrors = 0;
+      const handledIds: string[] = [];
 
       for (const attachment of oldAttachments) {
         try {
           await unlink(attachment.storagePath);
           filesDeleted++;
+          handledIds.push(attachment.id);
         } catch (err) {
           if (isFsError(err, 'ENOENT')) {
-            fileErrors++;
-            console.warn('  Could not delete file: %s (already gone)', attachment.storagePath);
+            filesMissing++;
+            handledIds.push(attachment.id);
           } else {
             fileErrors++;
             console.error('  Failed to delete file: %s', attachment.storagePath, err);
@@ -48,15 +51,20 @@ async function main() {
         }
       }
 
-      const result = await prisma.attachment.deleteMany({
-        where: { createdAt: { lt: cutoff } },
-      });
+      let dbDeleted = 0;
+      if (handledIds.length > 0) {
+        const result = await prisma.attachment.deleteMany({
+          where: { id: { in: handledIds } },
+        });
+        dbDeleted = result.count;
+      }
 
       console.log(
-        'Retention cleanup done. Files removed: %d, file errors: %d, DB records deleted: %d',
+        'Retention cleanup done. Files removed: %d, already gone: %d, errors (skipped): %d, DB records deleted: %d',
         filesDeleted,
+        filesMissing,
         fileErrors,
-        result.count,
+        dbDeleted,
       );
     }
 
@@ -122,20 +130,8 @@ async function main() {
             }
           }
         }
-        // Remove the subdirectory if now empty
-        try {
-          const remaining = await readdir(entryPath);
-          if (remaining.length === 0) {
-            await rmdir(entryPath);
-            console.log('  Removed empty dir: %s', entryPath);
-          }
-        } catch (err) {
-          if (isFsError(err, 'ENOENT') || isFsError(err, 'ENOTEMPTY')) {
-            // Already gone or not empty — fine
-          } else {
-            console.error('  Failed to clean up dir: %s', entryPath, err);
-          }
-        }
+        // Empty subdirectories are left in place — removing them can race
+        // with concurrent uploads that expect the directory to exist.
       } else if (entryStat.isFile()) {
         if (entryStat.mtimeMs > graceThreshold) continue; // skip recent files
         if (!knownPaths.has(entryPath)) {
