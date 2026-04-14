@@ -14,7 +14,10 @@ interface Message {
   id: string;
   role: 'user' | 'assistant';
   content: string;
+  createdAt?: string;
   attachments?: Attachment[];
+  sentByAdmin?: { id: string; name: string } | null;
+  seenByOwner?: boolean;
 }
 
 interface Flag {
@@ -32,6 +35,7 @@ interface ChatMessagesProps {
   isLoading: boolean;
   onSendSuggestion: (message: string) => void;
   flags: Flag[];
+  isOwner?: boolean;
 }
 
 const DEFAULT_SUGGESTIONS = [
@@ -48,6 +52,7 @@ export default function ChatMessages({
   isLoading,
   onSendSuggestion,
   flags,
+  isOwner = true,
 }: ChatMessagesProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
   const [recentQuestions, setRecentQuestions] = useState<string[]>([]);
@@ -108,23 +113,72 @@ export default function ChatMessages({
   return (
     <div className="flex-1 overflow-y-auto p-6">
       <div className="mx-auto max-w-3xl space-y-4">
-        {messages.map((msg) => (
-          <div key={msg.id} className="animate-message-in">
-            <MessageBubble role={msg.role} content={msg.content} attachments={msg.attachments} />
-          </div>
-        ))}
-        {flags
-          .filter((f) => f.status === 'RESPONDED' && f.adminResponse)
-          .map((flag) => (
-            <div key={`flag-${flag.id}`} className="animate-message-in">
-              <MessageBubble
-                role="admin"
-                content={flag.adminResponse!}
-                adminName={flag.admin?.name}
-                timestamp={flag.respondedAt ?? undefined}
-              />
-            </div>
-          ))}
+        {(() => {
+          type TimelineItem =
+            | { kind: 'message'; ts: number; message: Message }
+            | { kind: 'flag'; ts: number; flag: Flag };
+
+          const items: TimelineItem[] = [];
+
+          for (const m of messages) {
+            items.push({
+              kind: 'message',
+              ts: m.createdAt ? new Date(m.createdAt).getTime() : 0,
+              message: m,
+            });
+          }
+          for (const f of flags) {
+            if (f.status === 'RESPONDED' && f.adminResponse && f.respondedAt) {
+              items.push({
+                kind: 'flag',
+                ts: new Date(f.respondedAt).getTime(),
+                flag: f,
+              });
+            }
+          }
+          items.sort((a, b) => a.ts - b.ts);
+
+          return items.map((item) => {
+            if (item.kind === 'message') {
+              const m = item.message;
+              const unseenByOwner = isOwner && m.seenByOwner === false;
+              if (m.sentByAdmin) {
+                return (
+                  <div key={m.id} className="animate-message-in">
+                    <MessageBubble
+                      role="admin"
+                      content={m.content}
+                      adminName={m.sentByAdmin.name}
+                      timestamp={m.createdAt}
+                    />
+                    {unseenByOwner && (
+                      <div className="mt-1 text-right text-xs text-amber-600 dark:text-amber-400">new</div>
+                    )}
+                  </div>
+                );
+              }
+              return (
+                <div key={m.id} className="animate-message-in">
+                  <MessageBubble role={m.role} content={m.content} attachments={m.attachments} />
+                  {unseenByOwner && (
+                    <div className="mt-1 text-right text-xs text-amber-600 dark:text-amber-400">new</div>
+                  )}
+                </div>
+              );
+            }
+
+            return (
+              <div key={`flag-${item.flag.id}`} className="animate-message-in">
+                <MessageBubble
+                  role="admin"
+                  content={item.flag.adminResponse!}
+                  adminName={item.flag.admin?.name}
+                  timestamp={item.flag.respondedAt ?? undefined}
+                />
+              </div>
+            );
+          });
+        })()}
         {streamingContent && (
           <div className="animate-message-in">
             <MessageBubble role="assistant" content={streamingContent} />

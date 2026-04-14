@@ -32,15 +32,19 @@ export async function GET(
           attachments: {
             select: { id: true, filename: true, mimeType: true, size: true },
           },
+          sentByAdmin: {
+            select: { id: true, name: true },
+          },
         },
       },
       flags: {
         include: {
-          admin: {
-            select: { id: true, name: true },
-          },
+          admin: { select: { id: true, name: true } },
         },
         orderBy: { createdAt: 'asc' },
+      },
+      user: {
+        select: { id: true, name: true, claudeToken: true },
       },
     },
   });
@@ -49,7 +53,26 @@ export async function GET(
     return new Response('Not found', { status: 404 });
   }
 
-  return NextResponse.json(conversation);
+  const isOwner = conversation.userId === user.id;
+  const ownerHasClaudeToken = !!conversation.user.claudeToken;
+
+  // Mark unseen messages as seen for the owner only
+  if (isOwner) {
+    await prisma.message.updateMany({
+      where: { conversationId: id, seenByOwner: false },
+      data: { seenByOwner: true },
+    });
+  }
+
+  // Strip the owner.claudeToken before returning (it's encrypted, but we never expose it)
+  const { user: ownerUser, ...rest } = conversation;
+  return NextResponse.json({
+    ...rest,
+    user: { id: ownerUser.id, name: ownerUser.name },
+    isOwner,
+    isAdmin,
+    ownerHasClaudeToken,
+  });
 }
 
 export async function DELETE(
