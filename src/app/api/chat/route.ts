@@ -233,6 +233,11 @@ export async function POST(request: Request) {
         onTextDelta: (delta) => {
           fullResponse += delta;
           const sanitized = stripSourceReferences(fullResponse);
+          // If sanitization shortened already-sent text, reset so
+          // subsequent clean text isn't permanently dropped.
+          if (sanitized.length < lastSentLength) {
+            lastSentLength = sanitized.length;
+          }
           const newContent = sanitized.slice(lastSentLength);
           if (newContent) {
             sink.send(JSON.stringify({ type: 'text', content: newContent }));
@@ -304,11 +309,19 @@ export async function POST(request: Request) {
             return;
           }
           if (fullResponse) {
+            const finalSanitized = stripSourceReferences(fullResponse);
+
+            // Flush any remaining sanitized text not yet streamed
+            const remaining = finalSanitized.slice(lastSentLength);
+            if (remaining) {
+              sink.send(JSON.stringify({ type: 'text', content: remaining }));
+            }
+
             await prisma.message.create({
               data: {
                 conversationId: conversation.id,
                 role: 'assistant',
-                content: stripSourceReferences(fullResponse),
+                content: finalSanitized,
               },
             });
 
