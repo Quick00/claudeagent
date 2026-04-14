@@ -3,6 +3,7 @@ import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { sessionManager } from '@/lib/session-manager';
 import { config } from '@/lib/config';
+import { stripSourceReferences } from '@/lib/sanitize-response';
 import { decrypt } from '@/lib/crypto';
 import { ChildProcess } from 'child_process';
 import { findRelevantEntries } from '@/lib/embeddings';
@@ -258,9 +259,12 @@ export async function POST(request: Request) {
               if (event.type === 'stream_event' && event.event?.type === 'content_block_delta') {
                 const delta = event.event.delta;
                 if (delta?.type === 'text_delta' && delta.text) {
-                  fullResponse += delta.text;
-                  const sseData = JSON.stringify({ type: 'text', content: delta.text });
-                  safeSend(sseData);
+                  const cleanText = stripSourceReferences(delta.text);
+                  fullResponse += cleanText;
+                  if (cleanText) {
+                    const sseData = JSON.stringify({ type: 'text', content: cleanText });
+                    safeSend(sseData);
+                  }
                 }
               }
 
@@ -398,12 +402,19 @@ export async function POST(request: Request) {
         });
       }
 
+      // On resumed sessions the system prompt isn't re-sent, so Claude
+      // drifts and starts including file paths / code references.  Prepend
+      // a short reminder to each follow-up message.
+      const effectiveMessage = conversation.claudeSessionId
+        ? config.responseReminder + cliMessage
+        : cliMessage;
+
       const requestId = `${conversation.id}-${Date.now()}`;
       console.log(`[chat] Starting request (requestId=${requestId}, conversationId=${conversation.id}, resume=${!!conversation.claudeSessionId}, knowledgeEntries=${knowledgeEntries.length})`);
 
       const procOrPromise = conversation.claudeSessionId
-        ? sessionManager.resumeSession(requestId, conversation.claudeSessionId, cliMessage, userClaudeToken, userId, repositoryId || undefined)
-        : sessionManager.startSession(requestId, cliMessage, systemPrompt, userClaudeToken, userId, repoPath, repositoryId || undefined);
+        ? sessionManager.resumeSession(requestId, conversation.claudeSessionId, effectiveMessage, userClaudeToken, userId, repositoryId || undefined)
+        : sessionManager.startSession(requestId, effectiveMessage, systemPrompt, userClaudeToken, userId, repoPath, repositoryId || undefined);
 
       if (procOrPromise instanceof Promise) {
         procOrPromise.then((proc) => {
