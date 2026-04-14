@@ -3,6 +3,7 @@ import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { sessionManager } from '@/lib/session-manager';
 import { config } from '@/lib/config';
+import { stripSourceReferences } from '@/lib/sanitize-response';
 import { decrypt } from '@/lib/crypto';
 import { ChildProcess } from 'child_process';
 import { findRelevantEntries } from '@/lib/embeddings';
@@ -212,8 +213,16 @@ export async function POST(request: Request) {
     // Send conversation ID immediately so the client can update the sidebar
     sink.send(JSON.stringify({ type: 'conversation_created', conversationId: conversation.id, title: message.slice(0, 100) }));
 
+    // On resumed sessions the system prompt isn't re-sent, so Claude
+    // drifts and starts including file paths / code references.  Prepend
+    // a short reminder to each follow-up message.
+    const effectiveMessage = conversation.claudeSessionId
+      ? config.responseReminder + cliMessage
+      : cliMessage;
+
     function attachProcess(proc: ChildProcess, retryCount: number) {
       let fullResponse = '';
+      let lastSentLength = 0;
       let claudeSessionId: string | null = null;
       let authFailed = false;
       let retrying = false;
@@ -223,7 +232,17 @@ export async function POST(request: Request) {
         onSessionId: (sid) => { claudeSessionId = sid; },
         onTextDelta: (delta) => {
           fullResponse += delta;
-          sink.send(JSON.stringify({ type: 'text', content: delta }));
+          const sanitized = stripSourceReferences(fullResponse);
+          // If sanitization shortened already-sent text, reset so
+          // subsequent clean text isn't permanently dropped.
+          if (sanitized.length < lastSentLength) {
+            lastSentLength = sanitized.length;
+          }
+          const newContent = sanitized.slice(lastSentLength);
+          if (newContent) {
+            sink.send(JSON.stringify({ type: 'text', content: newContent }));
+            lastSentLength = sanitized.length;
+          }
         },
         onToolUse: (tool) => {
           sink.send(JSON.stringify({ type: 'tool_use', tool }));
@@ -262,8 +281,8 @@ export async function POST(request: Request) {
             retrying = true;
             const retryRequestId = `${conversation.id}-retry-${Date.now()}`;
             const retryProcOrPromise = conversation.claudeSessionId
-              ? sessionManager.resumeSession(retryRequestId, conversation.claudeSessionId, cliMessage, userClaudeToken, userId, repositoryId || undefined)
-              : sessionManager.startSession(retryRequestId, cliMessage, systemPrompt, userClaudeToken, userId, repoPath, repositoryId || undefined);
+              ? sessionManager.resumeSession(retryRequestId, conversation.claudeSessionId, effectiveMessage, userClaudeToken, userId, repositoryId || undefined)
+              : sessionManager.startSession(retryRequestId, effectiveMessage, systemPrompt, userClaudeToken, userId, repoPath, repositoryId || undefined);
 
             if (retryProcOrPromise instanceof Promise) {
               retryProcOrPromise.then((retryProc) => attachProcess(retryProc, retryCount + 1)).catch((err) => {
@@ -290,11 +309,19 @@ export async function POST(request: Request) {
             return;
           }
           if (fullResponse) {
+            const finalSanitized = stripSourceReferences(fullResponse);
+
+            // Flush any remaining sanitized text not yet streamed
+            const remaining = finalSanitized.slice(lastSentLength);
+            if (remaining) {
+              sink.send(JSON.stringify({ type: 'text', content: remaining }));
+            }
+
             await prisma.message.create({
               data: {
                 conversationId: conversation.id,
                 role: 'assistant',
-                content: fullResponse,
+                content: finalSanitized,
               },
             });
 
@@ -324,8 +351,8 @@ export async function POST(request: Request) {
     console.log(`[chat] Starting request (requestId=${requestId}, conversationId=${conversation.id}, resume=${!!conversation.claudeSessionId}, knowledgeEntries=${knowledgeEntries.length})`);
 
     const procOrPromise = conversation.claudeSessionId
-      ? sessionManager.resumeSession(requestId, conversation.claudeSessionId, cliMessage, userClaudeToken, userId, repositoryId || undefined)
-      : sessionManager.startSession(requestId, cliMessage, systemPrompt, userClaudeToken, userId, repoPath, repositoryId || undefined);
+      ? sessionManager.resumeSession(requestId, conversation.claudeSessionId, effectiveMessage, userClaudeToken, userId, repositoryId || undefined)
+      : sessionManager.startSession(requestId, effectiveMessage, systemPrompt, userClaudeToken, userId, repoPath, repositoryId || undefined);
 
     if (procOrPromise instanceof Promise) {
       procOrPromise.then((proc) => {
