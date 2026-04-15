@@ -184,7 +184,7 @@ export default function ChatMessages({
             <MessageBubble role="assistant" content={streamingContent} />
           </div>
         )}
-        {(showThinking || (toolStatus && !streamingContent)) && (
+        {(showThinking || toolStatus) && (
           <div className="flex items-center gap-3 px-4 py-3">
             <div className="flex gap-1">
               <span className="h-2 w-2 animate-bounce rounded-full bg-blue-400 [animation-delay:-0.3s]" />

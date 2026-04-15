@@ -56,7 +56,14 @@ export function attachClaudeProcess(
     }
 
     if (event.type === 'stream_event') {
-      const inner = event.event as { type?: string; delta?: { type?: string; text?: string } } | undefined;
+      const inner = event.event as {
+        type?: string;
+        delta?: { type?: string; text?: string };
+        content_block?: { type?: string; name?: string };
+      } | undefined;
+      if (inner?.type === 'content_block_start' && inner.content_block?.type === 'tool_use') {
+        handlers.onToolUse?.(inner.content_block.name ?? 'unknown');
+      }
       if (inner?.type === 'content_block_delta' && inner.delta?.type === 'text_delta' && inner.delta.text) {
         handlers.onTextDelta?.(inner.delta.text);
       }
