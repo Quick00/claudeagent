@@ -51,3 +51,6 @@ next-env.d.ts
 # uploaded images
 /uploads
 /repos
+
+# internal planning/design docs
+/docs
