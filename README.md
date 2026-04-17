@@ -55,18 +55,33 @@ GOOGLE_CLIENT_ID=your-google-client-id
 GOOGLE_CLIENT_SECRET=your-google-client-secret
 NEXTAUTH_SECRET=generate-with-openssl-rand-base64-32
 NEXTAUTH_URL=http://localhost:3000
-REPO_PATH=/path/to/your/codebase
 TOKEN_ENCRYPTION_KEY=generate-with-openssl-rand-hex-32
-KNOWLEDGE_API_SECRET=pick-a-random-secret
+KNOWLEDGE_API_SECRET=change-me-to-a-random-string
+OPENROUTER_API_KEY=your-openrouter-api-key   # used for embeddings + repo routing
 
 # Optional
+UPLOAD_PATH=./uploads
 MAX_CONCURRENT_SESSIONS=5        # max parallel Claude processes
 SESSION_IDLE_TIMEOUT_MS=300000   # 5 minutes
 CLAUDE_MAX_TURNS=25              # max tool-use turns per question
 
+# Legacy single-repo fallback (used only if no repos are configured in admin)
+# REPO_PATH=/path/to/your/codebase
+
 # Test mode — skip Google OAuth, use simple email login
 # AUTH_TEST_MODE=true
 # NEXT_PUBLIC_AUTH_TEST_MODE=true
+
+# GitLab integration (multi-repo)
+# GITLAB_TOKEN=glpat-your-gitlab-personal-access-token
+# REPOS_DIR=/data/repos
+
+# Featurebase feedback widget (optional — remove to hide the widget)
+# NEXT_PUBLIC_FEATUREBASE_ORG=your-featurebase-org
+# FEATUREBASE_JWT_SECRET=your-featurebase-jwt-secret
+
+# Sentry (optional)
+# NEXT_PUBLIC_SENTRY_DSN=
 ```
 
 To generate secrets:
@@ -242,3 +257,9 @@ The system prompt can be customized in `src/lib/config.ts`. It controls how Clau
 - Never mention file paths, code, or technical terms
 - Answer in the same language as the question
 - Save important discoveries to the knowledge base
+
+## Customizing for your team
+
+The default `systemPrompt` and `knowledgeToolsPrompt` in `src/lib/config.ts` contain example references from the project this was originally built for (event management, HubSpot, Summit, badge printing). Before rolling this out inside your own team, rewrite those prompts to describe **your** product, terminology, and integrations. The suggested starter questions in `src/components/ChatMessages.tsx` and the example tags in `src/mcp/knowledge-server.mjs` use the same domain and should be updated too.
+
+The app also assumes GitLab as the source host (see `src/app/api/admin/gitlab/search/route.ts` and `src/lib/repo-manager.ts`). If your repos live elsewhere, you'll need to adapt or replace the repo integration layer.
