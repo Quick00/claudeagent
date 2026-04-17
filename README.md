@@ -4,30 +4,36 @@ A web app that lets team members ask questions about a codebase and get answers 
 
 ## Features
 
-- **Chat interface** with conversation history and sidebar
+- **Chat interface** with conversation history, sidebar, image uploads, and dark mode
 - **Streaming responses** via Server-Sent Events from Claude Code CLI
 - **Multi-turn conversations** using Claude's `--resume` flag
 - **Per-user Claude authentication** — each user links their own Claude subscription by pasting a setup token
-- **Self-learning knowledge base** — Claude automatically saves insights to a shared database
+- **Self-learning knowledge base** — Claude saves insights to a shared Postgres + pgvector database, with semantic search via OpenRouter embeddings
 - **Knowledge map** — interactive graph visualization showing how product concepts connect
-- **Google OAuth** authentication for the app itself
+- **Multi-repo support** — admins can register GitLab repositories; an OpenRouter-powered router picks the best repo for each question
+- **Admin panel** — manage users, repositories, and review flagged conversations
+- **Google OAuth** authentication for the app itself (or test-mode login for local dev)
 - **Session management** — process pool with max concurrency and queuing
 
 ## Tech Stack
 
-- Next.js 16 (App Router, TypeScript)
-- Tailwind CSS
-- PostgreSQL via Prisma ORM
-- NextAuth.js (Google OAuth)
+- Next.js 16 (App Router, TypeScript, React 19)
+- Tailwind CSS 4
+- PostgreSQL 17 + pgvector via Prisma ORM
+- NextAuth.js (Google OAuth or test credentials)
 - Claude Code CLI (`child_process.spawn`)
-- MCP server for knowledge tool
-- react-force-graph-2d for knowledge visualization
+- MCP server for the knowledge tools
+- OpenRouter (embeddings + repo routing)
+- Sentry (optional)
+- react-force-graph-2d for the knowledge map
 
 ## Prerequisites
 
 - Node.js 20+
-- PostgreSQL 17+ (or Docker for running it via compose)
-- Google OAuth credentials (from [Google Cloud Console](https://console.cloud.google.com/apis/credentials))
+- PostgreSQL 17+ with the `pgvector` extension (or Docker — the bundled compose uses the `pgvector/pgvector:pg17` image)
+- An [OpenRouter](https://openrouter.ai) API key (used for embeddings and repo routing)
+- Google OAuth credentials (from [Google Cloud Console](https://console.cloud.google.com/apis/credentials)) — or skip by enabling test mode
+- A GitLab personal access token if you want to register GitLab repositories from the admin panel
 - Each user needs a Claude subscription (Max, Pro, or Team) and [Claude Code](https://claude.ai/download) installed on their own machine to generate a setup token
 
 ## Setup
@@ -164,6 +170,7 @@ The knowledge base includes:
 - **Terminology** — what product-specific terms mean
 - **Product insights** — how features actually work
 - **Processes** — business workflows and rules
+- **Developer insights** — architecture, code flow, and technical gotchas
 
 ### Knowledge map
 
@@ -174,6 +181,7 @@ Click "Knowledge Map" in the sidebar (or go to `/knowledge`) to see an interacti
 - Red nodes = corrections
 - Purple nodes = terminology
 - Orange nodes = processes
+- Cyan nodes = developer insights
 
 Click any node to see details.
 
@@ -183,41 +191,69 @@ Click any node to see details.
 src/
   app/
     api/
+      admin/
+        conversations/       # Admin: list/flag/justify flagged conversations
+        gitlab/              # Admin: search GitLab projects for repo registration
+        repos/               # Admin: CRUD on registered repositories
+        users/               # Admin: list users and manage roles
       auth/
-        [...nextauth]/      # Google OAuth handler
-        claude/              # Claude account: link, unlink, status
-      chat/                  # POST: send message, SSE stream response
-      conversations/         # GET: list, GET/DELETE: single conversation
-      dashboard/             # GET: dashboard statistics
-      knowledge/             # GET: list entries, POST: save entry
-        graph/               # GET: graph data (nodes + links)
-      webhook/
-        gitlab/              # POST: GitLab webhook triggers git pull
-    dashboard/               # Dashboard analytics page
-    knowledge/               # Knowledge map page
-    login/                   # Login page
-    settings/                # Claude account settings (link/unlink)
-    page.tsx                 # Main chat page
+        [...nextauth]/       # Google OAuth + credentials handler
+        claude/               # Claude account: link, unlink, status
+        featurebase/          # Issue JWT for the Featurebase widget
+      chat/                   # POST: send message, SSE stream response
+      conversations/          # GET: list, GET/DELETE: single conversation
+      dashboard/              # GET: dashboard statistics
+      flags/                  # POST: user flags a conversation for admin review
+      knowledge/              # GET: list entries, POST: save entry
+        graph/                # GET: graph data (nodes + links)
+        search/               # GET: semantic search over entries
+      upload/                 # POST: upload images; [id] to fetch/delete
+    admin/
+      flags/                  # Admin UI: flagged conversations
+      repos/                  # Admin UI: registered repositories
+      users/                  # Admin UI: user management
+    conversation/[id]/        # Dedicated conversation page
+    dashboard/                # Dashboard analytics page
+    knowledge/                # Knowledge map page
+    login/                    # Login page
+    settings/                 # Claude account settings (link/unlink)
+    global-error.tsx          # App-level error boundary (Sentry-aware)
+    page.tsx                  # Main chat page
   components/
-    ChatSidebar.tsx          # Conversation list + navigation + user info
-    ChatMessages.tsx         # Message thread with streaming support
-    ChatInput.tsx            # Auto-resizing textarea + send button
-    LinkClaudeModal.tsx      # Step-by-step guide to link a Claude account
-    MessageBubble.tsx        # Single message with markdown rendering
-    KnowledgeGraph.tsx       # Force-directed graph visualization
-    Providers.tsx            # NextAuth SessionProvider wrapper
+    ChatPage.tsx              # Top-level chat layout (sidebar + messages + input)
+    ChatSidebar.tsx           # Conversation list + navigation + user info
+    ChatMessages.tsx          # Message thread with streaming support
+    ChatInput.tsx             # Auto-resizing textarea + attachments + send button
+    LinkClaudeModal.tsx       # Step-by-step guide to link a Claude account
+    MessageBubble.tsx         # Single message with markdown rendering
+    KnowledgeGraph.tsx        # Force-directed graph visualization
+    FeedbackWidget.tsx        # Featurebase feedback widget loader
+    ThemeProvider.tsx         # Dark/light mode provider
+    Providers.tsx             # NextAuth SessionProvider wrapper
   lib/
-    auth.ts                  # NextAuth config
-    config.ts                # Environment variable access with defaults
-    crypto.ts                # AES-256-GCM encryption for stored tokens
-    git-pull.ts              # Git pull with concurrency lock
-    prisma.ts                # Prisma client singleton
-    session-manager.ts       # Claude CLI process pool + queuing
+    auth.ts                   # NextAuth config
+    config.ts                 # App config + Claude system/knowledge prompts
+    crypto.ts                 # AES-256-GCM encryption for stored tokens
+    embeddings.ts             # OpenRouter embeddings + semantic knowledge search
+    claude-process-stream.ts  # Parse Claude CLI stream-JSON into SSE events
+    prisma.ts                 # Prisma client singleton
+    repo-manager.ts           # Clone, sync, and lock-down GitLab repositories
+    repo-router.ts            # Route a question to the best matching repository
+    sanitize-response.ts      # Strip code/paths from streamed answers
+    session-manager.ts        # Claude CLI process pool + queuing
+    upload.ts                 # Image upload helpers
   mcp/
-    knowledge-server.mjs     # MCP server exposing save_knowledge tool
-  proxy.ts                   # Route protection (JWT check)
+    knowledge-server.mjs      # MCP server exposing search_knowledge + save_knowledge
+    mcp-config.json           # MCP config passed to the Claude CLI
+  proxy.ts                    # Route protection (JWT check)
 prisma/
-  schema.prisma              # Database schema
+  schema.prisma               # Database schema
+  init-pgvector.sql           # Enables the pgvector extension on first boot
+  migrations/                 # Prisma migration history
+scripts/
+  backfill-embeddings.ts      # One-off: backfill embeddings for existing entries
+  cleanup-uploads.ts          # Cron: delete orphaned/old uploads
+  sync-repos.ts               # Cron: git pull all registered repos
 ```
 
 ## Running tests
@@ -239,15 +275,18 @@ docker compose up -d
 
 This starts PostgreSQL and the app. The database is persisted in a Docker volume.
 
-### GitLab webhook for repo sync
+### Registering repositories
 
-To keep the codebase up-to-date automatically:
+Once the app is running, sign in as an admin (the first user created is promoted to admin via seed — or edit the `role` column directly) and open **Admin → Repos**:
 
-1. Set `GITLAB_WEBHOOK_SECRET` in your `.env`
-2. Clone the repo inside the container: `docker compose exec app git clone git@gitlab.com:your/repo.git /app/repo`
-3. Set `REPO_PATH=/app/repo` in your `.env`
-4. In GitLab, add a webhook pointing to `https://your-domain/api/webhook/gitlab` with the matching secret token
-5. On every push, GitLab will notify the app to pull the latest changes
+1. Set `GITLAB_TOKEN` in your `.env` (a personal access token with `read_api` + `read_repository` scope)
+2. In the admin UI, search for a GitLab project and click **Register** — the app clones it to `REPOS_DIR` and enforces read-only permissions
+3. To keep repos in sync, run `scripts/sync-repos.ts` on a schedule (e.g. via cron or a container with a cron runner):
+   ```bash
+   npx ts-node scripts/sync-repos.ts
+   ```
+
+The legacy `REPO_PATH` variable still works as a single-repo fallback if no repos are registered.
 
 ## Configuration
 
