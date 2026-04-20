@@ -17,7 +17,7 @@ interface FeedbackRow {
 }
 
 export default function AdminFeedbackPage() {
-  const { data: session, status } = useSession();
+  const { status } = useSession();
   const router = useRouter();
   const [posts, setPosts] = useState<FeedbackRow[]>([]);
   const [loading, setLoading] = useState(true);
