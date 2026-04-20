@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { createPortal } from 'react-dom';
 
 type DetectedOs = 'mac' | 'windows' | 'linux';
 
@@ -91,7 +92,7 @@ export default function LinkClaudeModal({ onClose, onLinked }: LinkClaudeModalPr
     }
   };
 
-  return (
+  return createPortal(
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={onClose}>
       <div
         className="mx-4 w-full max-w-lg rounded-xl bg-white p-6 shadow-xl dark:bg-gray-900"
@@ -228,6 +229,7 @@ export default function LinkClaudeModal({ onClose, onLinked }: LinkClaudeModalPr
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

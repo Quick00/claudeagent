@@ -11,7 +11,7 @@ A web app that lets team members ask questions about a codebase and get answers 
 - **Self-learning knowledge base** — Claude saves insights to a shared Postgres + pgvector database, with semantic search via OpenRouter embeddings
 - **Knowledge map** — interactive graph visualization showing how product concepts connect
 - **Multi-repo support** — admins can register GitLab repositories; an OpenRouter-powered router picks the best repo for each question
-- **Built-in feedback** — users submit feature requests and bug reports via a modal; admins manage from `/admin/feedback`
+- **Built-in feedback** — users submit feature requests and bug reports via a modal; admins manage feedback from the sidebar
 - **Email notifications** — Resend integration sends users an email when their feedback is marked as done
 - **Admin panel** — manage users, repositories, review flagged conversations, and feedback
 - **Google OAuth** authentication for the app itself (or test-mode login for local dev)
@@ -218,7 +218,7 @@ src/
     dashboard/                # Dashboard analytics page
     knowledge/                # Knowledge map page
     login/                    # Login page
-    settings/                 # Claude account settings (link/unlink)
+    # Settings, Users, Flags, and Feedback are sidebar modals (no dedicated pages)
     global-error.tsx          # App-level error boundary (Sentry-aware)
     page.tsx                  # Main chat page
   components/
