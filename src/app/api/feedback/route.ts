@@ -26,17 +26,17 @@ export async function POST(request: Request) {
   if (!type || !['FEATURE_REQUEST', 'BUG'].includes(type)) {
     return NextResponse.json({ error: 'type must be FEATURE_REQUEST or BUG' }, { status: 400 });
   }
-  if (!title?.trim()) {
-    return NextResponse.json({ error: 'title is required' }, { status: 400 });
+  if (!title?.trim() || title.trim().length > 200) {
+    return NextResponse.json({ error: 'title is required and must be 200 characters or fewer' }, { status: 400 });
   }
-  if (!description?.trim()) {
-    return NextResponse.json({ error: 'description is required' }, { status: 400 });
+  if (!description?.trim() || description.trim().length > 5000) {
+    return NextResponse.json({ error: 'description is required and must be 5000 characters or fewer' }, { status: 400 });
   }
 
   if (imageId) {
     const attachment = await prisma.attachment.findUnique({ where: { id: imageId } });
-    if (!attachment) {
-      return NextResponse.json({ error: 'Attachment not found' }, { status: 400 });
+    if (!attachment || attachment.messageId !== null) {
+      return NextResponse.json({ error: 'Attachment not found or already in use' }, { status: 400 });
     }
   }
 

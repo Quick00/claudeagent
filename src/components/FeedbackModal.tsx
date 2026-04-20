@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 
 type FeedbackType = 'FEATURE_REQUEST' | 'BUG';
 type Step = 'type' | 'form';
@@ -22,8 +22,15 @@ export default function FeedbackModal() {
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [visible, setVisible] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    if (open) {
+      requestAnimationFrame(() => setVisible(true));
+    }
+  }, [open]);
 
   const reset = () => {
     setStep('type');
@@ -43,7 +50,8 @@ export default function FeedbackModal() {
   };
 
   const handleClose = () => {
-    setOpen(false);
+    setVisible(false);
+    setTimeout(() => setOpen(false), 150);
   };
 
   const handleSelectType = (t: FeedbackType) => {
@@ -135,24 +143,18 @@ export default function FeedbackModal() {
 
   return (
     <>
-      <button
-        onClick={handleOpen}
-        className="flex w-full cursor-pointer items-center justify-center gap-2 rounded-lg bg-gray-100 px-3 py-2 text-sm text-gray-600 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
+      <div
+        className={`fixed inset-0 z-50 flex items-center justify-center transition-colors duration-150 ${visible ? 'bg-black/50' : 'bg-black/0'}`}
+        onClick={handleClose}
       >
-        <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5.882V19.24a1.76 1.76 0 01-3.417.592l-2.147-6.15M18 13a3 3 0 100-6M5.436 13.683A4.001 4.001 0 017 6h1.832c4.1 0 7.625-1.234 9.168-3v14c-1.543-1.766-5.067-3-9.168-3H7a3.988 3.988 0 01-1.564-.317z" />
-        </svg>
-        Feedback
-      </button>
-
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={handleClose}>
         <div
-          className="w-full max-w-md rounded-lg bg-white p-6 shadow-xl dark:bg-gray-900"
+          className={`w-full max-w-md rounded-lg bg-white p-6 shadow-xl transition-all duration-150 dark:bg-gray-900 ${visible ? 'scale-100 opacity-100' : 'scale-95 opacity-0'}`}
           onClick={(e) => e.stopPropagation()}
         >
+          <div key={submitted ? 'submitted' : step} className="animate-fadeIn">
           {submitted ? (
             <div className="text-center">
-              <div className="mb-3 text-3xl">&#10003;</div>
+              <div className="mb-3 text-3xl">{'\u2713'}</div>
               <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Thank you!</h2>
               <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">Your feedback has been submitted.</p>
               <button
@@ -176,14 +178,14 @@ export default function FeedbackModal() {
                   onClick={() => handleSelectType('FEATURE_REQUEST')}
                   className="flex w-full items-center gap-3 rounded-lg border border-gray-200 p-3 text-left hover:bg-gray-50 dark:border-gray-700 dark:hover:bg-gray-800"
                 >
-                  <span className="text-xl">&#128161;</span>
+                  <span className="text-xl">{'\u{1F4A1}'}</span>
                   <span className="text-sm font-medium text-gray-900 dark:text-gray-100">Feature Request</span>
                 </button>
                 <button
                   onClick={() => handleSelectType('BUG')}
                   className="flex w-full items-center gap-3 rounded-lg border border-gray-200 p-3 text-left hover:bg-gray-50 dark:border-gray-700 dark:hover:bg-gray-800"
                 >
-                  <span className="text-xl">&#128027;</span>
+                  <span className="text-xl">{'\u{1F41B}'}</span>
                   <span className="text-sm font-medium text-gray-900 dark:text-gray-100">Bug</span>
                 </button>
               </div>
@@ -192,7 +194,7 @@ export default function FeedbackModal() {
             <>
               <div className="mb-4 flex items-center justify-between">
                 <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
-                  {type === 'FEATURE_REQUEST' ? '&#128161; Feature Request' : '&#128027; Bug'}
+                  {type === 'FEATURE_REQUEST' ? '\u{1F4A1} Feature Request' : '\u{1F41B} Bug'}
                 </h2>
                 <button onClick={handleClose} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">&times;</button>
               </div>
@@ -202,6 +204,7 @@ export default function FeedbackModal() {
                 placeholder="Have something to say?"
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
+                maxLength={200}
                 className="mb-3 w-full rounded-md border border-gray-200 px-3 py-2 text-sm focus:border-blue-300 focus:outline-none dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100"
               />
 
@@ -211,6 +214,7 @@ export default function FeedbackModal() {
                   placeholder="Describe your request"
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
+                  maxLength={5000}
                   rows={4}
                   className="w-full resize-none rounded-md border border-gray-200 px-3 py-2 text-sm focus:border-blue-300 focus:outline-none dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100"
                 />
@@ -299,8 +303,18 @@ export default function FeedbackModal() {
               </div>
             </>
           )}
+          </div>
         </div>
       </div>
+      <style dangerouslySetInnerHTML={{ __html: `
+        @keyframes feedbackFadeIn {
+          from { opacity: 0; transform: translateY(4px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+        .animate-fadeIn {
+          animation: feedbackFadeIn 150ms ease-out;
+        }
+      `}} />
     </>
   );
 }
