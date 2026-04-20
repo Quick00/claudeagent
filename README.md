@@ -71,6 +71,10 @@ MAX_CONCURRENT_SESSIONS=5        # max parallel Claude processes
 SESSION_IDLE_TIMEOUT_MS=300000   # 5 minutes
 CLAUDE_MAX_TURNS=25              # max tool-use turns per question
 
+# Comma-separated LAN IPs/hosts to allow in Next.js dev mode (needed if testing
+# the Windows installer download from a separate machine on the same LAN)
+# ALLOWED_DEV_ORIGINS=192.168.1.42,10.0.0.5
+
 # Legacy single-repo fallback (used only if no repos are configured in admin)
 # REPO_PATH=/path/to/your/codebase
 
@@ -131,20 +135,12 @@ Open [http://localhost:3000](http://localhost:3000).
 
 1. Sign in with Google (or test mode credentials)
 2. You'll see a prompt to **Link your Claude account** — click the button
-3. A setup guide will appear with 3 steps:
+3. The setup modal adapts to your OS:
 
-   **Step 1** — Install Claude Code on your own computer:
-   ```bash
-   curl -fsSL https://claude.ai/install.sh | bash
-   ```
+   - **macOS** — a guided flow prompts you to open Terminal (`⌘+Space` → type `Terminal` → Enter) and paste a one-liner. The one-liner installs Claude Code and then runs `claude setup-token`, which opens a browser for you to authorize.
+   - **Windows** — a **Download installer** button hands you `install-claude.bat`. Double-click it; if SmartScreen warns, click **More info** → **Run anyway**. The script installs Git for Windows (via `winget`) if missing, installs Claude Code, and runs `claude setup-token` — which opens a browser for you to authorize.
 
-   **Step 2** — Generate a setup token:
-   ```bash
-   claude setup-token
-   ```
-   This opens a browser where you log in with your Claude account. After authorizing, a long token string is displayed in your terminal.
-
-   **Step 3** — Paste the token into the app and click **Link Account**
+4. After authorizing, a long token string is printed in the terminal window. Copy it and paste it into the modal, then click **Link Account**.
 
 Each user must link their own Claude account. Usage is billed to their own subscription. You can manage your linked account in **Settings** (accessible from the sidebar).
 
