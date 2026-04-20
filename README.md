@@ -11,7 +11,9 @@ A web app that lets team members ask questions about a codebase and get answers 
 - **Self-learning knowledge base** — Claude saves insights to a shared Postgres + pgvector database, with semantic search via OpenRouter embeddings
 - **Knowledge map** — interactive graph visualization showing how product concepts connect
 - **Multi-repo support** — admins can register GitLab repositories; an OpenRouter-powered router picks the best repo for each question
-- **Admin panel** — manage users, repositories, and review flagged conversations
+- **Built-in feedback** — users submit feature requests and bug reports via a modal; admins manage from `/admin/feedback`
+- **Email notifications** — Resend integration sends users an email when their feedback is marked as done
+- **Admin panel** — manage users, repositories, review flagged conversations, and feedback
 - **Google OAuth** authentication for the app itself (or test-mode login for local dev)
 - **Session management** — process pool with max concurrency and queuing
 
@@ -24,6 +26,7 @@ A web app that lets team members ask questions about a codebase and get answers 
 - Claude Code CLI (`child_process.spawn`)
 - MCP server for the knowledge tools
 - OpenRouter (embeddings + repo routing)
+- Resend (email notifications)
 - Sentry (optional)
 - react-force-graph-2d for the knowledge map
 
@@ -86,9 +89,10 @@ CLAUDE_MAX_TURNS=25              # max tool-use turns per question
 # GITLAB_TOKEN=glpat-your-gitlab-personal-access-token
 # REPOS_DIR=/data/repos
 
-# Featurebase feedback widget (optional — remove to hide the widget)
-# NEXT_PUBLIC_FEATUREBASE_ORG=your-featurebase-org
-# FEATUREBASE_JWT_SECRET=your-featurebase-jwt-secret
+# Email notifications (Resend) — sends users an email when their feedback is completed
+# RESEND_API_KEY=re_your_api_key
+# FROM_EMAIL=noreply@yourdomain.com
+# REPLY_TO_EMAIL=support@yourdomain.com
 
 # Sentry (optional)
 # NEXT_PUBLIC_SENTRY_DSN=
@@ -189,22 +193,24 @@ src/
     api/
       admin/
         conversations/       # Admin: list/flag/justify flagged conversations
+        feedback/            # Admin: list and update feedback status
         gitlab/              # Admin: search GitLab projects for repo registration
         repos/               # Admin: CRUD on registered repositories
         users/               # Admin: list users and manage roles
       auth/
         [...nextauth]/       # Google OAuth + credentials handler
         claude/               # Claude account: link, unlink, status
-        featurebase/          # Issue JWT for the Featurebase widget
       chat/                   # POST: send message, SSE stream response
       conversations/          # GET: list, GET/DELETE: single conversation
       dashboard/              # GET: dashboard statistics
+      feedback/               # POST: submit feedback (feature request or bug)
       flags/                  # POST: user flags a conversation for admin review
       knowledge/              # GET: list entries, POST: save entry
         graph/                # GET: graph data (nodes + links)
         search/               # GET: semantic search over entries
       upload/                 # POST: upload images; [id] to fetch/delete
     admin/
+      feedback/                # Admin UI: feedback management
       flags/                  # Admin UI: flagged conversations
       repos/                  # Admin UI: registered repositories
       users/                  # Admin UI: user management
@@ -223,7 +229,7 @@ src/
     LinkClaudeModal.tsx       # Step-by-step guide to link a Claude account
     MessageBubble.tsx         # Single message with markdown rendering
     KnowledgeGraph.tsx        # Force-directed graph visualization
-    FeedbackWidget.tsx        # Featurebase feedback widget loader
+    FeedbackModal.tsx         # Built-in feedback submission modal
     ThemeProvider.tsx         # Dark/light mode provider
     Providers.tsx             # NextAuth SessionProvider wrapper
   lib/
@@ -237,6 +243,7 @@ src/
     repo-router.ts            # Route a question to the best matching repository
     sanitize-response.ts      # Strip code/paths from streamed answers
     session-manager.ts        # Claude CLI process pool + queuing
+    email.ts                  # Resend email notifications
     upload.ts                 # Image upload helpers
   mcp/
     knowledge-server.mjs      # MCP server exposing search_knowledge + save_knowledge
