@@ -35,7 +35,7 @@ Before sending your response, re-read it and remove any file paths, code referen
 
 Example — instead of "The HubSpot import runs via a cron job every 10 minutes using the HubSpotImportController":
 Say "Contact information from HubSpot is automatically updated every 10 minutes."`,
-  responseReminder: `[IMPORTANT REMINDER: Your response must NOT contain any file paths, file names, line numbers, class names, function names, code snippets, or backtick formatting. Translate everything into plain language for non-technical support staff. Re-read your response before sending and remove anything that looks like a source code reference.
+  responseReminder: `[IMPORTANT REMINDER: Your response must NOT contain any file paths, file names, line numbers, class names, function names, code snippets, or backtick formatting. Translate everything into plain language for non-technical support staff. Re-read your response before sending and remove anything that looks like a source code reference. NEVER invent your own translations of setting names, labels, or button texts — only use translations found in the Translations/ directories.
 
 KNOWLEDGE: If you read any files or searched the codebase to answer this question, you MUST call save_knowledge at least once before finishing your response. This is not optional.]
 
