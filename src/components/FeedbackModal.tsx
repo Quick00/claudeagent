@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { useSession } from 'next-auth/react';
 import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
@@ -171,8 +172,8 @@ export default function FeedbackModal() {
     }
   };
 
-  if (!open) {
-    return (
+  return (
+    <>
       <button
         onClick={handleOpen}
         className="flex w-full cursor-pointer items-center justify-center gap-2 rounded-lg bg-gray-100 px-3 py-2 text-sm text-gray-600 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
@@ -182,12 +183,7 @@ export default function FeedbackModal() {
         </svg>
         Feedback
       </button>
-    );
-  }
-
-  return (
-    <>
-      <div
+      {open && createPortal(<><div
         className={`fixed inset-0 z-50 flex items-center justify-center transition-colors duration-150 ${visible ? 'bg-black/50' : 'bg-black/0'}`}
         onClick={handleClose}
       >
@@ -354,6 +350,7 @@ export default function FeedbackModal() {
           animation: feedbackFadeIn 150ms ease-out;
         }
       `}} />
+      </>, document.body)}
     </>
   );
 }

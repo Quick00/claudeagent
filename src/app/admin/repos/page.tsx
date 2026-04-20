@@ -124,7 +124,7 @@ export default function AdminReposPage() {
   return (
     <div className="max-w-6xl mx-auto p-6">
       <div className="mb-6 flex items-center gap-4">
-        <Link href="/settings" className="text-blue-500 hover:text-blue-400 text-sm">&larr; Settings</Link>
+        <Link href="/" className="text-blue-500 hover:text-blue-400 text-sm">&larr; Back to chat</Link>
         <h1 className="text-2xl font-bold dark:text-white">Repositories</h1>
       </div>
 

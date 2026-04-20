@@ -3,6 +3,11 @@
 import {useEffect, useMemo, useState} from 'react';
 import { useSession, signOut } from 'next-auth/react';
 import FeedbackModal from './FeedbackModal';
+import DialogOverlay from './DialogOverlay';
+import SettingsPanel from './SettingsPanel';
+import AdminUsersPanel from './AdminUsersPanel';
+import AdminFlagsPanel from './AdminFlagsPanel';
+import AdminFeedbackPanel from './AdminFeedbackPanel';
 
 interface Conversation {
   id: string;
@@ -28,6 +33,7 @@ export default function ChatSidebar({
   const [rawNotificationConvIds, setRawNotificationConvIds] = useState<Set<string>>(new Set());
   const [pendingFlagCount, setPendingFlagCount] = useState(0);
   const [pendingFeedbackCount, setPendingFeedbackCount] = useState(0);
+  const [openModal, setOpenModal] = useState<'settings' | 'users' | 'flags' | 'feedback' | null>(null);
   const isAdmin = (session?.user as Record<string, unknown>)?.role === 'admin';
 
   useEffect(() => {
@@ -160,20 +166,20 @@ export default function ChatSidebar({
           Knowledge Map
         </a>
         {isAdmin && (
-          <a
-            href="/admin/users"
-            className="flex w-full items-center justify-center gap-2 rounded-lg bg-gray-100 px-3 py-2 text-sm text-gray-600 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
+          <button
+            onClick={() => setOpenModal('users')}
+            className="flex w-full cursor-pointer items-center justify-center gap-2 rounded-lg bg-gray-100 px-3 py-2 text-sm text-gray-600 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
           >
             <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197" />
             </svg>
             Users
-          </a>
+          </button>
         )}
         {isAdmin && (
-          <a
-            href="/admin/flags"
-            className="flex w-full items-center justify-center gap-2 rounded-lg bg-gray-100 px-3 py-2 text-sm text-gray-600 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
+          <button
+            onClick={() => setOpenModal('flags')}
+            className="flex w-full cursor-pointer items-center justify-center gap-2 rounded-lg bg-gray-100 px-3 py-2 text-sm text-gray-600 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
           >
             <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 21v-4m0 0V5a2 2 0 012-2h6.5l1 1H21l-3 6 3 6h-8.5l-1-1H5a2 2 0 00-2 2zm9-13.5V9" />
@@ -184,12 +190,12 @@ export default function ChatSidebar({
                 {pendingFlagCount}
               </span>
             )}
-          </a>
+          </button>
         )}
         {isAdmin && (
-          <a
-            href="/admin/feedback"
-            className="flex w-full items-center justify-center gap-2 rounded-lg bg-gray-100 px-3 py-2 text-sm text-gray-600 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
+          <button
+            onClick={() => setOpenModal('feedback')}
+            className="flex w-full cursor-pointer items-center justify-center gap-2 rounded-lg bg-gray-100 px-3 py-2 text-sm text-gray-600 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
           >
             <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z" />
@@ -200,20 +206,40 @@ export default function ChatSidebar({
                 {pendingFeedbackCount}
               </span>
             )}
-          </a>
+          </button>
         )}
-        <a
-          href="/settings"
-          className="flex w-full items-center justify-center gap-2 rounded-lg bg-gray-100 px-3 py-2 text-sm text-gray-600 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
+        <button
+          onClick={() => setOpenModal('settings')}
+          className="flex w-full cursor-pointer items-center justify-center gap-2 rounded-lg bg-gray-100 px-3 py-2 text-sm text-gray-600 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
         >
           <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
           </svg>
           Settings
-        </a>
+        </button>
         <FeedbackModal />
       </div>
+      {openModal === 'settings' && (
+        <DialogOverlay title="Settings" onClose={() => setOpenModal(null)}>
+          <SettingsPanel />
+        </DialogOverlay>
+      )}
+      {openModal === 'users' && (
+        <DialogOverlay title="Users" onClose={() => setOpenModal(null)} wide>
+          <AdminUsersPanel />
+        </DialogOverlay>
+      )}
+      {openModal === 'flags' && (
+        <DialogOverlay title="Flagged Conversations" onClose={() => setOpenModal(null)} wide>
+          <AdminFlagsPanel />
+        </DialogOverlay>
+      )}
+      {openModal === 'feedback' && (
+        <DialogOverlay title="Feedback" onClose={() => setOpenModal(null)} wide>
+          <AdminFeedbackPanel />
+        </DialogOverlay>
+      )}
       <div className="border-t border-gray-200 p-4 dark:border-gray-700">
         <div className="flex items-center gap-3">
           {session?.user?.image && (
