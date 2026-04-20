@@ -29,7 +29,7 @@ export default function LinkClaudeModal({ onClose, onLinked }: LinkClaudeModalPr
     setTimeout(() => setCopied(null), 2000);
   }, []);
 
-  const [os] = useState<DetectedOs>(() => detectOs());
+  const [os, setOs] = useState<DetectedOs>(() => detectOs());
 
   const installCommand = (() => {
     const base = typeof window !== 'undefined' ? window.location.origin : '';
@@ -86,6 +86,22 @@ export default function LinkClaudeModal({ onClose, onLinked }: LinkClaudeModalPr
             <h3 className="mb-2 text-sm font-semibold text-gray-800 dark:text-gray-200">
               Step 1: Install Claude and get your token
             </h3>
+            <div className="mb-3 inline-flex rounded-md border border-gray-200 bg-white p-0.5 text-xs dark:border-gray-700 dark:bg-gray-900">
+              {(['mac', 'windows', 'other'] as const).map((option) => (
+                <button
+                  key={option}
+                  type="button"
+                  onClick={() => setOs(option)}
+                  className={`rounded px-3 py-1 font-medium transition ${
+                    os === option
+                      ? 'bg-blue-600 text-white'
+                      : 'text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-200'
+                  }`}
+                >
+                  {option === 'mac' ? 'macOS' : option === 'windows' ? 'Windows' : 'Other'}
+                </button>
+              ))}
+            </div>
             <p className="mb-2 text-sm text-gray-600 dark:text-gray-400">
               Open a terminal on your computer and run this command:
             </p>
@@ -141,8 +157,8 @@ export default function LinkClaudeModal({ onClose, onLinked }: LinkClaudeModalPr
           </button>
           <button
             onClick={handleSubmit}
-            disabled={saving || !token.trim()}
-            className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed"
+            disabled={saving || !token.replace(/\s+/g, '')}
+            className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:bg-gray-300 disabled:text-gray-500 disabled:cursor-not-allowed dark:disabled:bg-gray-700 dark:disabled:text-gray-400"
           >
             {saving ? 'Saving...' : 'Link Account'}
           </button>
