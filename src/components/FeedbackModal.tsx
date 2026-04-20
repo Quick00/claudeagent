@@ -1,7 +1,12 @@
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { useSession } from 'next-auth/react';
+import { useEditor, EditorContent } from '@tiptap/react';
+import StarterKit from '@tiptap/starter-kit';
+import Link from '@tiptap/extension-link';
+import Placeholder from '@tiptap/extension-placeholder';
+import { Markdown } from 'tiptap-markdown';
 
 type FeedbackType = 'FEATURE_REQUEST' | 'BUG';
 type Step = 'type' | 'form';
@@ -36,7 +41,27 @@ export default function FeedbackModal() {
   const [error, setError] = useState<string | null>(null);
   const [visible, setVisible] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  const onEditorUpdate = useCallback(({ editor: e }: { editor: ReturnType<typeof useEditor> }) => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    if (e) setDescription((e.storage as any).markdown.getMarkdown());
+  }, []);
+
+  const editor = useEditor({
+    extensions: [
+      StarterKit.configure({ heading: false, codeBlock: false, code: false, blockquote: false, horizontalRule: false }),
+      Link.configure({ openOnClick: false }),
+      Placeholder.configure({ placeholder: 'Describe your request' }),
+      Markdown,
+    ],
+    editorProps: {
+      attributes: {
+        class: 'outline-none min-h-[5rem] max-h-40 overflow-y-auto text-sm px-3 py-2',
+      },
+    },
+    onUpdate: onEditorUpdate,
+    immediatelyRender: false,
+  });
 
   useEffect(() => {
     if (open) {
@@ -58,6 +83,7 @@ export default function FeedbackModal() {
 
   const handleOpen = () => {
     reset();
+    editor?.commands.clearContent();
     setOpen(true);
   };
 
@@ -112,22 +138,6 @@ export default function FeedbackModal() {
       setUploading(false);
       if (fileInputRef.current) fileInputRef.current.value = '';
     }
-  };
-
-  const insertMarkdown = (prefix: string, suffix: string) => {
-    const textarea = textareaRef.current;
-    if (!textarea) return;
-    const start = textarea.selectionStart;
-    const end = textarea.selectionEnd;
-    const selected = description.slice(start, end);
-    const replacement = `${prefix}${selected}${suffix}`;
-    const newDesc = description.slice(0, start) + replacement + description.slice(end);
-    setDescription(newDesc);
-    setTimeout(() => {
-      textarea.focus();
-      textarea.selectionStart = start + prefix.length;
-      textarea.selectionEnd = start + prefix.length + selected.length;
-    }, 0);
   };
 
   const handleSubmit = async () => {
@@ -242,45 +252,39 @@ export default function FeedbackModal() {
                 className="mb-3 w-full rounded-md border border-gray-200 px-3 py-2 text-sm focus:border-blue-300 focus:outline-none dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100"
               />
 
-              <div className="mb-1">
-                <textarea
-                  ref={textareaRef}
-                  placeholder="Describe your request"
-                  value={description}
-                  onChange={(e) => setDescription(e.target.value)}
-                  maxLength={5000}
-                  rows={4}
-                  className="w-full resize-none rounded-md border border-gray-200 px-3 py-2 text-sm focus:border-blue-300 focus:outline-none dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100"
-                />
-                <div className="flex gap-1">
+              <div className="mb-3 rounded-md border border-gray-200 dark:border-gray-700 dark:bg-gray-800">
+                <div className="flex items-center gap-0.5 border-b border-gray-200 px-2 py-1 dark:border-gray-700">
                   <button
                     type="button"
-                    onClick={() => insertMarkdown('**', '**')}
-                    className="rounded p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-gray-800 dark:hover:text-gray-300"
+                    onClick={() => editor?.chain().focus().toggleBold().run()}
+                    className={`rounded p-1.5 ${editor?.isActive('bold') ? 'bg-gray-200 text-gray-800 dark:bg-gray-600 dark:text-gray-100' : 'text-gray-400 hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-gray-700 dark:hover:text-gray-300'}`}
                     title="Bold"
                   >
                     <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 4h8a4 4 0 014 4 4 4 0 01-4 4H6z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 12h9a4 4 0 014 4 4 4 0 01-4 4H6z" /></svg>
                   </button>
                   <button
                     type="button"
-                    onClick={() => insertMarkdown('*', '*')}
-                    className="rounded p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-gray-800 dark:hover:text-gray-300"
+                    onClick={() => editor?.chain().focus().toggleItalic().run()}
+                    className={`rounded p-1.5 ${editor?.isActive('italic') ? 'bg-gray-200 text-gray-800 dark:bg-gray-600 dark:text-gray-100' : 'text-gray-400 hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-gray-700 dark:hover:text-gray-300'}`}
                     title="Italic"
                   >
                     <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 4h4m-2 0v16m-4 0h8" /></svg>
                   </button>
                   <button
                     type="button"
-                    onClick={() => insertMarkdown('\n- ', '')}
-                    className="rounded p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-gray-800 dark:hover:text-gray-300"
+                    onClick={() => editor?.chain().focus().toggleBulletList().run()}
+                    className={`rounded p-1.5 ${editor?.isActive('bulletList') ? 'bg-gray-200 text-gray-800 dark:bg-gray-600 dark:text-gray-100' : 'text-gray-400 hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-gray-700 dark:hover:text-gray-300'}`}
                     title="List"
                   >
                     <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" /></svg>
                   </button>
                   <button
                     type="button"
-                    onClick={() => insertMarkdown('[', '](url)')}
-                    className="rounded p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-gray-800 dark:hover:text-gray-300"
+                    onClick={() => {
+                      const url = window.prompt('URL');
+                      if (url) editor?.chain().focus().setLink({ href: url }).run();
+                    }}
+                    className={`rounded p-1.5 ${editor?.isActive('link') ? 'bg-gray-200 text-gray-800 dark:bg-gray-600 dark:text-gray-100' : 'text-gray-400 hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-gray-700 dark:hover:text-gray-300'}`}
                     title="Link"
                   >
                     <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" /></svg>
@@ -289,7 +293,7 @@ export default function FeedbackModal() {
                     type="button"
                     onClick={() => fileInputRef.current?.click()}
                     disabled={uploading || status !== 'authenticated'}
-                    className="rounded p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-gray-800 dark:hover:text-gray-300 disabled:opacity-50"
+                    className="rounded p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-gray-700 dark:hover:text-gray-300 disabled:opacity-50"
                     title="Upload image"
                   >
                     <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
@@ -302,6 +306,7 @@ export default function FeedbackModal() {
                     className="hidden"
                   />
                 </div>
+                <EditorContent editor={editor} className="prose prose-sm dark:prose-invert max-w-none text-gray-900 dark:text-gray-100" />
               </div>
 
               {image && (

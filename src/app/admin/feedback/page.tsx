@@ -4,6 +4,8 @@ import { useEffect, useState } from 'react';
 import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 
 interface FeedbackRow {
   id: string;
@@ -189,7 +191,9 @@ export default function AdminFeedbackPage() {
                 </div>
                 {expandedId === post.id && (
                   <div className="mt-3 border-t border-gray-200 pt-3 dark:border-gray-700">
-                    <p className="whitespace-pre-wrap text-sm text-gray-700 dark:text-gray-300">{post.description}</p>
+                    <div className="prose prose-sm dark:prose-invert max-w-none text-gray-700 dark:text-gray-300">
+                      <ReactMarkdown remarkPlugins={[remarkGfm]}>{post.description}</ReactMarkdown>
+                    </div>
                     {post.image && (
                       <div className="mt-2">
                         {/* eslint-disable-next-line @next/next/no-img-element */}
