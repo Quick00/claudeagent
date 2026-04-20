@@ -2,6 +2,7 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { NextResponse } from 'next/server';
+import { sendNewFeedbackNotification } from '@/lib/email';
 import { Prisma } from '@prisma/client';
 
 export async function POST(request: Request) {
@@ -59,6 +60,13 @@ export async function POST(request: Request) {
         },
       });
     });
+
+    sendNewFeedbackNotification(
+      user.name ?? session.user.email!,
+      title.trim(),
+      type as 'FEATURE_REQUEST' | 'BUG',
+      description.trim(),
+    ).catch(console.error);
 
     return NextResponse.json(post, { status: 201 });
   } catch (err) {
