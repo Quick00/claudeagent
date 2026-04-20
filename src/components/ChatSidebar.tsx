@@ -2,7 +2,7 @@
 
 import {useEffect, useMemo, useState} from 'react';
 import { useSession, signOut } from 'next-auth/react';
-import FeedbackWidget from './FeedbackWidget';
+import FeedbackModal from './FeedbackModal';
 
 interface Conversation {
   id: string;
@@ -27,6 +27,7 @@ export default function ChatSidebar({
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [rawNotificationConvIds, setRawNotificationConvIds] = useState<Set<string>>(new Set());
   const [pendingFlagCount, setPendingFlagCount] = useState(0);
+  const [pendingFeedbackCount, setPendingFeedbackCount] = useState(0);
   const isAdmin = (session?.user as Record<string, unknown>)?.role === 'admin';
 
   useEffect(() => {
@@ -63,6 +64,26 @@ export default function ChatSidebar({
 
     fetchPendingFlags();
     const interval = setInterval(fetchPendingFlags, 30000);
+    return () => clearInterval(interval);
+  }, [isAdmin, refreshTrigger]);
+
+  useEffect(() => {
+    if (!isAdmin) return;
+
+    const fetchPendingFeedback = () => {
+      fetch('/api/admin/feedback?status=TODO')
+        .then((res) => {
+          if (!res.ok) return;
+          return res.json();
+        })
+        .then((data) => {
+          if (Array.isArray(data)) setPendingFeedbackCount(data.length);
+        })
+        .catch(() => {});
+    };
+
+    fetchPendingFeedback();
+    const interval = setInterval(fetchPendingFeedback, 30000);
     return () => clearInterval(interval);
   }, [isAdmin, refreshTrigger]);
 
@@ -165,6 +186,22 @@ export default function ChatSidebar({
             )}
           </a>
         )}
+        {isAdmin && (
+          <a
+            href="/admin/feedback"
+            className="flex w-full items-center justify-center gap-2 rounded-lg bg-gray-100 px-3 py-2 text-sm text-gray-600 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
+          >
+            <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z" />
+            </svg>
+            Feedback
+            {pendingFeedbackCount > 0 && (
+              <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-red-500 px-1.5 text-xs font-medium text-white">
+                {pendingFeedbackCount}
+              </span>
+            )}
+          </a>
+        )}
         <a
           href="/settings"
           className="flex w-full items-center justify-center gap-2 rounded-lg bg-gray-100 px-3 py-2 text-sm text-gray-600 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
@@ -175,7 +212,7 @@ export default function ChatSidebar({
           </svg>
           Settings
         </a>
-        <FeedbackWidget />
+        <FeedbackModal />
       </div>
       <div className="border-t border-gray-200 p-4 dark:border-gray-700">
         <div className="flex items-center gap-3">

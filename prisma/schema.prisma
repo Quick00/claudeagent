@@ -19,6 +19,7 @@ model User {
   flags            Flag[] @relation("UserFlags")
   adminFlags       Flag[] @relation("AdminFlags")
   adminSentMessages    Message[] @relation("AdminSentMessages")
+  feedbackPosts    FeedbackPost[]
 }
 
 model Conversation {
@@ -59,6 +60,7 @@ model Attachment {
   size        Int
   createdAt   DateTime @default(now())
   message     Message? @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  feedbackPost FeedbackPost?
 }
 
 model KnowledgeEntry {
@@ -88,6 +90,21 @@ model Flag {
   conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
   user           User         @relation("UserFlags", fields: [userId], references: [id], onDelete: Cascade)
   admin          User?        @relation("AdminFlags", fields: [adminId], references: [id], onDelete: SetNull)
+}
+
+model FeedbackPost {
+  id          String      @id @default(uuid())
+  type        String
+  title       String
+  description String
+  status      String      @default("TODO")
+  userId      String
+  imageId     String?     @unique
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  image       Attachment? @relation(fields: [imageId], references: [id], onDelete: SetNull)
 }
 
 model Repository {
