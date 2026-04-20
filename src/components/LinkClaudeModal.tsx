@@ -20,8 +20,8 @@ export default function LinkClaudeModal({ onClose, onLinked }: LinkClaudeModalPr
   }, []);
 
   const handleSubmit = async () => {
-    const trimmed = token.trim();
-    if (!trimmed) return;
+    const cleaned = token.replace(/\s+/g, '');
+    if (!cleaned) return;
 
     setSaving(true);
     setError(null);
@@ -30,7 +30,7 @@ export default function LinkClaudeModal({ onClose, onLinked }: LinkClaudeModalPr
       const res = await fetch('/api/auth/claude/link', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ token: trimmed }),
+        body: JSON.stringify({ token: cleaned }),
       });
 
       if (!res.ok) {
