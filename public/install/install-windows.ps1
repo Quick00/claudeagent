@@ -8,6 +8,9 @@ if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
         exit 1
     }
     winget install --id Git.Git --silent --accept-source-agreements --accept-package-agreements
+    # winget install doesn't refresh the current session's PATH; merge the
+    # per-user and per-machine PATH so git is immediately available.
+    $env:Path = [System.Environment]::GetEnvironmentVariable('Path', 'Machine') + ';' + [System.Environment]::GetEnvironmentVariable('Path', 'User')
 }
 
 Write-Host "==> Installing Claude Code..."
