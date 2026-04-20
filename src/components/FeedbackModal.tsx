@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
+import { useSession } from 'next-auth/react';
 
 type FeedbackType = 'FEATURE_REQUEST' | 'BUG';
 type Step = 'type' | 'form';
@@ -11,7 +12,18 @@ interface UploadedImage {
   url: string;
 }
 
+async function safeResponseError(res: Response, fallback: string): Promise<string> {
+  const ct = res.headers.get('content-type') || '';
+  if (ct.includes('application/json')) {
+    const data = await res.json();
+    return data.error || fallback;
+  }
+  const text = await res.text();
+  return text || fallback;
+}
+
 export default function FeedbackModal() {
+  const { status } = useSession();
   const [open, setOpen] = useState(false);
   const [step, setStep] = useState<Step>('type');
   const [type, setType] = useState<FeedbackType | null>(null);
@@ -65,6 +77,11 @@ export default function FeedbackModal() {
   const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    if (status !== 'authenticated') {
+      setError('Please sign in to upload images');
+      if (fileInputRef.current) fileInputRef.current.value = '';
+      return;
+    }
 
     if (!ALLOWED_TYPES.includes(file.type)) {
       setError('Only PNG, JPEG, GIF, and WebP images are allowed');
@@ -84,8 +101,7 @@ export default function FeedbackModal() {
       formData.append('file', file);
       const res = await fetch('/api/upload', { method: 'POST', body: formData });
       if (!res.ok) {
-        const data = await res.json();
-        setError(data.error || 'Upload failed');
+        setError(await safeResponseError(res, 'Upload failed'));
         return;
       }
       const data = await res.json();
@@ -115,7 +131,11 @@ export default function FeedbackModal() {
   };
 
   const handleSubmit = async () => {
-    if (!type || !title.trim() || !description.trim() || submitting) return;
+    if (!type || !title.trim() || !description.trim() || submitting || uploading) return;
+    if (status !== 'authenticated') {
+      setError('Please sign in to submit feedback');
+      return;
+    }
     setSubmitting(true);
     setError(null);
     try {
@@ -130,8 +150,7 @@ export default function FeedbackModal() {
         }),
       });
       if (!res.ok) {
-        const data = await res.json();
-        setError(data.error || 'Failed to submit feedback');
+        setError(await safeResponseError(res, 'Failed to submit feedback'));
         return;
       }
       setSubmitted(true);
@@ -269,7 +288,7 @@ export default function FeedbackModal() {
                   <button
                     type="button"
                     onClick={() => fileInputRef.current?.click()}
-                    disabled={uploading}
+                    disabled={uploading || status !== 'authenticated'}
                     className="rounded p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-gray-800 dark:hover:text-gray-300 disabled:opacity-50"
                     title="Upload image"
                   >
@@ -310,7 +329,7 @@ export default function FeedbackModal() {
                 </button>
                 <button
                   onClick={handleSubmit}
-                  disabled={!title.trim() || !description.trim() || submitting}
+                  disabled={!title.trim() || !description.trim() || submitting || uploading}
                   className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
                 >
                   {submitting ? 'Submitting...' : 'Create A New Post'}
