@@ -30,11 +30,36 @@ export default function LinkClaudeModal({ onClose, onLinked }: LinkClaudeModalPr
     return `curl -fsSL ${base}/install/install-mac.sh | bash`;
   })();
 
-  const copyToClipboard = (text: string, key: string) => {
-    navigator.clipboard.writeText(text).then(() => {
+  const copyToClipboard = async (text: string, key: string) => {
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(text);
+      } else {
+        throw new Error('clipboard unavailable');
+      }
       setCopied(key);
       setTimeout(() => setCopied(null), 2000);
-    });
+    } catch {
+      // Fallback for non-secure contexts (HTTP on LAN): use a temporary
+      // textarea + document.execCommand('copy'). execCommand is deprecated
+      // but universally works and is the standard fallback for this case.
+      const textarea = document.createElement('textarea');
+      textarea.value = text;
+      textarea.style.position = 'fixed';
+      textarea.style.opacity = '0';
+      document.body.appendChild(textarea);
+      textarea.select();
+      try {
+        document.execCommand('copy');
+        setCopied(key);
+        setTimeout(() => setCopied(null), 2000);
+      } catch {
+        setCopied(`${key}:failed`);
+        setTimeout(() => setCopied(null), 2500);
+      } finally {
+        document.body.removeChild(textarea);
+      }
+    }
   };
 
   const handleSubmit = async () => {
@@ -116,7 +141,7 @@ export default function LinkClaudeModal({ onClose, onLinked }: LinkClaudeModalPr
                     onClick={() => copyToClipboard(macInstallCommand, 'install')}
                     className="ml-2 shrink-0 text-xs text-gray-400 hover:text-white"
                   >
-                    {copied === 'install' ? 'Copied!' : 'Copy'}
+                    {copied === 'install' ? 'Copied!' : copied === 'install:failed' ? 'Select manually' : 'Copy'}
                   </button>
                 </div>
 
