@@ -2,11 +2,13 @@
 
 import { useState } from 'react';
 
-type DetectedOs = 'mac' | 'windows';
+type DetectedOs = 'mac' | 'windows' | 'linux';
 
 function detectOs(): DetectedOs {
   if (typeof navigator === 'undefined') return 'mac';
-  if (/Windows/i.test(navigator.userAgent)) return 'windows';
+  const ua = navigator.userAgent;
+  if (/Windows/i.test(ua)) return 'windows';
+  if (/Linux/i.test(ua) && !/Android/i.test(ua)) return 'linux';
   return 'mac';
 }
 
@@ -127,7 +129,44 @@ export default function LinkClaudeModal({ onClose, onLinked }: LinkClaudeModalPr
               ))}
             </div>
 
-            {os === 'mac' ? (
+            {os === 'windows' ? (
+              <>
+                <a
+                  href={downloadHref}
+                  download={downloadFilename}
+                  className="block w-full rounded-lg bg-blue-600 px-4 py-3 text-center text-sm font-semibold text-white hover:bg-blue-700"
+                >
+                  Download installer for Windows
+                </a>
+
+                <div className="mt-3 space-y-2 text-xs text-gray-500 dark:text-gray-400">
+                  <p>1. Open the downloaded <code className="font-mono">install-claude.bat</code> file.</p>
+                  <p>2. If Windows shows <b>&ldquo;Windows protected your PC&rdquo;</b>, click <b>More info</b>, then <b>Run anyway</b>.</p>
+                  <p>3. A command window opens and installs Claude (and Git for Windows, if missing). A browser opens for you to log in. When finished, a long token is printed in the command window &mdash; copy it and paste it below.</p>
+                </div>
+              </>
+            ) : os === 'linux' ? (
+              <>
+                <div className="space-y-2 text-sm text-gray-700 dark:text-gray-300">
+                  <p><b>1.</b> Open a terminal on your computer.</p>
+                  <p><b>2.</b> Click the <b>Copy</b> button below, paste the command into the terminal, and press <kbd className="rounded border border-gray-300 bg-gray-100 px-1.5 py-0.5 font-mono text-xs dark:border-gray-600 dark:bg-gray-800">Enter</kbd>.</p>
+                </div>
+
+                <div className="mt-3 flex items-center justify-between rounded-md bg-gray-900 px-3 py-2">
+                  <code className="text-sm text-green-400 break-all">{macInstallCommand}</code>
+                  <button
+                    onClick={() => copyToClipboard(macInstallCommand, 'install')}
+                    className="ml-2 shrink-0 text-xs text-gray-400 hover:text-white"
+                  >
+                    {copied === 'install' ? 'Copied!' : copied === 'install:failed' ? 'Select manually' : 'Copy'}
+                  </button>
+                </div>
+
+                <p className="mt-3 text-xs text-gray-500 dark:text-gray-400">
+                  <b>3.</b> A browser window will open for you to log in with your Claude account. After you authorize, a long token is printed in the terminal window — copy it and paste it below.
+                </p>
+              </>
+            ) : (
               <>
                 <div className="space-y-2 text-sm text-gray-700 dark:text-gray-300">
                   <p><b>1.</b> Press <kbd className="rounded border border-gray-300 bg-gray-100 px-1.5 py-0.5 font-mono text-xs dark:border-gray-600 dark:bg-gray-800">⌘</kbd> + <kbd className="rounded border border-gray-300 bg-gray-100 px-1.5 py-0.5 font-mono text-xs dark:border-gray-600 dark:bg-gray-800">Space</kbd> on your keyboard to open Spotlight.</p>
@@ -148,22 +187,6 @@ export default function LinkClaudeModal({ onClose, onLinked }: LinkClaudeModalPr
                 <p className="mt-3 text-xs text-gray-500 dark:text-gray-400">
                   <b>4.</b> A browser window will open for you to log in with your Claude account. After you authorize, a long token is printed in the terminal window — copy it and paste it below.
                 </p>
-              </>
-            ) : (
-              <>
-                <a
-                  href={downloadHref}
-                  download={downloadFilename}
-                  className="block w-full rounded-lg bg-blue-600 px-4 py-3 text-center text-sm font-semibold text-white hover:bg-blue-700"
-                >
-                  Download installer for Windows
-                </a>
-
-                <div className="mt-3 space-y-2 text-xs text-gray-500 dark:text-gray-400">
-                  <p>1. Open the downloaded <code className="font-mono">install-claude.bat</code> file.</p>
-                  <p>2. If Windows shows <b>&ldquo;Windows protected your PC&rdquo;</b>, click <b>More info</b>, then <b>Run anyway</b>.</p>
-                  <p>3. A command window opens and installs Claude (and Git for Windows, if missing). A browser opens for you to log in. When finished, a long token is printed in the command window &mdash; copy it and paste it below.</p>
-                </div>
               </>
             )}
           </div>
