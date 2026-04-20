@@ -59,9 +59,24 @@ export default function FeedbackModal() {
     setStep('form');
   };
 
+  const ALLOWED_TYPES = ['image/png', 'image/jpeg', 'image/gif', 'image/webp'];
+  const MAX_UPLOAD_BYTES = 5 * 1024 * 1024; // 5 MB
+
   const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+
+    if (!ALLOWED_TYPES.includes(file.type)) {
+      setError('Only PNG, JPEG, GIF, and WebP images are allowed');
+      if (fileInputRef.current) fileInputRef.current.value = '';
+      return;
+    }
+    if (file.size > MAX_UPLOAD_BYTES) {
+      setError('File must be under 5 MB');
+      if (fileInputRef.current) fileInputRef.current.value = '';
+      return;
+    }
+
     setUploading(true);
     setError(null);
     try {

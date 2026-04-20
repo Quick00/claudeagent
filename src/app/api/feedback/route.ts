@@ -2,6 +2,7 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { NextResponse } from 'next/server';
+import { Prisma } from '@prisma/client';
 
 export async function POST(request: Request) {
   const session = await getServerSession(authOptions);
@@ -33,22 +34,43 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'description is required and must be 5000 characters or fewer' }, { status: 400 });
   }
 
-  if (imageId) {
-    const attachment = await prisma.attachment.findUnique({ where: { id: imageId } });
-    if (!attachment || attachment.messageId !== null) {
-      return NextResponse.json({ error: 'Attachment not found or already in use' }, { status: 400 });
+  try {
+    const post = await prisma.$transaction(async (tx) => {
+      if (imageId) {
+        const attachment = await tx.attachment.findUnique({
+          where: { id: imageId },
+          include: { feedbackPost: true },
+        });
+        if (!attachment) {
+          throw new Error('ATTACHMENT_NOT_FOUND');
+        }
+        if (attachment.feedbackPost) {
+          throw new Error('ATTACHMENT_ALREADY_USED');
+        }
+      }
+
+      return tx.feedbackPost.create({
+        data: {
+          type,
+          title: title.trim(),
+          description: description.trim(),
+          userId: user.id,
+          imageId: imageId || null,
+        },
+      });
+    });
+
+    return NextResponse.json(post, { status: 201 });
+  } catch (err) {
+    if (err instanceof Error && err.message === 'ATTACHMENT_NOT_FOUND') {
+      return NextResponse.json({ error: 'Attachment not found' }, { status: 400 });
     }
+    if (err instanceof Error && err.message === 'ATTACHMENT_ALREADY_USED') {
+      return NextResponse.json({ error: 'Image is already attached to another post' }, { status: 409 });
+    }
+    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+      return NextResponse.json({ error: 'Image is already attached to another post' }, { status: 409 });
+    }
+    throw err;
   }
-
-  const post = await prisma.feedbackPost.create({
-    data: {
-      type,
-      title: title.trim(),
-      description: description.trim(),
-      userId: user.id,
-      imageId: imageId || null,
-    },
-  });
-
-  return NextResponse.json(post, { status: 201 });
 }
