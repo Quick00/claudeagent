@@ -2,6 +2,16 @@
 
 import { useState, useCallback } from 'react';
 
+type DetectedOs = 'mac' | 'windows' | 'other';
+
+function detectOs(): DetectedOs {
+  if (typeof navigator === 'undefined') return 'other';
+  const ua = navigator.userAgent;
+  if (/Mac/i.test(ua)) return 'mac';
+  if (/Windows/i.test(ua)) return 'windows';
+  return 'other';
+}
+
 interface LinkClaudeModalProps {
   onClose: () => void;
   onLinked: () => void;
@@ -18,6 +28,15 @@ export default function LinkClaudeModal({ onClose, onLinked }: LinkClaudeModalPr
     setCopied(id);
     setTimeout(() => setCopied(null), 2000);
   }, []);
+
+  const [os] = useState<DetectedOs>(() => detectOs());
+
+  const installCommand = (() => {
+    const base = typeof window !== 'undefined' ? window.location.origin : '';
+    if (os === 'mac') return `curl -fsSL ${base}/install/install-mac.sh | bash`;
+    if (os === 'windows') return `irm ${base}/install/install-windows.ps1 | iex`;
+    return 'curl -fsSL https://claude.ai/install.sh | bash';
+  })();
 
   const handleSubmit = async () => {
     const cleaned = token.replace(/\s+/g, '');
@@ -64,43 +83,36 @@ export default function LinkClaudeModal({ onClose, onLinked }: LinkClaudeModalPr
 
         <div className="mb-5 space-y-4">
           <div className="rounded-lg bg-gray-50 p-4 dark:bg-gray-800">
-            <h3 className="mb-2 text-sm font-semibold text-gray-800 dark:text-gray-200">Step 1: Install Claude Code</h3>
+            <h3 className="mb-2 text-sm font-semibold text-gray-800 dark:text-gray-200">
+              Step 1: Install Claude and get your token
+            </h3>
             <p className="mb-2 text-sm text-gray-600 dark:text-gray-400">
-              Open a terminal on your computer and run:
+              Open a terminal on your computer and run this command:
             </p>
             <div className="flex items-center justify-between rounded-md bg-gray-900 px-3 py-2">
-              <code className="text-sm text-green-400">curl -fsSL https://claude.ai/install.sh | bash</code>
+              <code className="text-sm text-green-400 break-all">{installCommand}</code>
               <button
-                onClick={() => copyToClipboard('curl -fsSL https://claude.ai/install.sh | bash', 'install')}
+                onClick={() => copyToClipboard(installCommand, 'install')}
                 className="ml-2 shrink-0 text-xs text-gray-400 hover:text-white"
               >
                 {copied === 'install' ? 'Copied!' : 'Copy'}
               </button>
             </div>
-          </div>
-
-          <div className="rounded-lg bg-gray-50 p-4 dark:bg-gray-800">
-            <h3 className="mb-2 text-sm font-semibold text-gray-800 dark:text-gray-200">Step 2: Generate a token</h3>
-            <p className="mb-2 text-sm text-gray-600 dark:text-gray-400">
-              Run this command and follow the instructions in your browser:
-            </p>
-            <div className="flex items-center justify-between rounded-md bg-gray-900 px-3 py-2">
-              <code className="text-sm text-green-400">claude setup-token</code>
-              <button
-                onClick={() => copyToClipboard('claude setup-token', 'token')}
-                className="ml-2 shrink-0 text-xs text-gray-400 hover:text-white"
-              >
-                {copied === 'token' ? 'Copied!' : 'Copy'}
-              </button>
-            </div>
             <p className="mt-2 text-xs text-gray-400 dark:text-gray-500">
-              This will open a browser window where you log in with your Claude account.
-              After authorizing, a long token string will be displayed in your terminal.
+              A browser window will open for you to log in with your Claude account.
+              After you authorize, a long token string is printed in your terminal —
+              copy it and paste it below.
+              {os === 'other' && (
+                <>
+                  <br />
+                  After install, run <code className="font-mono">claude setup-token</code> in the same terminal to generate the token.
+                </>
+              )}
             </p>
           </div>
 
           <div className="rounded-lg bg-gray-50 p-4 dark:bg-gray-800">
-            <h3 className="mb-2 text-sm font-semibold text-gray-800 dark:text-gray-200">Step 3: Paste your token</h3>
+            <h3 className="mb-2 text-sm font-semibold text-gray-800 dark:text-gray-200">Step 2: Paste your token</h3>
             <p className="mb-2 text-sm text-gray-600 dark:text-gray-400">
               Copy the token from your terminal and paste it below:
             </p>
