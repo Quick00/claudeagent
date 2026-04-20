@@ -12,15 +12,16 @@ export async function POST(request: Request) {
 
   const body = await request.json();
   const { token } = body as { token: string };
+  const cleaned = token?.replace(/\s+/g, '');
 
-  if (!token?.trim()) {
+  if (!cleaned) {
     return NextResponse.json({ error: 'Token is required' }, { status: 400 });
   }
 
   await prisma.user.update({
     where: { email: session.user.email },
     data: {
-      claudeToken: encrypt(token.trim()),
+      claudeToken: encrypt(cleaned),
       claudeEmail: session.user.email,
     },
   });
