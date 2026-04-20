@@ -1,15 +1,13 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState } from 'react';
 
-type DetectedOs = 'mac' | 'windows' | 'other';
+type DetectedOs = 'mac' | 'windows';
 
 function detectOs(): DetectedOs {
-  if (typeof navigator === 'undefined') return 'other';
-  const ua = navigator.userAgent;
-  if (/Mac/i.test(ua)) return 'mac';
-  if (/Windows/i.test(ua)) return 'windows';
-  return 'other';
+  if (typeof navigator === 'undefined') return 'mac';
+  if (/Windows/i.test(navigator.userAgent)) return 'windows';
+  return 'mac';
 }
 
 interface LinkClaudeModalProps {
@@ -21,22 +19,10 @@ export default function LinkClaudeModal({ onClose, onLinked }: LinkClaudeModalPr
   const [token, setToken] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [copied, setCopied] = useState<string | null>(null);
-
-  const copyToClipboard = useCallback((text: string, id: string) => {
-    navigator.clipboard.writeText(text);
-    setCopied(id);
-    setTimeout(() => setCopied(null), 2000);
-  }, []);
-
   const [os, setOs] = useState<DetectedOs>(() => detectOs());
 
-  const installCommand = (() => {
-    const base = typeof window !== 'undefined' ? window.location.origin : '';
-    if (os === 'mac') return `curl -fsSL ${base}/install/install-mac.sh | bash`;
-    if (os === 'windows') return `irm ${base}/install/install-windows.ps1 | iex`;
-    return 'curl -fsSL https://claude.ai/install.sh | bash';
-  })();
+  const downloadHref = os === 'mac' ? '/install/mac-installer.zip' : '/install/install-claude-windows.bat';
+  const downloadFilename = os === 'mac' ? 'mac-installer.zip' : 'install-claude.bat';
 
   const handleSubmit = async () => {
     const cleaned = token.replace(/\s+/g, '');
@@ -87,7 +73,7 @@ export default function LinkClaudeModal({ onClose, onLinked }: LinkClaudeModalPr
               Step 1: Install Claude and get your token
             </h3>
             <div className="mb-3 inline-flex rounded-md border border-gray-200 bg-white p-0.5 text-xs dark:border-gray-700 dark:bg-gray-900">
-              {(['mac', 'windows', 'other'] as const).map((option) => (
+              {(['mac', 'windows'] as const).map((option) => (
                 <button
                   key={option}
                   type="button"
@@ -98,33 +84,34 @@ export default function LinkClaudeModal({ onClose, onLinked }: LinkClaudeModalPr
                       : 'text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-200'
                   }`}
                 >
-                  {option === 'mac' ? 'macOS' : option === 'windows' ? 'Windows' : 'Other'}
+                  {option === 'mac' ? 'macOS' : 'Windows'}
                 </button>
               ))}
             </div>
-            <p className="mb-2 text-sm text-gray-600 dark:text-gray-400">
-              Open a terminal on your computer and run this command:
-            </p>
-            <div className="flex items-center justify-between rounded-md bg-gray-900 px-3 py-2">
-              <code className="text-sm text-green-400 break-all">{installCommand}</code>
-              <button
-                onClick={() => copyToClipboard(installCommand, 'install')}
-                className="ml-2 shrink-0 text-xs text-gray-400 hover:text-white"
-              >
-                {copied === 'install' ? 'Copied!' : 'Copy'}
-              </button>
-            </div>
-            <p className="mt-2 text-xs text-gray-400 dark:text-gray-500">
-              A browser window will open for you to log in with your Claude account.
-              After you authorize, a long token string is printed in your terminal —
-              copy it and paste it below.
-              {os === 'other' && (
+
+            <a
+              href={downloadHref}
+              download={downloadFilename}
+              className="block w-full rounded-lg bg-blue-600 px-4 py-3 text-center text-sm font-semibold text-white hover:bg-blue-700"
+            >
+              Download installer for {os === 'mac' ? 'macOS' : 'Windows'}
+            </a>
+
+            <div className="mt-3 space-y-2 text-xs text-gray-500 dark:text-gray-400">
+              {os === 'mac' ? (
                 <>
-                  <br />
-                  After install, run <code className="font-mono">claude setup-token</code> in the same terminal to generate the token.
+                  <p>1. Open the downloaded file. macOS should auto-extract it into <code className="font-mono">install-claude.command</code>.</p>
+                  <p>2. <b>Right-click</b> <code className="font-mono">install-claude.command</code> and choose <b>Open</b>. Click <b>Open</b> again in the warning dialog. (Double-clicking on first run will show an error &mdash; that&rsquo;s macOS Gatekeeper. Right-click is the standard workaround.)</p>
+                  <p>3. A Terminal window opens and installs Claude. A browser opens for you to log in. When finished, a long token is printed in the Terminal window &mdash; copy it and paste it below.</p>
+                </>
+              ) : (
+                <>
+                  <p>1. Open the downloaded <code className="font-mono">install-claude.bat</code> file.</p>
+                  <p>2. If Windows shows <b>&ldquo;Windows protected your PC&rdquo;</b>, click <b>More info</b>, then <b>Run anyway</b>.</p>
+                  <p>3. A command window opens and installs Claude (and Git for Windows, if missing). A browser opens for you to log in. When finished, a long token is printed in the command window &mdash; copy it and paste it below.</p>
                 </>
               )}
-            </p>
+            </div>
           </div>
 
           <div className="rounded-lg bg-gray-50 p-4 dark:bg-gray-800">
