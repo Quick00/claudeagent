@@ -1,5 +1,7 @@
 'use client';
 
+import { useState } from 'react';
+import { createPortal } from 'react-dom';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 
@@ -20,6 +22,7 @@ interface MessageBubbleProps {
 
 export default function MessageBubble({ role, content, adminName, timestamp, attachments }: MessageBubbleProps) {
   const imageAttachments = attachments?.filter((a) => a.mimeType.startsWith('image/')) ?? [];
+  const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
 
   if (role === 'user') {
     return (
@@ -28,20 +31,42 @@ export default function MessageBubble({ role, content, adminName, timestamp, att
           {imageAttachments.length > 0 && (
             <div className="mb-2 flex flex-wrap justify-end gap-2">
               {imageAttachments.map((att) => (
-                <a
+                <button
                   key={att.id}
-                  href={`/api/upload/${att.id}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
+                  onClick={() => setLightboxSrc(`/api/upload/${att.id}`)}
+                  className="cursor-pointer"
                 >
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
                     src={`/api/upload/${att.id}`}
                     alt={att.filename}
                     className="max-h-[200px] max-w-[300px] rounded-xl border border-blue-400 object-contain"
                   />
-                </a>
+                </button>
               ))}
             </div>
+          )}
+          {lightboxSrc && createPortal(
+            <div
+              className="fixed inset-0 z-50 flex items-center justify-center bg-black/70"
+              onClick={() => setLightboxSrc(null)}
+            >
+              <div className="relative max-h-[90vh] max-w-[90vw]" onClick={(e) => e.stopPropagation()}>
+                <button
+                  onClick={() => setLightboxSrc(null)}
+                  className="absolute -right-3 -top-3 flex h-8 w-8 items-center justify-center rounded-full bg-gray-800 text-white hover:bg-gray-700"
+                >
+                  &times;
+                </button>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={lightboxSrc}
+                  alt="Full size"
+                  className="max-h-[85vh] max-w-[85vw] rounded-lg object-contain"
+                />
+              </div>
+            </div>,
+            document.body
           )}
           <div className="rounded-2xl bg-blue-600 px-4 py-3 text-white">
             <p className="whitespace-pre-wrap">{content}</p>
