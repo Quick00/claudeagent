@@ -7,19 +7,28 @@ export default function MaintenancePage() {
 
   useEffect(() => {
     const timer = setInterval(() => {
-      setCountdown((prev) => {
-        if (prev <= 1) {
-          fetch('/', { redirect: 'manual' }).then((res) => {
-            if (res.type === 'opaqueredirect' || res.status === 307) return;
-            window.location.href = '/';
-          }).catch(() => {});
-          return 10;
-        }
-        return prev - 1;
-      });
+      setCountdown((prev) => (prev <= 1 ? 0 : prev - 1));
     }, 1000);
     return () => clearInterval(timer);
   }, []);
+
+  useEffect(() => {
+    if (countdown !== 0) return;
+    setCountdown(10);
+    fetch('/api/maintenance-status')
+      .then((res) => {
+        if (res.ok) {
+          const data = res.json();
+          return data;
+        }
+      })
+      .then((data) => {
+        if (data && !data.maintenance) {
+          window.location.href = '/';
+        }
+      })
+      .catch(() => {});
+  }, [countdown]);
 
   return (
     <div className="flex min-h-screen flex-col items-center justify-center bg-gray-50 dark:bg-gray-950">
