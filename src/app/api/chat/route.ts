@@ -168,7 +168,7 @@ export async function POST(request: Request) {
     return Response.json({ error: 'No repositories configured. Please ask an admin to add a repository.' }, { status: 503 });
   }
 
-  let knowledgeEntries: { id: string; category: string; content: string; tags: string; source: string | null; createdAt: Date; repositoryName?: string | null }[] = [];
+  let knowledgeEntries: { id: string; subject: string; category: string; content: string; tags: string; source: string | null; createdAt: Date; repositoryName?: string | null }[] = [];
   try {
     knowledgeEntries = await findRelevantEntries(message, 10);
   } catch (err) {
@@ -181,27 +181,14 @@ export async function POST(request: Request) {
   let systemPrompt = config.systemPrompt;
 
   if (knowledgeEntries.length > 0) {
-    const grouped: Record<string, { content: string; repositoryName: string | null }[]> = {};
-    for (const entry of knowledgeEntries) {
-      if (!grouped[entry.category]) grouped[entry.category] = [];
-      grouped[entry.category].push({ content: entry.content, repositoryName: entry.repositoryName || null });
-    }
-
-    const categoryLabels: Record<string, string> = {
-      correction: 'Important corrections (these override what you find in code)',
-      terminology: 'Product terminology',
-      product_insight: 'Product knowledge',
-      process: 'Business processes',
-    };
-
     let knowledgeBlock = '\n\n---\nKNOWLEDGE BASE (use this to give better answers):\n';
-    for (const [cat, entries] of Object.entries(grouped)) {
-      knowledgeBlock += `\n## ${categoryLabels[cat] || cat}\n`;
-      for (const entry of entries) {
-        const source = entry.repositoryName ? `[from: ${entry.repositoryName}]` : '[global]';
-        knowledgeBlock += `- ${source} ${entry.content}\n`;
-      }
+
+    for (const entry of knowledgeEntries) {
+      const heading = entry.subject || entry.category.replace('_', ' ');
+      const source = entry.repositoryName ? ` [from: ${entry.repositoryName}]` : '';
+      knowledgeBlock += `\n## ${heading}${source}\n${entry.content}\n`;
     }
+
     systemPrompt += knowledgeBlock;
   }
 
