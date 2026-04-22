@@ -205,7 +205,7 @@ async function main() {
     byRepo.get(key)!.push(entry.id);
   }
 
-  const allPages: (ConsolidatedPage & { repositoryId: string | null })[] = [];
+  let totalPages = 0;
 
   for (const [repoId, entryIds] of byRepo) {
     console.log(`\nProcessing ${entryIds.length} entries (repo: ${repoId || 'global'})...`);
@@ -216,61 +216,52 @@ async function main() {
     console.log(`  ${clusters.length} clusters: ${multiClusters.length} groups to merge, ${singletons.length} unique entries`);
 
     for (let i = 0; i < clusters.length; i++) {
-      const clusterEntries = clusters[i].map((id) => entryMap.get(id)!);
+      const clusterIds = clusters[i];
+      const clusterData = clusterIds.map((id) => entryMap.get(id)!);
+      let page: ConsolidatedPage;
       try {
-        const page = await mergeCluster(clusterEntries);
-        allPages.push({ ...page, repositoryId: repoId });
-        const label = clusterEntries.length > 1 ? `merged ${clusterEntries.length} entries` : 'subject assigned';
-        console.log(`  [${i + 1}/${clusters.length}] "${page.subject}" (${label})`);
+        page = await mergeCluster(clusterData);
       } catch (err) {
         console.error(`  [${i + 1}/${clusters.length}] Failed: ${(err as Error).message}`);
-        const newest = clusterEntries[clusterEntries.length - 1];
-        allPages.push({
+        const newest = clusterData[clusterData.length - 1];
+        page = {
           subject: newest.content.slice(0, 60),
           category: newest.category,
           content: newest.content,
           tags: newest.tags,
-          repositoryId: repoId,
-        });
+        };
       }
+
+      // Write to DB immediately, delete consumed entries
+      const entry = await prisma.knowledgeEntry.create({
+        data: {
+          subject: page.subject,
+          category: page.category,
+          content: page.content,
+          tags: page.tags,
+          repositoryId: repoId,
+        },
+      });
+      try {
+        const embedding = await embedText(page.content);
+        const vectorStr = `[${embedding.join(',')}]`;
+        await prisma.$executeRaw`
+          UPDATE "KnowledgeEntry"
+          SET embedding = ${vectorStr}::vector
+          WHERE id = ${entry.id}
+        `;
+      } catch (err) {
+        console.error(`  Failed to embed "${page.subject}": ${(err as Error).message}`);
+      }
+      await prisma.knowledgeEntry.deleteMany({ where: { id: { in: clusterIds } } });
+
+      totalPages++;
+      const label = clusterData.length > 1 ? `merged ${clusterData.length} entries` : 'subject assigned';
+      console.log(`  [${i + 1}/${clusters.length}] "${page.subject}" (${label})`);
     }
   }
 
-  // Step 3: Delete old entries and insert consolidated pages
-  console.log(`\nDeleting ${rawEntries.length} old entries...`);
-  await prisma.knowledgeEntry.deleteMany({});
-
-  console.log(`Inserting ${allPages.length} consolidated pages...`);
-  for (let i = 0; i < allPages.length; i++) {
-    const page = allPages[i];
-    const entry = await prisma.knowledgeEntry.create({
-      data: {
-        subject: page.subject,
-        category: page.category,
-        content: page.content,
-        tags: page.tags,
-        repositoryId: page.repositoryId,
-      },
-    });
-
-    try {
-      const embedding = await embedText(page.content);
-      const vectorStr = `[${embedding.join(',')}]`;
-      await prisma.$executeRaw`
-        UPDATE "KnowledgeEntry"
-        SET embedding = ${vectorStr}::vector
-        WHERE id = ${entry.id}
-      `;
-    } catch (err) {
-      console.error(`  Failed to embed "${page.subject}": ${(err as Error).message}`);
-    }
-
-    if ((i + 1) % 10 === 0 || i === allPages.length - 1) {
-      console.log(`  Inserted ${i + 1}/${allPages.length}`);
-    }
-  }
-
-  console.log(`\n=== Done: ${rawEntries.length} entries → ${allPages.length} pages ===`);
+  console.log(`\n=== Done: ${rawEntries.length} entries → ${totalPages} pages ===`);
   await prisma.$disconnect();
 }
 
