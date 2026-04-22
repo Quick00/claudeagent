@@ -98,7 +98,14 @@ For skip: {"action":"skip","reason":"<brief reason>","coveredBy":"<subject of pa
     throw new Error('Librarian returned empty response');
   }
 
-  const decision = JSON.parse(responseText) as LibrarianDecision;
+  const cleaned = responseText.replace(/^```(?:json)?\s*\n?/i, '').replace(/\n?```\s*$/i, '');
+
+  let decision: LibrarianDecision;
+  try {
+    decision = JSON.parse(cleaned) as LibrarianDecision;
+  } catch {
+    throw new Error(`Librarian returned invalid JSON: ${cleaned.slice(0, 200)}`);
+  }
 
   if (!['update', 'create', 'skip'].includes(decision.action)) {
     throw new Error(`Librarian returned invalid action: ${(decision as { action: string }).action}`);

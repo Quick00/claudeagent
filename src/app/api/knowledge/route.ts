@@ -122,6 +122,14 @@ export async function POST(request: Request) {
 
   // Step 5: Execute the decision
   if (decision.action === 'update') {
+    const validIds = similarPages.map((p) => p.id);
+    if (!validIds.includes(decision.pageId)) {
+      console.error(`[knowledge] Librarian returned invalid pageId: ${decision.pageId}`);
+      decision = { action: 'create', subject: decision.subject, content: decision.content, tags: decision.tags };
+    }
+  }
+
+  if (decision.action === 'update') {
     const newEmbedding = await embedText(decision.content);
     const vectorStr = `[${newEmbedding.join(',')}]`;
 
@@ -161,7 +169,8 @@ export async function POST(request: Request) {
         repositoryId: repositoryId || null,
       },
     });
-    const vectorStr = `[${embedding.join(',')}]`;
+    const createEmbedding = await embedText(decision.content);
+    const vectorStr = `[${createEmbedding.join(',')}]`;
     await prisma.$executeRaw`
       UPDATE "KnowledgeEntry"
       SET embedding = ${vectorStr}::vector
