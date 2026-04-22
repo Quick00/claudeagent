@@ -5,14 +5,17 @@ Next.js 16 App Router directory.
 ## Structure
 
 - `api/` — Server-side API route handlers (REST endpoints)
-- `admin/` — Admin-only pages (users, flags)
+- `admin/repos/` — Admin repository management page
 - `conversation/[id]/` — Individual conversation view
-- `dashboard/` — Knowledge base dashboard with stats
+- `dashboard/` — Knowledge dashboard with stats and semantic search
 - `knowledge/` — Knowledge graph visualization
 - `login/` — Auth login page
-- `settings/` — User settings (Claude account linking)
+- `maintenance/` — Maintenance mode page (shown when `MAINTENANCE_MODE=true`)
+- `install/` — Windows installer download route (`install-claude-windows.bat`)
 - `layout.tsx` — Root layout with Providers wrapper
 - `page.tsx` — Home page (chat interface)
+
+Admin panels for users, flags, feedback, and settings are sidebar modals in `src/components/`, not separate pages.
 
 ## API Route Patterns
 

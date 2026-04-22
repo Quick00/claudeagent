@@ -10,6 +10,20 @@ All components are React client components (`'use client'`).
 - `ChatInput.tsx` — Auto-resizing textarea. Enter to send, Shift+Enter for newline.
 - `MessageBubble.tsx` — Single message bubble. User = right-aligned blue, Assistant = left-aligned gray with markdown rendering.
 
+## Other Components
+
+- `KnowledgeGraph.tsx` — Force-directed graph visualization of knowledge entries using react-force-graph-2d.
+- `FeedbackModal.tsx` — Multi-step feedback form (type → title → description → optional screenshot). Posts to `/api/feedback`.
+- `LinkClaudeModal.tsx` — Step-by-step modal for linking a Claude account via setup token. OS-aware (macOS terminal flow vs Windows installer download).
+- `SettingsPanel.tsx` — User settings panel (Claude account linking, profile management).
+- `AdminUsersPanel.tsx` — Admin panel for listing users and managing roles.
+- `AdminFlagsPanel.tsx` — Admin panel for reviewing and responding to user flags.
+- `AdminFeedbackPanel.tsx` — Admin panel for reviewing feedback posts and updating status (TODO → IN_PROGRESS → DONE).
+- `AdminUserConversationsPanel.tsx` — Admin panel showing a user's conversations with ability to view and send messages.
+- `DialogOverlay.tsx` — Reusable modal/dialog overlay wrapper.
+- `ThemeProvider.tsx` — Dark/light mode provider.
+- `Providers.tsx` — Context providers wrapper (SessionProvider from next-auth).
+
 ## Patterns
 
 - State lives in `ChatPage` and is passed down as props.

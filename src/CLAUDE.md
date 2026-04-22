@@ -17,3 +17,4 @@ This is the main source directory for a Next.js 16 (App Router) codebase Q&A app
 - **Prisma client**: Always import from `@/lib/prisma` (singleton with PrismaPg adapter).
 - **Streaming**: The chat API uses SSE (Server-Sent Events) with `ReadableStream` to stream Claude responses.
 - **Session management**: Claude Code CLI processes are pooled via `SessionManager` with configurable concurrency.
+- **Knowledge**: MCP server exposes `search_knowledge` and `save_knowledge` tools to Claude. Knowledge entries are auto-curated by the librarian.
