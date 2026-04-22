@@ -249,9 +249,14 @@ export default function DashboardPage() {
                         </span>
                       </div>
                       <span className="text-xs text-gray-400 dark:text-gray-500">
-                        {new Date(entry.createdAt).toLocaleDateString('en-GB')}
+                        {new Date(entry.updatedAt).toLocaleDateString('en-GB')}
                       </span>
                     </div>
+                    {entry.subject && (
+                      <h3 className="mb-1 text-sm font-semibold text-gray-900 dark:text-gray-100">
+                        {entry.subject}
+                      </h3>
+                    )}
                     <p className="text-sm leading-relaxed text-gray-800 dark:text-gray-200">
                       {entry.content}
                     </p>

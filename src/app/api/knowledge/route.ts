@@ -139,7 +139,6 @@ export async function POST(request: Request) {
         subject: decision.subject,
         content: decision.content,
         tags: decision.tags,
-        updatedAt: new Date(),
       },
     });
     await prisma.$executeRaw`

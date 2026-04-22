@@ -3,14 +3,13 @@ dotenv.config({ path: '.env.local' });
 import { PrismaClient } from '@prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { writeFileSync } from 'fs';
+import { embedText } from '../src/lib/embed-text';
 
 const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL ?? '' });
 const prisma = new PrismaClient({ adapter });
 
 const OPENROUTER_API_URL = 'https://openrouter.ai/api/v1/chat/completions';
-const OPENROUTER_EMBED_URL = 'https://openrouter.ai/api/v1/embeddings';
 const CONSOLIDATION_MODEL = 'anthropic/claude-sonnet-4.6';
-const EMBEDDING_MODEL = 'openai/text-embedding-3-large';
 const SIMILARITY_THRESHOLD = 0.7;
 const CONCURRENCY = 5;
 
@@ -28,28 +27,6 @@ interface ConsolidatedPage {
   category: string;
   content: string;
   tags: string;
-}
-
-async function embedText(text: string): Promise<number[]> {
-  const apiKey = process.env.OPENROUTER_API_KEY;
-  if (!apiKey) throw new Error('OPENROUTER_API_KEY is not set');
-
-  const res = await fetch(OPENROUTER_EMBED_URL, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify({ input: text, model: EMBEDDING_MODEL, dimensions: 1024 }),
-  });
-
-  if (!res.ok) {
-    const body = await res.text();
-    throw new Error(`Embedding error (${res.status}): ${body}`);
-  }
-
-  const data = await res.json();
-  return data.data[0].embedding;
 }
 
 async function clusterEntries(entryIds: string[]): Promise<string[][]> {
@@ -143,7 +120,17 @@ Respond with ONLY valid JSON (no markdown, no explanation):
   if (!responseText) throw new Error('LLM returned empty response');
 
   const cleaned = responseText.replace(/^```(?:json)?\s*\n?/i, '').replace(/\n?```\s*$/i, '');
-  const page = JSON.parse(cleaned) as ConsolidatedPage;
+  const parsed = JSON.parse(cleaned);
+  if (
+    typeof parsed !== 'object' || parsed === null ||
+    typeof parsed.subject !== 'string' ||
+    typeof parsed.category !== 'string' ||
+    typeof parsed.content !== 'string' ||
+    typeof parsed.tags !== 'string'
+  ) {
+    throw new Error(`LLM returned invalid ConsolidatedPage shape: ${cleaned.slice(0, 200)}`);
+  }
+  const page = parsed as ConsolidatedPage;
   const validCategories = ['terminology', 'product_insight', 'process', 'developer'];
   if (!validCategories.includes(page.category)) {
     page.category = 'product_insight';
@@ -235,27 +222,33 @@ async function main() {
         };
       }
 
-      const entry = await prisma.knowledgeEntry.create({
-        data: {
-          subject: page.subject,
-          category: page.category,
-          content: page.content,
-          tags: page.tags,
-          repositoryId: repoId,
-        },
-      });
+      let embedding: number[] | null = null;
       try {
-        const embedding = await embedText(page.content);
-        const vectorStr = `[${embedding.join(',')}]`;
-        await prisma.$executeRaw`
-          UPDATE "KnowledgeEntry"
-          SET embedding = ${vectorStr}::vector
-          WHERE id = ${entry.id}
-        `;
+        embedding = await embedText(page.content);
       } catch (err) {
         console.error(`  Failed to embed "${page.subject}": ${(err as Error).message}`);
       }
-      await prisma.knowledgeEntry.deleteMany({ where: { id: { in: clusterIds } } });
+
+      await prisma.$transaction(async (tx) => {
+        await tx.knowledgeEntry.deleteMany({ where: { id: { in: clusterIds } } });
+        const entry = await tx.knowledgeEntry.create({
+          data: {
+            subject: page.subject,
+            category: page.category,
+            content: page.content,
+            tags: page.tags,
+            repositoryId: repoId,
+          },
+        });
+        if (embedding) {
+          const vectorStr = `[${embedding.join(',')}]`;
+          await tx.$executeRaw`
+            UPDATE "KnowledgeEntry"
+            SET embedding = ${vectorStr}::vector
+            WHERE id = ${entry.id}
+          `;
+        }
+      });
 
       totalPages++;
       completed++;

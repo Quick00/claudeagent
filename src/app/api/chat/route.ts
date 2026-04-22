@@ -6,7 +6,7 @@ import { config } from '@/lib/config';
 import { stripSourceReferences } from '@/lib/sanitize-response';
 import { decrypt } from '@/lib/crypto';
 import { ChildProcess } from 'child_process';
-import { findRelevantEntries } from '@/lib/embeddings';
+import { findRelevantEntries, KnowledgeEntryResult } from '@/lib/embeddings';
 import path from 'path';
 import { routeQuestion } from '@/lib/repo-router';
 import { attachClaudeProcess, createSseResponse } from '@/lib/claude-process-stream';
@@ -168,14 +168,15 @@ export async function POST(request: Request) {
     return Response.json({ error: 'No repositories configured. Please ask an admin to add a repository.' }, { status: 503 });
   }
 
-  let knowledgeEntries: { id: string; subject: string; category: string; content: string; tags: string; source: string | null; createdAt: Date; repositoryName?: string | null }[] = [];
+  let knowledgeEntries: KnowledgeEntryResult[] = [];
   try {
     knowledgeEntries = await findRelevantEntries(message, 10);
   } catch (err) {
     console.error('[chat] Failed to fetch relevant entries, falling back to all:', (err as Error).message);
-    knowledgeEntries = await prisma.knowledgeEntry.findMany({
+    const fallback = await prisma.knowledgeEntry.findMany({
       orderBy: { createdAt: 'asc' },
     });
+    knowledgeEntries = fallback.map((e) => ({ ...e, repositoryName: null }));
   }
 
   let systemPrompt = config.systemPrompt;

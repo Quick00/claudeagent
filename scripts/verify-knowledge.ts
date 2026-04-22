@@ -3,27 +3,12 @@ dotenv.config({ path: '.env.local' });
 import { PrismaClient } from '@prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { spawn } from 'child_process';
-import { createDecipheriv } from 'crypto';
 import { mkdirSync } from 'fs';
 import path from 'path';
+import { decrypt } from '../src/lib/crypto';
 
 const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL ?? '' });
 const prisma = new PrismaClient({ adapter });
-
-function decrypt(ciphertext: string): string {
-  const hex = process.env.TOKEN_ENCRYPTION_KEY;
-  if (!hex || hex.length !== 64) {
-    throw new Error('TOKEN_ENCRYPTION_KEY must be a 64-character hex string');
-  }
-  const key = Buffer.from(hex, 'hex');
-  const buf = Buffer.from(ciphertext, 'base64');
-  const iv = buf.subarray(0, 12);
-  const authTag = buf.subarray(buf.length - 16);
-  const encrypted = buf.subarray(12, buf.length - 16);
-  const decipher = createDecipheriv('aes-256-gcm', key, iv);
-  decipher.setAuthTag(authTag);
-  return decipher.update(encrypted) + decipher.final('utf8');
-}
 
 function parseArgs(): { userId: string; batchSize: number } {
   const args = process.argv.slice(2);
@@ -161,6 +146,7 @@ async function main() {
   let verified = 0;
   let updated = 0;
   let failed = 0;
+  let unclear = 0;
 
   for (let i = 0; i < pages.length; i++) {
     const page = pages[i];
@@ -190,24 +176,24 @@ Check the codebase to confirm this is still accurate. If it's outdated or wrong,
       if (resultText.includes('"VERIFIED"') || resultText.includes('VERIFIED')) {
         console.log(`    ✓ Verified`);
         verified++;
+        await prisma.knowledgeEntry.update({
+          where: { id: page.id },
+          data: { updatedAt: new Date() },
+        });
       } else if (resultText.includes('save_knowledge')) {
         console.log(`    ↻ Updated via save_knowledge`);
         updated++;
       } else {
         console.log(`    ? Unclear result`);
+        unclear++;
       }
-
-      await prisma.knowledgeEntry.update({
-        where: { id: page.id },
-        data: { updatedAt: new Date() },
-      });
     } catch (err) {
       console.error(`    ✗ Failed: ${(err as Error).message}`);
       failed++;
     }
   }
 
-  console.log(`\n=== Results: ${verified} verified, ${updated} updated, ${failed} failed ===`);
+  console.log(`\n=== Results: ${verified} verified, ${updated} updated, ${unclear} unclear, ${failed} failed ===`);
   await prisma.$disconnect();
 }
 

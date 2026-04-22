@@ -111,5 +111,22 @@ For skip: {"action":"skip","reason":"<brief reason>","coveredBy":"<subject of pa
     throw new Error(`Librarian returned invalid action: ${(decision as { action: string }).action}`);
   }
 
+  if (decision.action === 'update') {
+    if (!decision.pageId || typeof decision.pageId !== 'string') {
+      throw new Error(`Librarian 'update' decision missing pageId`);
+    }
+    if (!decision.subject || !decision.content) {
+      throw new Error(`Librarian 'update' decision missing subject or content`);
+    }
+  } else if (decision.action === 'create') {
+    if (!decision.subject || !decision.content) {
+      throw new Error(`Librarian 'create' decision missing subject or content`);
+    }
+  } else if (decision.action === 'skip') {
+    if (!decision.reason) {
+      throw new Error(`Librarian 'skip' decision missing reason`);
+    }
+  }
+
   return decision;
 }
