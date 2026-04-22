@@ -48,6 +48,9 @@ next-env.d.ts
 # per-user claude session data
 .claude-sessions/
 
+# git worktrees
+.worktrees/
+
 # uploaded images
 /uploads
 /repos

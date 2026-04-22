@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 
 interface DashboardData {
@@ -30,6 +30,17 @@ interface DashboardData {
   }[];
 }
 
+interface SearchEntry {
+  id: string;
+  subject: string;
+  category: string;
+  content: string;
+  tags: string;
+  createdAt: string;
+  updatedAt: string;
+  similarity: number;
+}
+
 const CATEGORY_COLORS: Record<string, string> = {
   terminology: '#8b5cf6',
   product_insight: '#10b981',
@@ -47,12 +58,62 @@ const CATEGORY_LABELS: Record<string, string> = {
 export default function DashboardPage() {
   const [data, setData] = useState<DashboardData | null>(null);
   const [selectedTag, setSelectedTag] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState<SearchEntry[] | null>(null);
+  const [isSearching, setIsSearching] = useState(false);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
     fetch('/api/dashboard')
       .then((r) => r.json())
       .then(setData);
   }, []);
+
+  const performSearch = useCallback((query: string) => {
+    if (!query.trim()) {
+      setSearchResults(null);
+      setIsSearching(false);
+      return;
+    }
+    if (abortControllerRef.current) abortControllerRef.current.abort();
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+
+    setIsSearching(true);
+    fetch('/api/dashboard/search', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ query: query.trim(), limit: 20 }),
+      signal: controller.signal,
+    })
+      .then((r) => r.json())
+      .then((data) => {
+        if (!controller.signal.aborted) setSearchResults(data.entries);
+      })
+      .catch(() => {
+        if (!controller.signal.aborted) setSearchResults(null);
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setIsSearching(false);
+      });
+  }, []);
+
+  const handleSearchChange = useCallback(
+    (value: string) => {
+      setSearchQuery(value);
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+      if (!value.trim()) {
+        if (abortControllerRef.current) abortControllerRef.current.abort();
+        setSearchResults(null);
+        setIsSearching(false);
+        return;
+      }
+      setIsSearching(true);
+      debounceRef.current = setTimeout(() => performSearch(value), 500);
+    },
+    [performSearch],
+  );
 
   if (!data) {
     return (
@@ -220,17 +281,63 @@ export default function DashboardPage() {
 
           {/* Timeline */}
           <div className="lg:col-span-2">
+            {/* Search bar */}
+            <div className="relative mb-4">
+              <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3.5">
+                <svg className="h-4 w-4 text-gray-400 dark:text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                </svg>
+              </div>
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => handleSearchChange(e.target.value)}
+                placeholder="Search knowledge..."
+                aria-label="Search knowledge"
+                className="w-full rounded-xl border border-gray-200 bg-white py-2.5 pl-10 pr-10 text-sm text-gray-900 placeholder-gray-400 focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-400 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100 dark:placeholder-gray-500 dark:focus:border-blue-500 dark:focus:ring-blue-500"
+              />
+              {searchQuery && (
+                <button
+                  onClick={() => handleSearchChange('')}
+                  aria-label="Clear search"
+                  className="absolute inset-y-0 right-0 flex items-center pr-3.5 text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300"
+                >
+                  <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              )}
+            </div>
+
             <h2 className="mb-3 text-sm font-semibold uppercase text-gray-500 dark:text-gray-400">
-              Knowledge Timeline
-              {selectedTag && (
-                <span className="ml-2 text-xs font-normal normal-case text-gray-400 dark:text-gray-500">
-                  Filtered by: {selectedTag}
-                </span>
+              {searchResults !== null ? (
+                <>
+                  Search Results
+                  <span className="ml-2 text-xs font-normal normal-case text-gray-400 dark:text-gray-500">
+                    {searchResults.length} result{searchResults.length !== 1 ? 's' : ''} for &ldquo;{searchQuery}&rdquo;
+                  </span>
+                </>
+              ) : (
+                <>
+                  Knowledge Timeline
+                  {selectedTag && (
+                    <span className="ml-2 text-xs font-normal normal-case text-gray-400 dark:text-gray-500">
+                      Filtered by: {selectedTag}
+                    </span>
+                  )}
+                </>
               )}
             </h2>
+
+            {isSearching ? (
+              <div className="rounded-xl border border-gray-200 bg-white p-8 text-center dark:border-gray-700 dark:bg-gray-900">
+                <div className="inline-block h-5 w-5 animate-spin rounded-full border-2 border-gray-300 border-t-blue-500" />
+                <p className="mt-2 text-sm text-gray-400 dark:text-gray-500">Searching...</p>
+              </div>
+            ) : (
             <div className="space-y-3">
-              {filteredEntries.length > 0 ? (
-                filteredEntries.map((entry) => (
+              {(searchResults ?? filteredEntries).length > 0 ? (
+                (searchResults ?? filteredEntries).map((entry) => (
                   <div
                     key={entry.id}
                     className="rounded-xl border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-900"
@@ -248,9 +355,16 @@ export default function DashboardPage() {
                           {CATEGORY_LABELS[entry.category] || entry.category}
                         </span>
                       </div>
-                      <span className="text-xs text-gray-400 dark:text-gray-500">
-                        {new Date(entry.updatedAt).toLocaleDateString('en-GB')}
-                      </span>
+                      <div className="flex items-center gap-2">
+                        {'similarity' in entry && (
+                          <span className="rounded-full bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-600 dark:bg-blue-900/30 dark:text-blue-400">
+                            {(entry as SearchEntry).similarity}% match
+                          </span>
+                        )}
+                        <span className="text-xs text-gray-400 dark:text-gray-500">
+                          {new Date(entry.updatedAt).toLocaleDateString('en-GB')}
+                        </span>
+                      </div>
                     </div>
                     {entry.subject && (
                       <h3 className="mb-1 text-sm font-semibold text-gray-900 dark:text-gray-100">
@@ -281,12 +395,15 @@ export default function DashboardPage() {
                 ))
               ) : (
                 <div className="rounded-xl border border-gray-200 bg-white p-8 text-center text-sm text-gray-400 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-500">
-                  {selectedTag
-                    ? `No entries tagged with "${selectedTag}"`
-                    : 'No knowledge entries yet — start asking questions!'}
+                  {searchResults !== null
+                    ? 'No matching knowledge found — try different terms'
+                    : selectedTag
+                      ? `No entries tagged with "${selectedTag}"`
+                      : 'No knowledge entries yet — start asking questions!'}
                 </div>
               )}
             </div>
+            )}
           </div>
         </div>
       </div>
