@@ -65,6 +65,7 @@ async function clusterEntries(entryIds: string[]): Promise<string[][]> {
       FROM "KnowledgeEntry" a, "KnowledgeEntry" b
       WHERE a.id = ${id}
         AND b.id != a.id
+        AND b.id = ANY(${entryIds})
         AND a.embedding IS NOT NULL
         AND b.embedding IS NOT NULL
         AND 1 - (a.embedding <=> b.embedding) >= ${SIMILARITY_THRESHOLD}
