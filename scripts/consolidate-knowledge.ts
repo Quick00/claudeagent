@@ -12,6 +12,7 @@ const OPENROUTER_EMBED_URL = 'https://openrouter.ai/api/v1/embeddings';
 const CONSOLIDATION_MODEL = 'anthropic/claude-sonnet-4.6';
 const EMBEDDING_MODEL = 'openai/text-embedding-3-large';
 const SIMILARITY_THRESHOLD = 0.7;
+const CONCURRENCY = 5;
 
 interface Entry {
   id: string;
@@ -215,14 +216,15 @@ async function main() {
     const singletons = clusters.filter((c) => c.length === 1);
     console.log(`  ${clusters.length} clusters: ${multiClusters.length} groups to merge, ${singletons.length} unique entries`);
 
-    for (let i = 0; i < clusters.length; i++) {
+    let completed = 0;
+    const processCluster = async (i: number) => {
       const clusterIds = clusters[i];
       const clusterData = clusterIds.map((id) => entryMap.get(id)!);
       let page: ConsolidatedPage;
       try {
         page = await mergeCluster(clusterData);
       } catch (err) {
-        console.error(`  [${i + 1}/${clusters.length}] Failed: ${(err as Error).message}`);
+        console.error(`  [${++completed}/${clusters.length}] Failed: ${(err as Error).message}`);
         const newest = clusterData[clusterData.length - 1];
         page = {
           subject: newest.content.slice(0, 60),
@@ -232,7 +234,6 @@ async function main() {
         };
       }
 
-      // Write to DB immediately, delete consumed entries
       const entry = await prisma.knowledgeEntry.create({
         data: {
           subject: page.subject,
@@ -256,8 +257,15 @@ async function main() {
       await prisma.knowledgeEntry.deleteMany({ where: { id: { in: clusterIds } } });
 
       totalPages++;
+      completed++;
       const label = clusterData.length > 1 ? `merged ${clusterData.length} entries` : 'subject assigned';
-      console.log(`  [${i + 1}/${clusters.length}] "${page.subject}" (${label})`);
+      console.log(`  [${completed}/${clusters.length}] "${page.subject}" (${label})`);
+    };
+
+    // Process clusters in pools of CONCURRENCY
+    for (let start = 0; start < clusters.length; start += CONCURRENCY) {
+      const batch = clusters.slice(start, start + CONCURRENCY).map((_, j) => processCluster(start + j));
+      await Promise.all(batch);
     }
   }
 
