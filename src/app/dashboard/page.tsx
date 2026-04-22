@@ -14,10 +14,12 @@ interface DashboardData {
   tags: { tag: string; count: number }[];
   entries: {
     id: string;
+    subject: string;
     category: string;
     content: string;
     tags: string;
     createdAt: string;
+    updatedAt: string;
   }[];
   entriesByDay: Record<string, number>;
   recentConversations: {
@@ -29,7 +31,6 @@ interface DashboardData {
 }
 
 const CATEGORY_COLORS: Record<string, string> = {
-  correction: '#ef4444',
   terminology: '#8b5cf6',
   product_insight: '#10b981',
   process: '#f59e0b',
@@ -37,7 +38,6 @@ const CATEGORY_COLORS: Record<string, string> = {
 };
 
 const CATEGORY_LABELS: Record<string, string> = {
-  correction: 'Corrections',
   terminology: 'Terminology',
   product_insight: 'Product Insights',
   process: 'Processes',
@@ -99,7 +99,7 @@ export default function DashboardPage() {
       <div className="mx-auto max-w-6xl px-6 py-8">
         {/* Stats */}
         <div className="mb-8 grid grid-cols-2 gap-4 sm:grid-cols-4">
-          <StatCard label="Knowledge Entries" value={data.stats.totalEntries} />
+          <StatCard label="Knowledge Pages" value={data.stats.totalEntries} />
           <StatCard label="Conversations" value={data.stats.totalConversations} />
           <StatCard label="Messages" value={data.stats.totalMessages} />
           <StatCard
@@ -249,9 +249,14 @@ export default function DashboardPage() {
                         </span>
                       </div>
                       <span className="text-xs text-gray-400 dark:text-gray-500">
-                        {new Date(entry.createdAt).toLocaleDateString('en-GB')}
+                        {new Date(entry.updatedAt).toLocaleDateString('en-GB')}
                       </span>
                     </div>
+                    {entry.subject && (
+                      <h3 className="mb-1 text-sm font-semibold text-gray-900 dark:text-gray-100">
+                        {entry.subject}
+                      </h3>
+                    )}
                     <p className="text-sm leading-relaxed text-gray-800 dark:text-gray-200">
                       {entry.content}
                     </p>

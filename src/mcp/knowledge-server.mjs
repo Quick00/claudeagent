@@ -56,25 +56,30 @@ rl.on('line', async (line) => {
           {
             name: 'save_knowledge',
             description:
-              'Save a knowledge entry about the platform. Use this when you discover something important while answering a question — a correction, product insight, terminology definition, or business process. This builds a shared knowledge base that improves future answers for everyone.',
+              'Save or update a knowledge page. The system automatically finds the right page and integrates your knowledge, or creates a new one if the subject is genuinely new. You do not need to worry about duplicates — the system handles deduplication and merging.',
             inputSchema: {
               type: 'object',
               properties: {
                 category: {
                   type: 'string',
-                  enum: ['correction', 'terminology', 'product_insight', 'process', 'developer'],
+                  enum: ['terminology', 'product_insight', 'process', 'developer'],
                   description:
-                    'correction = wrong assumptions corrected, terminology = what product terms mean, product_insight = how features work, process = business workflows, developer = technical architecture, code patterns, and implementation details',
+                    'terminology = what product terms mean, product_insight = how features work, process = business workflows, developer = technical architecture, code patterns, and implementation details',
                 },
                 content: {
                   type: 'string',
                   description:
-                    'The knowledge to save. Keep it concise (1-2 sentences). Write it as a fact, not as a conversation reference. ALWAYS write in English, even if the conversation is in another language.',
+                    'The knowledge to save. Write it as a general principle or rule, not a specific one-time observation. ALWAYS write in English, even if the conversation is in another language.',
+                },
+                subject: {
+                  type: 'string',
+                  description:
+                    'Suggested page title for this knowledge (e.g. "Badge Printing", "HubSpot Contact Sync"). The system may adjust this.',
                 },
                 tags: {
                   type: 'string',
                   description:
-                    'Comma-separated topic tags (lowercase, 1-2 words each). E.g. "badges,printing" or "registration,hubspot". Reuse existing tags when possible.',
+                    'Comma-separated topic tags (lowercase, 1-2 words each). E.g. "badges,printing" or "registration,hubspot".',
                 },
               },
               required: ['category', 'content', 'tags'],
@@ -167,6 +172,7 @@ rl.on('line', async (line) => {
             category: args.category,
             content: args.content,
             tags: args.tags || '',
+            subject: args.subject || '',
             repositoryId: REPOSITORY_ID || undefined,
           }),
         });
@@ -180,10 +186,9 @@ rl.on('line', async (line) => {
             content: [
               {
                 type: 'text',
-                text:
-                  data.status === 'saved'
-                    ? `Knowledge saved: [${args.category}] ${args.content}`
-                    : `Skipped: ${data.reason || 'unknown'}`,
+                text: data.message || (data.status === 'saved'
+                  ? `Knowledge saved: [${args.category}] ${args.content}`
+                  : `Skipped: ${data.reason || 'unknown'}`),
               },
             ],
           },

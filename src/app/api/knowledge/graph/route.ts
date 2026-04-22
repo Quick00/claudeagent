@@ -28,7 +28,7 @@ export async function GET() {
   const where = isAdmin ? {} : { category: { not: 'developer' } };
   const entries = await prisma.knowledgeEntry.findMany({
     where,
-    orderBy: { createdAt: 'asc' },
+    orderBy: { updatedAt: 'desc' },
   });
 
   const nodes: GraphNode[] = [];
@@ -37,9 +37,10 @@ export async function GET() {
 
   // Create entry nodes and topic nodes
   for (const entry of entries) {
+    const label = entry.subject || (entry.content.length > 60 ? entry.content.slice(0, 57) + '...' : entry.content);
     nodes.push({
       id: entry.id,
-      label: entry.content.length > 60 ? entry.content.slice(0, 57) + '...' : entry.content,
+      label,
       category: entry.category,
       type: 'entry',
     });

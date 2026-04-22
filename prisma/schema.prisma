@@ -64,15 +64,17 @@ model Attachment {
 }
 
 model KnowledgeEntry {
-  id        String                          @id @default(uuid())
-  category  String
-  content   String
-  tags      String                          @default("")
-  source    String?
+  id           String                          @id @default(uuid())
+  subject      String                          @default("")
+  category     String
+  content      String
+  tags         String                          @default("")
+  source       String?
   repositoryId String?
-  embedding Unsupported("vector(1024)")?
-  createdAt DateTime                        @default(now())
-  repository Repository? @relation(fields: [repositoryId], references: [id], onDelete: SetNull)
+  embedding    Unsupported("vector(1024)")?
+  createdAt    DateTime                        @default(now())
+  updatedAt    DateTime                        @default(now()) @updatedAt
+  repository   Repository? @relation(fields: [repositoryId], references: [id], onDelete: SetNull)
 }
 
 model Flag {
