@@ -57,7 +57,7 @@ describe('SessionManager', () => {
     mockSpawn.mockReturnValue(createMockProcess());
 
     const manager = new SessionManager();
-    manager.startSession('msg-1', 'Hello', '', 'test-token', 'user-1');
+    manager.startSession('msg-1', 'Hello', '', 'test-token', 'user-1', ['/mock/repo']);
 
     expect(mockSpawn).toHaveBeenCalledTimes(1);
     const args = mockSpawn.mock.calls[0];
@@ -65,6 +65,8 @@ describe('SessionManager', () => {
     expect(args[1]).toContain('--print');
     expect(args[1]).toContain('--output-format');
     expect(args[1]).toContain('stream-json');
+    expect(args[1]).toContain('--add-dir');
+    expect(args[1]).toContain('/mock/repo');
   });
 
   it('uses --resume for existing sessions', () => {
@@ -87,14 +89,14 @@ describe('SessionManager', () => {
     const manager = new SessionManager();
 
     // Start 2 sessions (the max)
-    manager.startSession('msg-1', 'Hello 1', '', 'test-token', 'user-1');
-    manager.startSession('msg-2', 'Hello 2', '', 'test-token', 'user-1');
+    manager.startSession('msg-1', 'Hello 1', '', 'test-token', 'user-1', ['/mock/repo']);
+    manager.startSession('msg-2', 'Hello 2', '', 'test-token', 'user-1', ['/mock/repo']);
 
     expect(mockSpawn).toHaveBeenCalledTimes(2);
     expect(manager.queueSize).toBe(0);
 
     // Third should be queued
-    queued = manager.startSession('msg-3', 'Hello 3', '', 'test-token', 'user-1');
+    manager.startSession('msg-3', 'Hello 3', '', 'test-token', 'user-1', ['/mock/repo']);
     expect(manager.queueSize).toBe(1);
 
     // Complete first process — queued one should start
@@ -112,7 +114,7 @@ describe('SessionManager', () => {
     mockSpawn.mockReturnValue(proc);
 
     const manager = new SessionManager();
-    manager.startSession('msg-1', 'Hello', '', 'test-token', 'user-1');
+    manager.startSession('msg-1', 'Hello', '', 'test-token', 'user-1', ['/mock/repo']);
 
     expect(manager.activeCount).toBe(1);
 
