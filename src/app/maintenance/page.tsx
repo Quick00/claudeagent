@@ -1,6 +1,26 @@
 'use client';
 
+import { useEffect, useState } from 'react';
+
 export default function MaintenancePage() {
+  const [countdown, setCountdown] = useState(10);
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setCountdown((prev) => {
+        if (prev <= 1) {
+          fetch('/', { redirect: 'manual' }).then((res) => {
+            if (res.type === 'opaqueredirect' || res.status === 307) return;
+            window.location.href = '/';
+          }).catch(() => {});
+          return 10;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+    return () => clearInterval(timer);
+  }, []);
+
   return (
     <div className="flex min-h-screen flex-col items-center justify-center bg-gray-50 dark:bg-gray-950">
       <div className="w-full max-w-md px-6 text-center">
@@ -66,6 +86,10 @@ export default function MaintenancePage() {
             <path d="M21.17 10.22l-1.63-.47a7.17 7.17 0 00-.57-1.38l.8-1.47a.5.5 0 00-.08-.56l-1.53-1.53a.5.5 0 00-.56-.08l-1.47.8a7.17 7.17 0 00-1.38-.57l-.47-1.63a.5.5 0 00-.48-.35h-2.16a.5.5 0 00-.48.35l-.47 1.63a7.17 7.17 0 00-1.38.57l-1.47-.8a.5.5 0 00-.56.08L5.31 6.34a.5.5 0 00-.08.56l.8 1.47a7.17 7.17 0 00-.57 1.38l-1.63.47a.5.5 0 00-.35.48v2.16a.5.5 0 00.35.48l1.63.47c.14.48.33.94.57 1.38l-.8 1.47a.5.5 0 00.08.56l1.53 1.53a.5.5 0 00.56.08l1.47-.8c.44.24.9.43 1.38.57l.47 1.63a.5.5 0 00.48.35h2.16a.5.5 0 00.48-.35l.47-1.63c.48-.14.94-.33 1.38-.57l1.47.8a.5.5 0 00.56-.08l1.53-1.53a.5.5 0 00.08-.56l-.8-1.47c.24-.44.43-.9.57-1.38l1.63-.47a.5.5 0 00.35-.48v-2.16a.5.5 0 00-.35-.48z" />
           </svg>
         </div>
+
+        <p className="mt-6 text-xs text-gray-400 dark:text-gray-600">
+          Checking again in {countdown}s...
+        </p>
       </div>
 
       {/* Custom animations */}
