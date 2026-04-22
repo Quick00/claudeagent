@@ -22,37 +22,47 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ entries: [] });
   }
 
-  const isAdmin = currentUser.role === 'admin';
-  const embedding = await embedText(query.trim());
-  const vectorStr = `[${embedding.join(',')}]`;
-  const safeLimit = Math.min(Math.max(1, Number(limit)), 50);
+  const parsed = Number(limit);
+  const safeLimit = Math.min(Math.max(1, Number.isFinite(parsed) ? Math.round(parsed) : 20), 50);
 
-  const categoryFilter = isAdmin ? '' : `AND category != 'developer'`;
+  try {
+    const isAdmin = currentUser.role === 'admin';
+    const embedding = await embedText(query.trim());
+    const vectorStr = `[${embedding.join(',')}]`;
 
-  const results: {
-    id: string;
-    subject: string;
-    category: string;
-    content: string;
-    tags: string;
-    createdAt: Date;
-    updatedAt: Date;
-    similarity: number;
-  }[] = await prisma.$queryRawUnsafe(
-    `SELECT id, subject, category, content, tags, "createdAt", "updatedAt",
-            1 - (embedding <=> $1::vector) as similarity
-     FROM "KnowledgeEntry"
-     WHERE embedding IS NOT NULL ${categoryFilter}
-     ORDER BY embedding <=> $1::vector
-     LIMIT $2`,
-    vectorStr,
-    safeLimit,
-  );
+    const categoryFilter = isAdmin ? '' : `AND category != 'developer'`;
 
-  return NextResponse.json({
-    entries: results.map((r) => ({
-      ...r,
-      similarity: Math.round(r.similarity * 100),
-    })),
-  });
+    const results: {
+      id: string;
+      subject: string;
+      category: string;
+      content: string;
+      tags: string;
+      createdAt: Date;
+      updatedAt: Date;
+      similarity: number;
+    }[] = await prisma.$queryRawUnsafe(
+      `SELECT id, subject, category, content, tags, "createdAt", "updatedAt",
+              1 - (embedding <=> $1::vector) as similarity
+       FROM "KnowledgeEntry"
+       WHERE embedding IS NOT NULL ${categoryFilter}
+       ORDER BY embedding <=> $1::vector
+       LIMIT $2`,
+      vectorStr,
+      safeLimit,
+    );
+
+    return NextResponse.json({
+      entries: results.map((r) => ({
+        ...r,
+        similarity: Math.round(r.similarity * 100),
+      })),
+    });
+  } catch (error) {
+    console.error('Search failed:', error);
+    return NextResponse.json(
+      { error: 'search_unavailable', message: 'Search currently unavailable' },
+      { status: 503 },
+    );
+  }
 }

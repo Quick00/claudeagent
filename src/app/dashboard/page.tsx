@@ -62,6 +62,7 @@ export default function DashboardPage() {
   const [searchResults, setSearchResults] = useState<SearchEntry[] | null>(null);
   const [isSearching, setIsSearching] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
     fetch('/api/dashboard')
@@ -75,16 +76,27 @@ export default function DashboardPage() {
       setIsSearching(false);
       return;
     }
+    if (abortControllerRef.current) abortControllerRef.current.abort();
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+
     setIsSearching(true);
     fetch('/api/dashboard/search', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ query: query.trim(), limit: 20 }),
+      signal: controller.signal,
     })
       .then((r) => r.json())
-      .then((data) => setSearchResults(data.entries))
-      .catch(() => setSearchResults(null))
-      .finally(() => setIsSearching(false));
+      .then((data) => {
+        if (!controller.signal.aborted) setSearchResults(data.entries);
+      })
+      .catch(() => {
+        if (!controller.signal.aborted) setSearchResults(null);
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setIsSearching(false);
+      });
   }, []);
 
   const handleSearchChange = useCallback(
@@ -92,6 +104,7 @@ export default function DashboardPage() {
       setSearchQuery(value);
       if (debounceRef.current) clearTimeout(debounceRef.current);
       if (!value.trim()) {
+        if (abortControllerRef.current) abortControllerRef.current.abort();
         setSearchResults(null);
         setIsSearching(false);
         return;
@@ -280,11 +293,13 @@ export default function DashboardPage() {
                 value={searchQuery}
                 onChange={(e) => handleSearchChange(e.target.value)}
                 placeholder="Search knowledge..."
+                aria-label="Search knowledge"
                 className="w-full rounded-xl border border-gray-200 bg-white py-2.5 pl-10 pr-10 text-sm text-gray-900 placeholder-gray-400 focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-400 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100 dark:placeholder-gray-500 dark:focus:border-blue-500 dark:focus:ring-blue-500"
               />
               {searchQuery && (
                 <button
                   onClick={() => handleSearchChange('')}
+                  aria-label="Clear search"
                   className="absolute inset-y-0 right-0 flex items-center pr-3.5 text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300"
                 >
                   <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
