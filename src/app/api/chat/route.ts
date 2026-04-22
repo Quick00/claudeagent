@@ -160,7 +160,7 @@ export async function POST(request: Request) {
       if (repo.lastPulledAt) {
         repoContext += `\nCode last synced: ${repo.lastPulledAt.toISOString()}`;
       }
-      repoContext += `\nIf a knowledge entry contradicts what you see in the current code, trust the code — the entry may be outdated. Use save_knowledge to save an updated correction.`;
+      repoContext += `\nIf a knowledge entry contradicts what you see in the current code, trust the code — the entry may be outdated. Use save_knowledge to save the corrected version — the system will update the page automatically.`;
     }
   }
 
