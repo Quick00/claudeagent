@@ -11,16 +11,15 @@ const OPENROUTER_API_URL = 'https://openrouter.ai/api/v1/chat/completions';
 const OPENROUTER_EMBED_URL = 'https://openrouter.ai/api/v1/embeddings';
 const CONSOLIDATION_MODEL = 'anthropic/claude-sonnet-4.6';
 const EMBEDDING_MODEL = 'openai/text-embedding-3-large';
-const SIMILARITY_THRESHOLD = 0.75;
+const SIMILARITY_THRESHOLD = 0.7;
 
-interface EntryWithEmbedding {
+interface Entry {
   id: string;
   category: string;
   content: string;
   tags: string;
   createdAt: Date;
   repositoryId: string | null;
-  embedding: number[];
 }
 
 interface ConsolidatedPage {
@@ -52,41 +51,38 @@ async function embedText(text: string): Promise<number[]> {
   return data.data[0].embedding;
 }
 
-function cosineSimilarity(a: number[], b: number[]): number {
-  let dot = 0, magA = 0, magB = 0;
-  for (let i = 0; i < a.length; i++) {
-    dot += a[i] * b[i];
-    magA += a[i] * a[i];
-    magB += b[i] * b[i];
-  }
-  return dot / (Math.sqrt(magA) * Math.sqrt(magB));
-}
+async function clusterEntries(entryIds: string[]): Promise<string[][]> {
+  const assigned = new Set<string>();
+  const clusters: string[][] = [];
 
-function clusterEntries(entries: EntryWithEmbedding[]): EntryWithEmbedding[][] {
-  const assigned = new Set<number>();
-  const clusters: EntryWithEmbedding[][] = [];
+  for (const id of entryIds) {
+    if (assigned.has(id)) continue;
+    assigned.add(id);
 
-  for (let i = 0; i < entries.length; i++) {
-    if (assigned.has(i)) continue;
-    assigned.add(i);
-    const cluster = [entries[i]];
+    const similar: { id: string }[] = await prisma.$queryRaw`
+      SELECT b.id
+      FROM "KnowledgeEntry" a, "KnowledgeEntry" b
+      WHERE a.id = ${id}
+        AND b.id != a.id
+        AND a.embedding IS NOT NULL
+        AND b.embedding IS NOT NULL
+        AND 1 - (a.embedding <=> b.embedding) >= ${SIMILARITY_THRESHOLD}
+    `;
 
-    for (let j = i + 1; j < entries.length; j++) {
-      if (assigned.has(j)) continue;
-      const sim = cosineSimilarity(entries[i].embedding, entries[j].embedding);
-      if (sim >= SIMILARITY_THRESHOLD) {
-        cluster.push(entries[j]);
-        assigned.add(j);
+    const cluster = [id];
+    for (const row of similar) {
+      if (!assigned.has(row.id)) {
+        assigned.add(row.id);
+        cluster.push(row.id);
       }
     }
-
     clusters.push(cluster);
   }
 
   return clusters;
 }
 
-async function mergeCluster(entries: EntryWithEmbedding[]): Promise<ConsolidatedPage> {
+async function mergeCluster(entries: Entry[]): Promise<ConsolidatedPage> {
   if (entries.length === 1) {
     const e = entries[0];
     const category = e.category === 'correction' ? 'product_insight' : e.category;
@@ -181,12 +177,11 @@ async function generateSubject(content: string, category: string): Promise<strin
 async function main() {
   console.log('=== Knowledge Consolidation ===\n');
 
-  // Step 1: Load all entries with embeddings
-  const rawEntries: { id: string; category: string; content: string; tags: string; createdAt: Date; repositoryId: string | null }[] =
-    await prisma.knowledgeEntry.findMany({
-      orderBy: { createdAt: 'asc' },
-      select: { id: true, category: true, content: true, tags: true, createdAt: true, repositoryId: true },
-    });
+  // Step 1: Load all entries (embeddings stay in the DB)
+  const rawEntries: Entry[] = await prisma.knowledgeEntry.findMany({
+    orderBy: { createdAt: 'asc' },
+    select: { id: true, category: true, content: true, tags: true, createdAt: true, repositoryId: true },
+  });
 
   if (rawEntries.length === 0) {
     console.log('No entries to consolidate');
@@ -199,52 +194,37 @@ async function main() {
   writeFileSync(backupFile, JSON.stringify(rawEntries, null, 2));
   console.log(`Backed up ${rawEntries.length} entries to ${backupFile}`);
 
-  // Fetch embeddings via raw SQL (Prisma doesn't expose vector columns directly)
-  const embeddingRows: { id: string; vec: string }[] = await prisma.$queryRaw`
-    SELECT id, embedding::text as vec FROM "KnowledgeEntry" WHERE embedding IS NOT NULL
-  `;
-  const embeddingMap = new Map<string, number[]>();
-  for (const row of embeddingRows) {
-    const nums = row.vec.replace(/^\[/, '').replace(/\]$/, '').split(',').map(Number);
-    embeddingMap.set(row.id, nums);
-  }
+  // Step 2: Group by repository, then cluster within each group using pgvector
+  const entryMap = new Map<string, Entry>();
+  for (const e of rawEntries) entryMap.set(e.id, e);
 
-  const entries: EntryWithEmbedding[] = rawEntries
-    .filter((e) => embeddingMap.has(e.id))
-    .map((e) => ({ ...e, embedding: embeddingMap.get(e.id)! }));
-
-  const skipped = rawEntries.length - entries.length;
-  if (skipped > 0) console.log(`Skipping ${skipped} entries without embeddings`);
-
-  // Step 2: Group by repository, then cluster within each group
-  const byRepo = new Map<string | null, EntryWithEmbedding[]>();
-  for (const entry of entries) {
+  const byRepo = new Map<string | null, string[]>();
+  for (const entry of rawEntries) {
     const key = entry.repositoryId;
     if (!byRepo.has(key)) byRepo.set(key, []);
-    byRepo.get(key)!.push(entry);
+    byRepo.get(key)!.push(entry.id);
   }
 
   const allPages: (ConsolidatedPage & { repositoryId: string | null })[] = [];
 
-  for (const [repoId, repoEntries] of byRepo) {
-    console.log(`\nProcessing ${repoEntries.length} entries (repo: ${repoId || 'global'})...`);
+  for (const [repoId, entryIds] of byRepo) {
+    console.log(`\nProcessing ${entryIds.length} entries (repo: ${repoId || 'global'})...`);
 
-    const clusters = clusterEntries(repoEntries);
+    const clusters = await clusterEntries(entryIds);
     const multiClusters = clusters.filter((c) => c.length > 1);
     const singletons = clusters.filter((c) => c.length === 1);
     console.log(`  ${clusters.length} clusters: ${multiClusters.length} groups to merge, ${singletons.length} unique entries`);
 
     for (let i = 0; i < clusters.length; i++) {
-      const cluster = clusters[i];
+      const clusterEntries = clusters[i].map((id) => entryMap.get(id)!);
       try {
-        const page = await mergeCluster(cluster);
+        const page = await mergeCluster(clusterEntries);
         allPages.push({ ...page, repositoryId: repoId });
-        const label = cluster.length > 1 ? `merged ${cluster.length} entries` : 'subject assigned';
+        const label = clusterEntries.length > 1 ? `merged ${clusterEntries.length} entries` : 'subject assigned';
         console.log(`  [${i + 1}/${clusters.length}] "${page.subject}" (${label})`);
       } catch (err) {
         console.error(`  [${i + 1}/${clusters.length}] Failed: ${(err as Error).message}`);
-        // Fall back: keep the newest entry from the cluster as-is
-        const newest = cluster[cluster.length - 1];
+        const newest = clusterEntries[clusterEntries.length - 1];
         allPages.push({
           subject: newest.content.slice(0, 60),
           category: newest.category,
