@@ -1,34 +1,32 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 export default function MaintenancePage() {
   const [countdown, setCountdown] = useState(10);
+  const probing = useRef(false);
 
   useEffect(() => {
     const timer = setInterval(() => {
-      setCountdown((prev) => (prev <= 1 ? 0 : prev - 1));
+      setCountdown((prev) => {
+        if (prev > 1) return prev - 1;
+        if (!probing.current) {
+          probing.current = true;
+          fetch('/api/maintenance-status')
+            .then((res) => res.ok && res.json())
+            .then((data) => {
+              if (data && !data.maintenance) {
+                window.location.href = '/';
+              }
+            })
+            .catch(() => {})
+            .finally(() => { probing.current = false; });
+        }
+        return 10;
+      });
     }, 1000);
     return () => clearInterval(timer);
   }, []);
-
-  useEffect(() => {
-    if (countdown !== 0) return;
-    setCountdown(10);
-    fetch('/api/maintenance-status')
-      .then((res) => {
-        if (res.ok) {
-          const data = res.json();
-          return data;
-        }
-      })
-      .then((data) => {
-        if (data && !data.maintenance) {
-          window.location.href = '/';
-        }
-      })
-      .catch(() => {});
-  }, [countdown]);
 
   return (
     <div className="flex min-h-screen flex-col items-center justify-center bg-gray-50 dark:bg-gray-950">
