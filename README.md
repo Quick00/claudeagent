@@ -10,7 +10,7 @@ A web app that lets team members ask questions about a codebase and get answers 
 - **Per-user Claude authentication** — each user links their own Claude subscription by pasting a setup token
 - **Self-learning knowledge base** — Claude saves insights to a shared Postgres + pgvector database, with semantic search via OpenRouter embeddings
 - **Knowledge map** — interactive graph visualization showing how product concepts connect
-- **Multi-repo support** — admins can register GitLab repositories; an OpenRouter-powered router picks the best repo for each question
+- **Multi-repo support** — admins can register GitLab repositories; all active repos are passed to Claude simultaneously
 - **Built-in feedback** — users submit feature requests and bug reports via a modal; admins manage feedback from the sidebar
 - **Email notifications** — Resend integration sends users an email when their feedback is marked as done
 - **Knowledge dashboard** — stats overview with semantic search across all knowledge entries
@@ -27,7 +27,7 @@ A web app that lets team members ask questions about a codebase and get answers 
 - NextAuth.js (Google OAuth or test credentials)
 - Claude Code CLI (`child_process.spawn`)
 - MCP server for the knowledge tools
-- OpenRouter (embeddings + repo routing)
+- OpenRouter (embeddings + knowledge librarian)
 - Resend (email notifications)
 - Sentry (optional)
 - react-force-graph-2d for the knowledge map
@@ -76,12 +76,8 @@ MAX_CONCURRENT_SESSIONS=5        # max parallel Claude processes
 SESSION_IDLE_TIMEOUT_MS=300000   # 5 minutes
 CLAUDE_MAX_TURNS=25              # max tool-use turns per question
 
-# Comma-separated LAN IPs/hosts to allow in Next.js dev mode (needed if testing
-# the Windows installer download from a separate machine on the same LAN)
-# ALLOWED_DEV_ORIGINS=192.168.1.42,10.0.0.5
-
-# Legacy single-repo fallback (used only if no repos are configured in admin)
-# REPO_PATH=/path/to/your/codebase
+# Maintenance mode — set to "true" to show a maintenance page to all users
+# MAINTENANCE_MODE=true
 
 # Test mode — skip Google OAuth, use simple email login
 # AUTH_TEST_MODE=true
@@ -95,6 +91,7 @@ CLAUDE_MAX_TURNS=25              # max tool-use turns per question
 # RESEND_API_KEY=re_your_api_key
 # FROM_EMAIL=noreply@yourdomain.com
 # REPLY_TO_EMAIL=support@yourdomain.com
+# FEEDBACK_NOTIFY_EMAIL=admin@yourdomain.com
 
 # Sentry (optional)
 # NEXT_PUBLIC_SENTRY_DSN=
@@ -168,22 +165,20 @@ Type a question in the chat input. Claude Code will search the codebase and stre
 Claude automatically saves important discoveries to a shared knowledge base. These are loaded into every future session, so answers improve over time.
 
 The knowledge base includes:
-- **Corrections** — when a user corrects a wrong answer
 - **Terminology** — what product-specific terms mean
 - **Product insights** — how features actually work
 - **Processes** — business workflows and rules
-- **Developer insights** — architecture, code flow, and technical gotchas
+- **Developer** — architecture, code flow, and technical details
 
 ### Knowledge map
 
 Click "Knowledge Map" in the sidebar (or go to `/knowledge`) to see an interactive graph of all knowledge entries and how they connect through shared topics.
 
 - Blue nodes = topics (shared tags)
-- Green nodes = product insights
-- Red nodes = corrections
 - Purple nodes = terminology
+- Green nodes = product insights
 - Orange nodes = processes
-- Cyan nodes = developer insights
+- Cyan nodes = developer
 
 Click any node to see details.
 
@@ -250,7 +245,6 @@ src/
     claude-process-stream.ts  # Parse Claude CLI stream-JSON into SSE events
     prisma.ts                 # Prisma client singleton
     repo-manager.ts           # Clone, sync, and lock-down GitLab repositories
-    repo-router.ts            # Route a question to the best matching repository
     sanitize-response.ts      # Strip code/paths from streamed answers
     session-manager.ts        # Claude CLI process pool + queuing
     upload.ts                 # Image upload helpers
@@ -291,7 +285,7 @@ This starts PostgreSQL and the app. The database is persisted in a Docker volume
 
 ### Registering repositories
 
-Once the app is running, sign in as an admin (the first user created is promoted to admin via seed — or edit the `role` column directly) and open **Admin → Repos**:
+Once the app is running, sign in and promote your user to admin (edit the `role` column to `"admin"` in the database) and open **Admin → Repos**:
 
 1. Set `GITLAB_TOKEN` in your `.env` (a personal access token with `read_api` + `read_repository` scope)
 2. In the admin UI, search for a GitLab project and click **Register** — the app clones it to `REPOS_DIR` and enforces read-only permissions

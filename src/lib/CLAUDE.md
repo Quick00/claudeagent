@@ -15,7 +15,6 @@ Server-side utility modules.
 - `claude-process-stream.ts` — Attaches to Claude Code CLI subprocess and streams responses via SSE. Parses JSON output into `conversation_created`, `text`, `tool_use`, `done`, `error` events.
 - `session-manager.ts` — Manages concurrent Claude Code CLI child processes. Queues requests when at capacity. Exports singleton `sessionManager`.
 - `repo-manager.ts` — Clone, sync, and enforce read-only permissions on GitLab repositories.
-- `repo-router.ts` — Route user questions to the best matching repository via OpenRouter.
 - `sanitize-response.ts` — Strips source file references from Claude responses for security/privacy.
 - `upload.ts` — File upload handling. Stores files to `UPLOAD_PATH`, validates MIME types and size limits.
 
