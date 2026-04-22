@@ -9,6 +9,7 @@ import { ChildProcess } from 'child_process';
 import { findRelevantEntries, KnowledgeEntryResult } from '@/lib/embeddings';
 import path from 'path';
 import { attachClaudeProcess, createSseResponse } from '@/lib/claude-process-stream';
+import { NextResponse } from 'next/server';
 
 const MAX_RETRIES = 2;
 
@@ -41,7 +42,7 @@ export async function POST(request: Request) {
 
   const tokenResult = await getUserClaudeToken(session.user.email);
   if ('error' in tokenResult) {
-    return Response.json({ error: tokenResult.error }, { status: tokenResult.status });
+    return NextResponse.json({ error: tokenResult.error }, { status: tokenResult.status });
   }
   const userClaudeToken = tokenResult.token;
 
@@ -56,7 +57,22 @@ export async function POST(request: Request) {
     return new Response('Message is required', { status: 400 });
   }
 
-  let conversation: { id: string; claudeSessionId: string | null };
+  // --- Collect all active repo directories (before any DB writes) ---
+  const activeRepos = await prisma.repository.findMany({
+    where: { active: true },
+    select: { name: true, description: true, localPath: true, lastPulledAt: true },
+  });
+  const repoPaths = activeRepos.map(r => r.localPath);
+
+  if (repoPaths.length === 0 && config.repoPath) {
+    repoPaths.push(config.repoPath);
+  }
+
+  if (repoPaths.length === 0) {
+    return NextResponse.json({ error: 'No repositories configured. Please ask an admin to add a repository.' }, { status: 503 });
+  }
+
+  let conversation: { id: string; claudeSessionId: string | null; repositoryId: string | null };
   if (conversationId) {
     const existing = await prisma.conversation.findFirst({
       where: { id: conversationId, userId: userId },
@@ -97,7 +113,6 @@ export async function POST(request: Request) {
       });
 
       // Append absolute image paths to the message for Claude CLI
-      // (CLI runs with cwd=repoPath, so relative paths would resolve incorrectly)
       const imageLines = attachments.map((a) => {
         const absolutePath = path.resolve(a.storagePath);
         const sizeKB = (a.size / 1024).toFixed(1);
@@ -105,21 +120,6 @@ export async function POST(request: Request) {
       });
       cliMessage += `\n\n---\nThe user attached ${attachments.length} image(s). Read each one with the Read tool before responding:\n${imageLines.join('\n')}`;
     }
-  }
-
-  // --- Collect all active repo directories ---
-  const activeRepos = await prisma.repository.findMany({
-    where: { active: true },
-    select: { name: true, description: true, localPath: true, lastPulledAt: true },
-  });
-  const repoPaths = activeRepos.map(r => r.localPath);
-
-  if (repoPaths.length === 0 && config.repoPath) {
-    repoPaths.push(config.repoPath);
-  }
-
-  if (repoPaths.length === 0) {
-    return Response.json({ error: 'No repositories configured. Please ask an admin to add a repository.' }, { status: 503 });
   }
 
   let repoContext = '';
@@ -235,7 +235,7 @@ export async function POST(request: Request) {
             retrying = true;
             const retryRequestId = `${conversation.id}-retry-${Date.now()}`;
             const retryProcOrPromise = conversation.claudeSessionId
-              ? sessionManager.resumeSession(retryRequestId, conversation.claudeSessionId, effectiveMessage, userClaudeToken, userId)
+              ? sessionManager.resumeSession(retryRequestId, conversation.claudeSessionId, effectiveMessage, userClaudeToken, userId, conversation.repositoryId || undefined)
               : sessionManager.startSession(retryRequestId, effectiveMessage, systemPrompt, userClaudeToken, userId, repoPaths);
 
             if (retryProcOrPromise instanceof Promise) {
@@ -305,7 +305,7 @@ export async function POST(request: Request) {
     console.log(`[chat] Starting request (requestId=${requestId}, conversationId=${conversation.id}, resume=${!!conversation.claudeSessionId}, knowledgeEntries=${knowledgeEntries.length})`);
 
     const procOrPromise = conversation.claudeSessionId
-      ? sessionManager.resumeSession(requestId, conversation.claudeSessionId, effectiveMessage, userClaudeToken, userId)
+      ? sessionManager.resumeSession(requestId, conversation.claudeSessionId, effectiveMessage, userClaudeToken, userId, conversation.repositoryId || undefined)
       : sessionManager.startSession(requestId, effectiveMessage, systemPrompt, userClaudeToken, userId, repoPaths);
 
     if (procOrPromise instanceof Promise) {

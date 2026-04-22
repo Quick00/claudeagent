@@ -65,6 +65,8 @@ describe('SessionManager', () => {
     expect(args[1]).toContain('--print');
     expect(args[1]).toContain('--output-format');
     expect(args[1]).toContain('stream-json');
+    expect(args[1]).toContain('--add-dir');
+    expect(args[1]).toContain('/mock/repo');
   });
 
   it('uses --resume for existing sessions', () => {
@@ -94,7 +96,7 @@ describe('SessionManager', () => {
     expect(manager.queueSize).toBe(0);
 
     // Third should be queued
-    const queued = manager.startSession('msg-3', 'Hello 3', '', 'test-token', 'user-1', ['/mock/repo']);
+    manager.startSession('msg-3', 'Hello 3', '', 'test-token', 'user-1', ['/mock/repo']);
     expect(manager.queueSize).toBe(1);
 
     // Complete first process — queued one should start

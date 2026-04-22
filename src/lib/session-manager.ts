@@ -44,13 +44,18 @@ export class SessionManager {
   }
 
   startSession(requestId: string, message: string, systemPrompt: string, claudeToken: string, userId: string, repoPaths: string[], repositoryId?: string): ChildProcess | Promise<ChildProcess> {
+    const addDirArgs: string[] = [];
+    for (const p of repoPaths) {
+      addDirArgs.push('--add-dir', p);
+    }
+
     const args = [
       '--print',
       '--verbose',
       '--output-format', 'stream-json',
       '--include-partial-messages',
       '--max-turns', String(config.claudeMaxTurns),
-      ...repoPaths.flatMap(p => ['--add-dir', p]),
+      ...addDirArgs,
       '--system-prompt', systemPrompt,
       '--mcp-config', getMcpConfig(repositoryId),
       '--permission-mode', 'bypassPermissions',
