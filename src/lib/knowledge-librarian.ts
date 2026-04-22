@@ -1,5 +1,5 @@
 const OPENROUTER_API_URL = 'https://openrouter.ai/api/v1/chat/completions';
-const LIBRARIAN_MODEL = 'anthropic/claude-haiku-4-5-20251001';
+const LIBRARIAN_MODEL = 'anthropic/claude-haiku-4.5';
 
 export interface LibrarianCandidate {
   id: string;

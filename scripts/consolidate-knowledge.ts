@@ -8,7 +8,7 @@ const prisma = new PrismaClient({ adapter });
 
 const OPENROUTER_API_URL = 'https://openrouter.ai/api/v1/chat/completions';
 const OPENROUTER_EMBED_URL = 'https://openrouter.ai/api/v1/embeddings';
-const CONSOLIDATION_MODEL = 'anthropic/claude-sonnet-4-6';
+const CONSOLIDATION_MODEL = 'anthropic/claude-sonnet-4.6';
 const EMBEDDING_MODEL = 'openai/text-embedding-3-large';
 
 async function embedText(text: string): Promise<number[]> {
