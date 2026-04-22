@@ -26,15 +26,16 @@ interface GraphData {
 
 interface KnowledgeEntry {
   id: string;
+  subject: string;
   category: string;
   content: string;
   tags: string;
   createdAt: string;
+  updatedAt: string;
 }
 
 const CATEGORY_COLORS: Record<string, string> = {
   topic: '#3b82f6',
-  correction: '#ef4444',
   terminology: '#8b5cf6',
   product_insight: '#10b981',
   process: '#f59e0b',
@@ -42,7 +43,6 @@ const CATEGORY_COLORS: Record<string, string> = {
 };
 
 const CATEGORY_LABELS: Record<string, string> = {
-  correction: 'Corrections',
   terminology: 'Terminology',
   product_insight: 'Product Insights',
   process: 'Processes',
@@ -170,7 +170,7 @@ export default function KnowledgeGraph() {
           </Link>
           <h1 className="text-lg font-semibold text-gray-800 dark:text-gray-100">Knowledge Map</h1>
           <span className="text-sm text-gray-500 dark:text-gray-400">
-            {graphData.nodes.filter((n) => n.type === 'entry').length} entries,{' '}
+            {graphData.nodes.filter((n) => n.type === 'entry').length} pages,{' '}
             {graphData.nodes.filter((n) => n.type === 'topic').length} topics
           </span>
         </div>
@@ -263,6 +263,11 @@ export default function KnowledgeGraph() {
                     >
                       {entry.category.replace('_', ' ')}
                     </div>
+                    {entry.subject && (
+                      <div className="mb-1 text-sm font-semibold text-gray-800 dark:text-gray-200">
+                        {entry.subject}
+                      </div>
+                    )}
                     <p className="text-sm text-gray-700 dark:text-gray-300">{entry.content}</p>
                   </div>
                 ))}
@@ -278,6 +283,11 @@ export default function KnowledgeGraph() {
               >
                 {selectedEntry.category.replace('_', ' ')}
               </div>
+              {selectedEntry.subject && (
+                <h2 className="mb-2 text-lg font-bold text-gray-900 dark:text-gray-100">
+                  {selectedEntry.subject}
+                </h2>
+              )}
               <p className="mb-4 text-sm leading-relaxed text-gray-800 dark:text-gray-200">
                 {selectedEntry.content}
               </p>
@@ -294,7 +304,7 @@ export default function KnowledgeGraph() {
                 </div>
               )}
               <div className="text-xs text-gray-400">
-                Added {new Date(selectedEntry.createdAt).toLocaleDateString('en-GB')}
+                Updated {new Date(selectedEntry.updatedAt).toLocaleDateString('en-GB')}
               </div>
             </>
           ) : null}
