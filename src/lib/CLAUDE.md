@@ -11,7 +11,6 @@ Server-side utility modules.
 - `embeddings.ts` — OpenRouter text-embedding-3-large (1024 dims). `embedText()` for raw embeddings, `findRelevantEntries()` for semantic knowledge search with correction priority.
 - `session-manager.ts` — Manages concurrent Claude Code CLI child processes. Queues requests when at capacity. Exports singleton `sessionManager`.
 - `repo-manager.ts` — Clone, sync, and enforce read-only permissions on GitLab repositories.
-- `repo-router.ts` — Route user questions to the best matching repository via OpenRouter.
 
 ## Usage
 

@@ -8,7 +8,6 @@ import { decrypt } from '@/lib/crypto';
 import { ChildProcess } from 'child_process';
 import { findRelevantEntries, KnowledgeEntryResult } from '@/lib/embeddings';
 import path from 'path';
-import { routeQuestion } from '@/lib/repo-router';
 import { attachClaudeProcess, createSseResponse } from '@/lib/claude-process-stream';
 
 const MAX_RETRIES = 2;
@@ -108,64 +107,31 @@ export async function POST(request: Request) {
     }
   }
 
-  // --- Repo routing ---
-  let repoPath = config.repoPath; // fallback to legacy single-repo
-  let repositoryId: string | null = null;
+  // --- Collect all active repo directories ---
+  const activeRepos = await prisma.repository.findMany({
+    where: { active: true },
+    select: { name: true, description: true, localPath: true, lastPulledAt: true },
+  });
+  const repoPaths = activeRepos.map(r => r.localPath);
 
-  if (conversation.claudeSessionId && conversationId) {
-    // Resuming: use the repo already linked to this conversation
-    const existingConv = await prisma.conversation.findUnique({
-      where: { id: conversation.id },
-      select: { repositoryId: true, repository: { select: { localPath: true, name: true, description: true, lastPulledAt: true } } },
-    });
-    if (existingConv?.repository) {
-      repoPath = existingConv.repository.localPath;
-      repositoryId = existingConv.repositoryId;
-    }
-  } else {
-    // New conversation: route to the best repo
-    const activeRepos = await prisma.repository.findMany({
-      where: { active: true },
-      select: { id: true, name: true, description: true, localPath: true, lastPulledAt: true },
-    });
-
-    if (activeRepos.length > 0) {
-      try {
-        const chosenId = await routeQuestion(message, activeRepos);
-        const chosen = activeRepos.find((r) => r.id === chosenId);
-        if (chosen) {
-          repoPath = chosen.localPath;
-          repositoryId = chosen.id;
-
-          await prisma.conversation.update({
-            where: { id: conversation.id },
-            data: { repositoryId: chosen.id },
-          });
-        }
-      } catch (err) {
-        console.error('[chat] Routing failed, using fallback:', (err as Error).message);
-      }
-    }
+  if (repoPaths.length === 0 && config.repoPath) {
+    repoPaths.push(config.repoPath);
   }
 
-  // Get repo info for system prompt context
-  let repoContext = '';
-  if (repositoryId) {
-    const repo = await prisma.repository.findUnique({
-      where: { id: repositoryId },
-      select: { name: true, description: true, lastPulledAt: true },
-    });
-    if (repo) {
-      repoContext = `\n\nYou are answering questions about the "${repo.name}" codebase: ${repo.description}`;
-      if (repo.lastPulledAt) {
-        repoContext += `\nCode last synced: ${repo.lastPulledAt.toISOString()}`;
-      }
-      repoContext += `\nIf a knowledge entry contradicts what you see in the current code, trust the code — the entry may be outdated. Use save_knowledge to save the corrected version — the system will update the page automatically.`;
-    }
-  }
-
-  if (!repoPath) {
+  if (repoPaths.length === 0) {
     return Response.json({ error: 'No repositories configured. Please ask an admin to add a repository.' }, { status: 503 });
+  }
+
+  let repoContext = '';
+  if (activeRepos.length > 0) {
+    repoContext = '\n\nYou have access to the following codebases:';
+    for (const repo of activeRepos) {
+      repoContext += `\n- "${repo.name}": ${repo.description}`;
+      if (repo.lastPulledAt) {
+        repoContext += ` (last synced: ${repo.lastPulledAt.toISOString()})`;
+      }
+    }
+    repoContext += `\nIf a knowledge entry contradicts what you see in the current code, trust the code — the entry may be outdated. Use save_knowledge to save the corrected version — the system will update the page automatically.`;
   }
 
   let knowledgeEntries: KnowledgeEntryResult[] = [];
@@ -269,8 +235,8 @@ export async function POST(request: Request) {
             retrying = true;
             const retryRequestId = `${conversation.id}-retry-${Date.now()}`;
             const retryProcOrPromise = conversation.claudeSessionId
-              ? sessionManager.resumeSession(retryRequestId, conversation.claudeSessionId, effectiveMessage, userClaudeToken, userId, repositoryId || undefined)
-              : sessionManager.startSession(retryRequestId, effectiveMessage, systemPrompt, userClaudeToken, userId, repoPath, repositoryId || undefined);
+              ? sessionManager.resumeSession(retryRequestId, conversation.claudeSessionId, effectiveMessage, userClaudeToken, userId)
+              : sessionManager.startSession(retryRequestId, effectiveMessage, systemPrompt, userClaudeToken, userId, repoPaths);
 
             if (retryProcOrPromise instanceof Promise) {
               retryProcOrPromise.then((retryProc) => attachProcess(retryProc, retryCount + 1)).catch((err) => {
@@ -339,8 +305,8 @@ export async function POST(request: Request) {
     console.log(`[chat] Starting request (requestId=${requestId}, conversationId=${conversation.id}, resume=${!!conversation.claudeSessionId}, knowledgeEntries=${knowledgeEntries.length})`);
 
     const procOrPromise = conversation.claudeSessionId
-      ? sessionManager.resumeSession(requestId, conversation.claudeSessionId, effectiveMessage, userClaudeToken, userId, repositoryId || undefined)
-      : sessionManager.startSession(requestId, effectiveMessage, systemPrompt, userClaudeToken, userId, repoPath, repositoryId || undefined);
+      ? sessionManager.resumeSession(requestId, conversation.claudeSessionId, effectiveMessage, userClaudeToken, userId)
+      : sessionManager.startSession(requestId, effectiveMessage, systemPrompt, userClaudeToken, userId, repoPaths);
 
     if (procOrPromise instanceof Promise) {
       procOrPromise.then((proc) => {
