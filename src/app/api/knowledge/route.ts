@@ -125,7 +125,7 @@ export async function POST(request: Request) {
     const validIds = similarPages.map((p) => p.id);
     if (!validIds.includes(decision.pageId)) {
       console.error(`[knowledge] Librarian returned invalid pageId: ${decision.pageId}`);
-      decision = { action: 'create', subject: decision.subject, content: decision.content, tags: decision.tags };
+      decision = { action: 'create' as const, subject: decision.subject, content: decision.content, tags: decision.tags };
     }
   }
 
