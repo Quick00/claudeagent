@@ -7,7 +7,9 @@ import { askLibrarian } from '@/lib/knowledge-librarian';
 
 export async function POST(request: Request) {
   const authHeader = request.headers.get('authorization');
-  if (authHeader !== `Bearer ${process.env.KNOWLEDGE_API_SECRET}`) {
+  const expected = `Bearer ${process.env.KNOWLEDGE_API_SECRET}`;
+  if (authHeader !== expected) {
+    console.error(`[knowledge] Auth failed — received: "${authHeader}", expected: "${expected}"`);
     return new Response('Unauthorized', { status: 401 });
   }
 
