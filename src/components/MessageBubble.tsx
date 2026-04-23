@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { createPortal } from 'react-dom';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import { formatDateTimeShort } from '@/lib/format-date';
 
 interface Attachment {
   id: string;
@@ -86,7 +87,7 @@ export default function MessageBubble({ role, content, adminName, timestamp, att
             </svg>
             <span>Admin{adminName ? ` — ${adminName}` : ''}</span>
             {timestamp && (
-              <span className="text-amber-500 dark:text-amber-400">{new Date(timestamp).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</span>
+              <span className="text-amber-500 dark:text-amber-400">{formatDateTimeShort(timestamp)}</span>
             )}
           </div>
           <p className="whitespace-pre-wrap text-sm">{content}</p>

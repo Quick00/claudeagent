@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import { formatDateTimeShort } from '@/lib/format-date';
 
 interface FeedbackRow {
   id: string;
@@ -125,7 +126,7 @@ export default function AdminFeedbackPanel() {
                   <div className="mt-1 text-xs text-gray-500 dark:text-gray-400">
                     by <span className="font-medium">{post.user.name}</span> ({post.user.email})
                     {' — '}
-                    {new Date(post.createdAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                    {formatDateTimeShort(post.createdAt)}
                   </div>
                 </div>
                 <div className="ml-4">

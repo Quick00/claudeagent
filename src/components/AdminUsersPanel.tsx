@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { useSession } from 'next-auth/react';
 import DialogOverlay from './DialogOverlay';
 import AdminUserConversationsPanel from './AdminUserConversationsPanel';
+import { formatDateTime } from '@/lib/format-date';
 
 interface UserRow {
   id: string;
@@ -99,7 +100,7 @@ export default function AdminUsersPanel() {
                   <span className={user.claudeLinked ? 'inline-block h-2 w-2 rounded-full bg-green-500' : 'inline-block h-2 w-2 rounded-full bg-gray-300 dark:bg-gray-600'} />
                 </td>
                 <td className="py-3 pr-4 text-gray-500 dark:text-gray-400">
-                  {new Date(user.createdAt).toLocaleDateString('en-GB')}
+                  {formatDateTime(user.createdAt)}
                 </td>
                 <td className="space-x-3 py-3">
                   <button onClick={() => setViewingConvos({ userId: user.id, name: user.name })} className="text-xs text-blue-600 hover:text-blue-700 dark:text-blue-400">

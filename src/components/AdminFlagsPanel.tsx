@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useSession } from 'next-auth/react';
 import Link from 'next/link';
+import { formatDateTimeShort } from '@/lib/format-date';
 
 interface FlagRow {
   id: string;
@@ -126,7 +127,7 @@ export default function AdminFlagsPanel() {
                   <div className="mt-1 text-xs text-gray-500 dark:text-gray-400">
                     Flagged by <span className="font-medium">{flag.user.name}</span> ({flag.user.email})
                     {' — '}
-                    {new Date(flag.createdAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                    {formatDateTimeShort(flag.createdAt)}
                   </div>
                   {flag.reason && (
                     <p className="mt-2 text-sm text-gray-700 dark:text-gray-300">
@@ -139,7 +140,7 @@ export default function AdminFlagsPanel() {
                         Response by {flag.admin?.name || 'Admin'}
                         {flag.respondedAt && (
                           <span className="ml-2 font-normal text-gray-400 dark:text-gray-500">
-                            {new Date(flag.respondedAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                            {formatDateTimeShort(flag.respondedAt)}
                           </span>
                         )}
                       </div>

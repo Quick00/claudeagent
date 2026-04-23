@@ -4,6 +4,7 @@ import { useEffect, useState, useRef, useCallback, useMemo } from 'react';
 import Link from 'next/link';
 import ForceGraph2D, { type ForceGraphMethods } from 'react-force-graph-2d';
 import { useTheme } from '@/components/ThemeProvider';
+import { formatDateTime } from '@/lib/format-date';
 
 interface GraphNode {
   id: string;
@@ -304,7 +305,7 @@ export default function KnowledgeGraph() {
                 </div>
               )}
               <div className="text-xs text-gray-400">
-                Updated {new Date(selectedEntry.updatedAt).toLocaleDateString('en-GB')}
+                Updated {formatDateTime(selectedEntry.updatedAt)}
               </div>
             </>
           ) : null}
