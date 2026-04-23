@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import { formatDateTime } from '@/lib/format-date';
 
 interface ConvRow {
   id: string;
@@ -49,7 +50,7 @@ export default function AdminUserConversationsPanel({ userId }: AdminUserConvers
             {c.title || '(untitled)'}
           </Link>
           <span className="ml-3 text-xs text-gray-400">
-            {new Date(c.updatedAt).toLocaleString('en-GB')}
+            {formatDateTime(c.updatedAt)}
             {!c.claudeSessionId && ' · not started'}
           </span>
         </li>

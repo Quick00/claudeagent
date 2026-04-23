@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { formatDateTime } from '@/lib/format-date';
 
 interface Repository {
   id: string;
@@ -180,7 +181,7 @@ export default function AdminReposPage() {
                   </td>
                   <td className="p-3 text-sm dark:text-gray-400">
                     {repo.lastPulledAt
-                      ? new Date(repo.lastPulledAt).toLocaleString()
+                      ? formatDateTime(repo.lastPulledAt)
                       : 'Cloning...'}
                   </td>
                   <td className="p-3">
@@ -222,7 +223,7 @@ export default function AdminReposPage() {
                 <div className="min-w-0 flex-1">
                   <span className="font-medium dark:text-white text-sm">{project.nameWithNamespace}</span>
                   <span className="text-xs text-gray-400 ml-2">
-                    {project.defaultBranch} &middot; {new Date(project.lastActivityAt).toLocaleDateString()}
+                    {project.defaultBranch} &middot; {formatDateTime(project.lastActivityAt)}
                   </span>
                   {project.description && (
                     <p className="text-xs text-gray-500 dark:text-gray-400 truncate">{project.description}</p>

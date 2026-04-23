@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
+import { formatDateTime } from '@/lib/format-date';
 
 interface DashboardData {
   isAdmin: boolean;
@@ -269,7 +270,7 @@ export default function DashboardPage() {
                       {data.isAdmin && (
                         <span className="mr-1 text-gray-500 dark:text-gray-400">{conv.userName} &middot;</span>
                       )}
-                      {new Date(conv.createdAt).toLocaleDateString('en-GB')}
+                      {formatDateTime(conv.createdAt)}
                     </div>
                   </a>
                 ))
@@ -362,7 +363,7 @@ export default function DashboardPage() {
                           </span>
                         )}
                         <span className="text-xs text-gray-400 dark:text-gray-500">
-                          {new Date(entry.updatedAt).toLocaleDateString('en-GB')}
+                          {formatDateTime(entry.updatedAt)}
                         </span>
                       </div>
                     </div>
