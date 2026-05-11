@@ -59,6 +59,7 @@ const CATEGORY_LABELS: Record<string, string> = {
 export default function DashboardPage() {
   const [data, setData] = useState<DashboardData | null>(null);
   const [selectedTag, setSelectedTag] = useState<string | null>(null);
+  const [showAllTopics, setShowAllTopics] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<SearchEntry[] | null>(null);
   const [isSearching, setIsSearching] = useState(false);
@@ -218,7 +219,7 @@ export default function DashboardPage() {
             <div className="rounded-xl border border-gray-200 bg-white p-5 dark:border-gray-700 dark:bg-gray-900">
               {data.tags.length > 0 ? (
                 <div className="flex flex-wrap gap-2">
-                  {data.tags.map(({ tag, count }) => {
+                  {(showAllTopics ? data.tags : data.tags.slice(0, 12)).map(({ tag, count }) => {
                     const scale = 0.75 + (count / maxTagCount) * 0.5;
                     const isActive = selectedTag === tag;
                     return (
@@ -245,6 +246,14 @@ export default function DashboardPage() {
                       </button>
                     );
                   })}
+                  {data.tags.length > 12 && (
+                    <button
+                      onClick={() => setShowAllTopics(!showAllTopics)}
+                      className="rounded-full px-3 py-1 text-sm text-blue-500 hover:bg-blue-50 hover:text-blue-600 dark:text-blue-400 dark:hover:bg-gray-800 dark:hover:text-blue-300"
+                    >
+                      {showAllTopics ? 'Show less' : `Show ${data.tags.length - 12} more`}
+                    </button>
+                  )}
                 </div>
               ) : (
                 <p className="text-sm text-gray-400 dark:text-gray-500">No topics yet</p>
