@@ -100,6 +100,26 @@ export default function KnowledgeGraph() {
     graphRef.current.d3ReheatSimulation();
   }, [graphData]);
 
+  const nodeDegrees = useMemo(() => {
+    const degrees = new Map<string, number>();
+    for (const link of graphData.links) {
+      const sourceId = typeof link.source === 'string' ? link.source : link.source.id;
+      const targetId = typeof link.target === 'string' ? link.target : link.target.id;
+      degrees.set(sourceId, (degrees.get(sourceId) ?? 0) + 1);
+      degrees.set(targetId, (degrees.get(targetId) ?? 0) + 1);
+    }
+    return degrees;
+  }, [graphData]);
+
+  const getRadius = useCallback(
+    (node: GraphNode) => {
+      const degree = nodeDegrees.get(node.id) ?? 0;
+      const base = node.type === 'topic' ? 6 : 4;
+      return base + Math.sqrt(degree) * 1.6;
+    },
+    [nodeDegrees]
+  );
+
   const toggleCategory = (cat: string) => {
     setHiddenCategories((prev) => {
       const next = new Set(prev);
@@ -121,7 +141,7 @@ export default function KnowledgeGraph() {
     (node: GraphNode & { x?: number; y?: number }, ctx: CanvasRenderingContext2D, globalScale: number) => {
       const n = node;
       const fontSize = n.type === 'topic' ? 14 / globalScale : 11 / globalScale;
-      const radius = n.type === 'topic' ? 8 : 5;
+      const radius = getRadius(n);
       const color = CATEGORY_COLORS[n.type === 'topic' ? 'topic' : n.category] || '#6b7280';
 
       ctx.beginPath();
@@ -141,7 +161,7 @@ export default function KnowledgeGraph() {
       ctx.fillStyle = theme === 'dark' ? '#d1d5db' : '#374151';
       ctx.fillText(n.label, node.x!, node.y! + radius + 2);
     },
-    [selectedNode, theme]
+    [selectedNode, theme, getRadius]
   );
 
   const selectedEntry =
@@ -209,7 +229,7 @@ export default function KnowledgeGraph() {
             linkWidth={1.5}
             nodePointerAreaPaint={(node: GraphNode & { x?: number; y?: number }, color: string, ctx: CanvasRenderingContext2D) => {
               ctx.beginPath();
-              ctx.arc(node.x!, node.y!, 10, 0, 2 * Math.PI);
+              ctx.arc(node.x!, node.y!, Math.max(getRadius(node), 10), 0, 2 * Math.PI);
               ctx.fillStyle = color;
               ctx.fill();
             }}
