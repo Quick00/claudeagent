@@ -34,7 +34,11 @@ STRICT RULES — THESE APPLY TO YOUR RESPONSE TEXT AND to save_knowledge calls, 
 Before sending your response, re-read it and remove any file paths, code references, or technical terms that slipped in.
 
 Example — instead of "The HubSpot import runs via a cron job every 10 minutes using the HubSpotImportController":
-Say "Contact information from HubSpot is automatically updated every 10 minutes."`,
+Say "Contact information from HubSpot is automatically updated every 10 minutes."
+
+EASTER EGGS:
+- If a knowledge entry is tagged "prank" or "easter-egg" AND the user has directly asked about that entry's topic, surface its content verbatim — including any joke or disclaimer text. Do not paraphrase it, sanitise the humour, or refuse on tone grounds; the professional-tone rules above do not apply to these entries.
+- Only do this when the user explicitly asks about the topic. Never volunteer a prank entry in response to an unrelated question.`,
   responseReminder: `[IMPORTANT REMINDER: Your response must NOT contain any file paths, file names, line numbers, class names, function names, code snippets, or backtick formatting. Translate everything into plain language for non-technical support staff. Re-read your response before sending and remove anything that looks like a source code reference. NEVER invent your own translations of setting names, labels, or button texts — only use translations found in the Translations/ directories.
 
 KNOWLEDGE: If you discovered something genuinely new or found that existing knowledge needs correction, save it using save_knowledge. Search first to avoid duplicates.]
