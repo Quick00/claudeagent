@@ -45,6 +45,9 @@ const DEFAULT_SUGGESTIONS = [
   'What happens when someone checks in at an event?',
 ];
 
+// Always-shown chip — surfaces the consultant easter egg regardless of recent questions.
+const PINNED_SUGGESTION = "Who's the nicest consultant?";
+
 export default function ChatMessages({
   messages,
   streamingContent,
@@ -76,7 +79,10 @@ export default function ChatMessages({
   }, []);
 
   if (messages.length === 0 && !streamingContent && !toolStatus && !isLoading) {
-    const suggestions = [...new Set(recentQuestions.length > 0 ? recentQuestions : DEFAULT_SUGGESTIONS)].slice(0, 4);
+    const rest = [...new Set(recentQuestions.length > 0 ? recentQuestions : DEFAULT_SUGGESTIONS)]
+      .filter((q) => q !== PINNED_SUGGESTION)
+      .slice(0, 3);
+    const suggestions = [PINNED_SUGGESTION, ...rest];
 
     return (
       <div className="flex flex-1 items-center justify-center">
