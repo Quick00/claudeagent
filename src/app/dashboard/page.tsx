@@ -117,6 +117,19 @@ export default function DashboardPage() {
     [performSearch],
   );
 
+  // Clicking a suggestion chip fills the search and runs it immediately.
+  const runSuggestion = useCallback(
+    (query: string) => {
+      setSearchQuery(query);
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+      performSearch(query);
+    },
+    [performSearch],
+  );
+
+  // Always-shown chip — surfaces the Sales easter egg (and its SC Heerenveen jab).
+  const SALES_CHIP = 'How good is the Sales team?';
+
   if (!data) {
     return (
       <div className="flex h-screen items-center justify-center text-gray-400 dark:text-gray-500">
@@ -318,6 +331,17 @@ export default function DashboardPage() {
                 </button>
               )}
             </div>
+
+            {searchResults === null && !isSearching && (
+              <div className="mb-4 flex flex-wrap gap-2">
+                <button
+                  onClick={() => runSuggestion(SALES_CHIP)}
+                  className="rounded-full border border-gray-200 bg-white px-3 py-1 text-xs text-gray-600 transition-colors hover:border-blue-300 hover:bg-blue-50 hover:text-blue-600 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 dark:hover:border-blue-600 dark:hover:bg-gray-800"
+                >
+                  {SALES_CHIP}
+                </button>
+              </div>
+            )}
 
             <h2 className="mb-3 text-sm font-semibold uppercase text-gray-500 dark:text-gray-400">
               {searchResults !== null ? (
