@@ -15,17 +15,20 @@ function getLanOrigin(port: string): string | null {
 }
 
 export function GET(request: NextRequest) {
-  let origin = request.nextUrl.origin;
+  let origin: string;
 
-  // In dev, the URL baked into the .bat must be reachable from the Windows machine
-  // running the installer. If the request came in via localhost, rewrite to the
-  // first non-loopback IPv4 so other LAN machines can reach it. APP_PUBLIC_URL
-  // overrides the auto-detect when needed.
-  if (/^https?:\/\/(localhost|127\.0\.0\.1)(:|$|\/)/.test(origin)) {
-    const override = process.env.APP_PUBLIC_URL;
-    if (override) {
-      origin = override.replace(/\/$/, '');
-    } else {
+  // The URL baked into the .bat must be reachable from the Windows machine
+  // running the installer. APP_PUBLIC_URL is the source of truth: in production
+  // request.nextUrl.origin reflects the bind address (e.g. 0.0.0.0:3000) rather
+  // than the public host, so we always prefer the explicit override when set.
+  const override = process.env.APP_PUBLIC_URL;
+  if (override) {
+    origin = override.replace(/\/$/, '');
+  } else {
+    origin = request.nextUrl.origin;
+    // Dev fallback: if the request came in via localhost, rewrite to the first
+    // non-loopback IPv4 so other LAN machines can reach the dev server.
+    if (/^https?:\/\/(localhost|127\.0\.0\.1|0\.0\.0\.0)(:|$|\/)/.test(origin)) {
       const port = request.nextUrl.port || '3000';
       const lan = getLanOrigin(port);
       if (lan) origin = lan;
