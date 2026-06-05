@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
@@ -46,21 +46,13 @@ export default function AdminReposPage() {
   const [branchSaving, setBranchSaving] = useState(false);
   const [branchError, setBranchError] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (status === 'unauthenticated') router.replace('/login');
-    if (status === 'authenticated') {
-      fetchRepos();
-      fetchGitLabProjects();
-    }
-  }, [status]);
-
-  const fetchRepos = async () => {
+  const fetchRepos = useCallback(async () => {
     const res = await fetch('/api/admin/repos');
     if (res.status === 403) router.replace('/');
     if (res.ok) setRepos(await res.json());
-  };
+  }, [router]);
 
-  const fetchGitLabProjects = async () => {
+  const fetchGitLabProjects = useCallback(async () => {
     setLoadingProjects(true);
     try {
       const res = await fetch('/api/admin/gitlab/search');
@@ -68,7 +60,15 @@ export default function AdminReposPage() {
     } finally {
       setLoadingProjects(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    if (status === 'unauthenticated') router.replace('/login');
+    if (status === 'authenticated') {
+      fetchRepos();
+      fetchGitLabProjects();
+    }
+  }, [status, router, fetchRepos, fetchGitLabProjects]);
 
   const addedIds = new Set(repos.map((r) => r.gitlabProjectId));
   const availableProjects = gitlabProjects.filter((p) => !addedIds.has(p.id));
