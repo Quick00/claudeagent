@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
@@ -38,24 +38,21 @@ export default function AdminReposPage() {
   const [addingId, setAddingId] = useState<number | null>(null);
   const [modalProject, setModalProject] = useState<GitLabProject | null>(null);
   const [modalDescription, setModalDescription] = useState('');
+  const [modalBranch, setModalBranch] = useState('');
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editDescription, setEditDescription] = useState('');
+  const [editingBranchId, setEditingBranchId] = useState<string | null>(null);
+  const [editBranch, setEditBranch] = useState('');
+  const [branchSaving, setBranchSaving] = useState(false);
+  const [branchError, setBranchError] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (status === 'unauthenticated') router.replace('/login');
-    if (status === 'authenticated') {
-      fetchRepos();
-      fetchGitLabProjects();
-    }
-  }, [status]);
-
-  const fetchRepos = async () => {
+  const fetchRepos = useCallback(async () => {
     const res = await fetch('/api/admin/repos');
     if (res.status === 403) router.replace('/');
     if (res.ok) setRepos(await res.json());
-  };
+  }, [router]);
 
-  const fetchGitLabProjects = async () => {
+  const fetchGitLabProjects = useCallback(async () => {
     setLoadingProjects(true);
     try {
       const res = await fetch('/api/admin/gitlab/search');
@@ -63,13 +60,21 @@ export default function AdminReposPage() {
     } finally {
       setLoadingProjects(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    if (status === 'unauthenticated') router.replace('/login');
+    if (status === 'authenticated') {
+      fetchRepos();
+      fetchGitLabProjects();
+    }
+  }, [status, router, fetchRepos, fetchGitLabProjects]);
 
   const addedIds = new Set(repos.map((r) => r.gitlabProjectId));
   const availableProjects = gitlabProjects.filter((p) => !addedIds.has(p.id));
 
   const addRepo = async () => {
-    if (!modalProject || !modalDescription.trim()) return;
+    if (!modalProject || !modalDescription.trim() || !modalBranch.trim()) return;
     setAddingId(modalProject.id);
     try {
       const res = await fetch('/api/admin/repos', {
@@ -80,7 +85,7 @@ export default function AdminReposPage() {
           description: modalDescription,
           gitlabProjectId: modalProject.id,
           gitlabUrl: modalProject.httpUrlToRepo,
-          defaultBranch: modalProject.defaultBranch || 'main',
+          defaultBranch: modalBranch.trim(),
         }),
       });
       if (res.ok) {
@@ -100,6 +105,33 @@ export default function AdminReposPage() {
       body: JSON.stringify({ active: !repo.active }),
     });
     if (res.ok) await fetchRepos();
+  };
+
+  const saveBranch = async (repoId: string) => {
+    setBranchSaving(true);
+    setBranchError(null);
+    try {
+      const res = await fetch(`/api/admin/repos/${repoId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ defaultBranch: editBranch }),
+      });
+      if (res.ok) {
+        setEditingBranchId(null);
+        await fetchRepos();
+      } else {
+        let message = 'Failed to update branch';
+        try {
+          const body = await res.json();
+          if (body?.error) message = body.error;
+        } catch {
+          // non-JSON error body — keep default message
+        }
+        setBranchError(message);
+      }
+    } finally {
+      setBranchSaving(false);
+    }
   };
 
   const saveDescription = async (repoId: string) => {
@@ -137,6 +169,7 @@ export default function AdminReposPage() {
               <tr className="border-b dark:border-gray-700">
                 <th className="p-3 dark:text-gray-300">Name</th>
                 <th className="p-3 dark:text-gray-300">Description</th>
+                <th className="p-3 dark:text-gray-300">Branch</th>
                 <th className="p-3 dark:text-gray-300">Status</th>
                 <th className="p-3 dark:text-gray-300">Last Synced</th>
                 <th className="p-3 dark:text-gray-300">Actions</th>
@@ -164,6 +197,39 @@ export default function AdminReposPage() {
                         className="cursor-pointer hover:text-blue-400 text-sm"
                       >
                         {repo.description}
+                      </span>
+                    )}
+                  </td>
+                  <td className="p-3 dark:text-gray-300 text-sm">
+                    {editingBranchId === repo.id ? (
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <input
+                            value={editBranch}
+                            onChange={(e) => setEditBranch(e.target.value)}
+                            className="w-36 px-2 py-1 rounded border dark:border-gray-600 dark:bg-gray-700 dark:text-white text-sm font-mono"
+                            disabled={branchSaving}
+                            autoFocus
+                          />
+                          <button onClick={() => saveBranch(repo.id)} disabled={branchSaving} className="text-green-500 text-sm disabled:opacity-50">
+                            {branchSaving ? 'Syncing…' : 'Save'}
+                          </button>
+                          <button
+                            onClick={() => { setEditingBranchId(null); setBranchError(null); }}
+                            disabled={branchSaving}
+                            className="text-gray-500 text-sm disabled:opacity-50"
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                        {branchError && <p className="text-xs text-red-500 mt-1">{branchError}</p>}
+                      </div>
+                    ) : (
+                      <span
+                        onClick={() => { setEditingBranchId(repo.id); setEditBranch(repo.defaultBranch); setBranchError(null); }}
+                        className="cursor-pointer hover:text-blue-400 font-mono"
+                      >
+                        {repo.defaultBranch}
                       </span>
                     )}
                   </td>
@@ -230,7 +296,7 @@ export default function AdminReposPage() {
                   )}
                 </div>
                 <button
-                  onClick={() => { setModalProject(project); setModalDescription(''); }}
+                  onClick={() => { setModalProject(project); setModalDescription(''); setModalBranch(project.defaultBranch || 'main'); }}
                   className="ml-3 shrink-0 px-3 py-1 bg-green-600 text-white text-sm rounded hover:bg-green-700"
                 >
                   Add
@@ -257,6 +323,12 @@ export default function AdminReposPage() {
               rows={3}
               autoFocus
             />
+            <label className="block text-sm text-gray-600 dark:text-gray-300 mb-1">Branch</label>
+            <input
+              value={modalBranch}
+              onChange={(e) => setModalBranch(e.target.value)}
+              className="w-full px-3 py-2 rounded border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white text-sm font-mono mb-4"
+            />
             <div className="flex justify-end gap-2">
               <button
                 onClick={() => setModalProject(null)}
@@ -266,7 +338,7 @@ export default function AdminReposPage() {
               </button>
               <button
                 onClick={addRepo}
-                disabled={!modalDescription.trim() || addingId === modalProject.id}
+                disabled={!modalDescription.trim() || !modalBranch.trim() || addingId === modalProject.id}
                 className="px-4 py-2 bg-green-600 text-white text-sm rounded hover:bg-green-700 disabled:opacity-50"
               >
                 {addingId === modalProject.id ? 'Cloning...' : 'Add Repository'}

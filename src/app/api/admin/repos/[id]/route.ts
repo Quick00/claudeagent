@@ -2,9 +2,9 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { NextResponse } from 'next/server';
-import { removeRepo } from '@/lib/repo-manager';
+import { removeRepo, syncRepo } from '@/lib/repo-manager';
 
-// PATCH: Update repo description or toggle active
+// PATCH: Update repo description, branch (with inline sync validation), or toggle active
 export async function PATCH(
   request: Request,
   { params }: { params: Promise<{ id: string }> },
@@ -22,14 +22,60 @@ export async function PATCH(
 
   const { id } = await params;
   const body = await request.json();
-  const { description, active } = body as {
+  const { description, active, defaultBranch } = body as {
     description?: string;
     active?: boolean;
+    defaultBranch?: string;
   };
 
   const data: Record<string, unknown> = {};
   if (description !== undefined) data.description = description;
   if (active !== undefined) data.active = active;
+
+  if (defaultBranch !== undefined) {
+    if (typeof defaultBranch !== 'string') {
+      return NextResponse.json({ error: 'Invalid branch name' }, { status: 400 });
+    }
+    const branch = defaultBranch.trim();
+    // eslint-disable-next-line no-control-regex
+    if (!branch || branch.startsWith('-') || /[\s\x00-\x1f\x7f]/.test(branch)) {
+      return NextResponse.json({ error: 'Invalid branch name' }, { status: 400 });
+    }
+
+    const existing = await prisma.repository.findUnique({ where: { id } });
+    if (!existing) {
+      return new Response('Not found', { status: 404 });
+    }
+
+    if (branch !== existing.defaultBranch) {
+      const token = process.env.GITLAB_TOKEN;
+      if (!token) {
+        return NextResponse.json({ error: 'GITLAB_TOKEN not configured' }, { status: 500 });
+      }
+
+      // Validate-on-save: fetch + reset to the new branch before persisting.
+      // If the branch doesn't exist the fetch fails and the working tree is untouched.
+      try {
+        await syncRepo({
+          localPath: existing.localPath,
+          branch,
+          token,
+          gitlabUrl: existing.gitlabUrl,
+        });
+      } catch (err) {
+        const redacted = (err as Error).message.replace(/\/\/[^@\s/]+@/g, '//***@');
+        console.error(`[repos] Branch sync failed for "${branch}":`, redacted);
+        return NextResponse.json(
+          { error: `Branch "${branch}" not found or sync failed` },
+          { status: 400 },
+        );
+      }
+
+      data.lastPulledAt = new Date();
+    }
+
+    data.defaultBranch = branch;
+  }
 
   if (Object.keys(data).length === 0) {
     return new Response('No fields to update', { status: 400 });
