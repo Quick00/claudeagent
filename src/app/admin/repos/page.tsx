@@ -38,6 +38,7 @@ export default function AdminReposPage() {
   const [addingId, setAddingId] = useState<number | null>(null);
   const [modalProject, setModalProject] = useState<GitLabProject | null>(null);
   const [modalDescription, setModalDescription] = useState('');
+  const [modalBranch, setModalBranch] = useState('');
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editDescription, setEditDescription] = useState('');
   const [editingBranchId, setEditingBranchId] = useState<string | null>(null);
@@ -73,7 +74,7 @@ export default function AdminReposPage() {
   const availableProjects = gitlabProjects.filter((p) => !addedIds.has(p.id));
 
   const addRepo = async () => {
-    if (!modalProject || !modalDescription.trim()) return;
+    if (!modalProject || !modalDescription.trim() || !modalBranch.trim()) return;
     setAddingId(modalProject.id);
     try {
       const res = await fetch('/api/admin/repos', {
@@ -84,7 +85,7 @@ export default function AdminReposPage() {
           description: modalDescription,
           gitlabProjectId: modalProject.id,
           gitlabUrl: modalProject.httpUrlToRepo,
-          defaultBranch: modalProject.defaultBranch || 'main',
+          defaultBranch: modalBranch.trim(),
         }),
       });
       if (res.ok) {
@@ -295,7 +296,7 @@ export default function AdminReposPage() {
                   )}
                 </div>
                 <button
-                  onClick={() => { setModalProject(project); setModalDescription(''); }}
+                  onClick={() => { setModalProject(project); setModalDescription(''); setModalBranch(project.defaultBranch || 'main'); }}
                   className="ml-3 shrink-0 px-3 py-1 bg-green-600 text-white text-sm rounded hover:bg-green-700"
                 >
                   Add
@@ -322,6 +323,12 @@ export default function AdminReposPage() {
               rows={3}
               autoFocus
             />
+            <label className="block text-sm text-gray-600 dark:text-gray-300 mb-1">Branch</label>
+            <input
+              value={modalBranch}
+              onChange={(e) => setModalBranch(e.target.value)}
+              className="w-full px-3 py-2 rounded border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white text-sm font-mono mb-4"
+            />
             <div className="flex justify-end gap-2">
               <button
                 onClick={() => setModalProject(null)}
@@ -331,7 +338,7 @@ export default function AdminReposPage() {
               </button>
               <button
                 onClick={addRepo}
-                disabled={!modalDescription.trim() || addingId === modalProject.id}
+                disabled={!modalDescription.trim() || !modalBranch.trim() || addingId === modalProject.id}
                 className="px-4 py-2 bg-green-600 text-white text-sm rounded hover:bg-green-700 disabled:opacity-50"
               >
                 {addingId === modalProject.id ? 'Cloning...' : 'Add Repository'}
