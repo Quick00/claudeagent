@@ -106,6 +106,13 @@ describe('PATCH /api/admin/repos/[id] — defaultBranch', () => {
     expect(mockSync).not.toHaveBeenCalled();
   });
 
+  it('400 on option-like branch name starting with a dash, no sync attempted', async () => {
+    const res = await PATCH(req({ defaultBranch: '--upload-pack=evil' }), params('r1'));
+    expect(res.status).toBe(400);
+    expect(mockSync).not.toHaveBeenCalled();
+    expect(mockRepoUpdate).not.toHaveBeenCalled();
+  });
+
   it('existing description-only update still works without touching branch logic', async () => {
     mockRepoUpdate.mockResolvedValue(existingRepo);
     const res = await PATCH(req({ description: 'new desc' }), params('r1'));

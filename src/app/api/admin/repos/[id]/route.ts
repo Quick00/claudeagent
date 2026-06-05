@@ -35,7 +35,7 @@ export async function PATCH(
   if (defaultBranch !== undefined) {
     const branch = String(defaultBranch).trim();
     // eslint-disable-next-line no-control-regex
-    if (!branch || /[\s\x00-\x1f\x7f]/.test(branch)) {
+    if (!branch || branch.startsWith('-') || /[\s\x00-\x1f\x7f]/.test(branch)) {
       return NextResponse.json({ error: 'Invalid branch name' }, { status: 400 });
     }
 
@@ -60,8 +60,9 @@ export async function PATCH(
           gitlabUrl: existing.gitlabUrl,
         });
       } catch (err) {
+        console.error(`[repos] Branch sync failed for "${branch}":`, (err as Error).message);
         return NextResponse.json(
-          { error: `Could not sync branch "${branch}": ${(err as Error).message}` },
+          { error: `Branch "${branch}" not found or sync failed` },
           { status: 400 },
         );
       }
