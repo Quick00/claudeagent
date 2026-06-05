@@ -12,9 +12,16 @@ if (process.argv.includes('--env-local')) {
   loadEnv({ path: '.env.local' });
 }
 
+import * as Sentry from '@sentry/nextjs';
 import { PrismaClient } from '@prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { syncRepo } from '../src/lib/repo-manager';
+
+Sentry.init({
+  dsn: process.env.NEXT_PUBLIC_SENTRY_DSN,
+  environment: process.env.NODE_ENV,
+  tracesSampleRate: 0,
+});
 
 const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL ?? '' });
 const prisma = new PrismaClient({ adapter });
@@ -23,6 +30,8 @@ async function main() {
   const token = process.env.GITLAB_TOKEN;
   if (!token) {
     console.error('[sync] GITLAB_TOKEN not set');
+    Sentry.captureMessage('[sync] GITLAB_TOKEN not set', 'error');
+    await Sentry.flush(2000);
     process.exit(1);
   }
 
@@ -51,6 +60,10 @@ async function main() {
       console.log(`[sync] ${repo.name} synced successfully`);
     } catch (err) {
       console.error(`[sync] Failed to sync ${repo.name}:`, (err as Error).message);
+      Sentry.captureException(err, {
+        tags: { script: 'sync-repos' },
+        extra: { repo: repo.name, gitlabProjectId: repo.gitlabProjectId },
+      });
     }
   }
 
@@ -58,8 +71,13 @@ async function main() {
 }
 
 main()
-  .catch((err) => {
+  .catch(async (err) => {
     console.error('[sync] Fatal error:', err);
+    Sentry.captureException(err, { tags: { script: 'sync-repos' } });
+    await Sentry.flush(2000);
     process.exit(1);
   })
-  .finally(() => prisma.$disconnect());
+  .finally(async () => {
+    await Sentry.flush(2000);
+    await prisma.$disconnect();
+  });
