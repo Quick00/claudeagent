@@ -40,6 +40,10 @@ export default function AdminReposPage() {
   const [modalDescription, setModalDescription] = useState('');
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editDescription, setEditDescription] = useState('');
+  const [editingBranchId, setEditingBranchId] = useState<string | null>(null);
+  const [editBranch, setEditBranch] = useState('');
+  const [branchSaving, setBranchSaving] = useState(false);
+  const [branchError, setBranchError] = useState<string | null>(null);
 
   useEffect(() => {
     if (status === 'unauthenticated') router.replace('/login');
@@ -102,6 +106,33 @@ export default function AdminReposPage() {
     if (res.ok) await fetchRepos();
   };
 
+  const saveBranch = async (repoId: string) => {
+    setBranchSaving(true);
+    setBranchError(null);
+    try {
+      const res = await fetch(`/api/admin/repos/${repoId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ defaultBranch: editBranch }),
+      });
+      if (res.ok) {
+        setEditingBranchId(null);
+        await fetchRepos();
+      } else {
+        let message = 'Failed to update branch';
+        try {
+          const body = await res.json();
+          if (body?.error) message = body.error;
+        } catch {
+          // non-JSON error body — keep default message
+        }
+        setBranchError(message);
+      }
+    } finally {
+      setBranchSaving(false);
+    }
+  };
+
   const saveDescription = async (repoId: string) => {
     const res = await fetch(`/api/admin/repos/${repoId}`, {
       method: 'PATCH',
@@ -137,6 +168,7 @@ export default function AdminReposPage() {
               <tr className="border-b dark:border-gray-700">
                 <th className="p-3 dark:text-gray-300">Name</th>
                 <th className="p-3 dark:text-gray-300">Description</th>
+                <th className="p-3 dark:text-gray-300">Branch</th>
                 <th className="p-3 dark:text-gray-300">Status</th>
                 <th className="p-3 dark:text-gray-300">Last Synced</th>
                 <th className="p-3 dark:text-gray-300">Actions</th>
@@ -164,6 +196,39 @@ export default function AdminReposPage() {
                         className="cursor-pointer hover:text-blue-400 text-sm"
                       >
                         {repo.description}
+                      </span>
+                    )}
+                  </td>
+                  <td className="p-3 dark:text-gray-300 text-sm">
+                    {editingBranchId === repo.id ? (
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <input
+                            value={editBranch}
+                            onChange={(e) => setEditBranch(e.target.value)}
+                            className="w-36 px-2 py-1 rounded border dark:border-gray-600 dark:bg-gray-700 dark:text-white text-sm font-mono"
+                            disabled={branchSaving}
+                            autoFocus
+                          />
+                          <button onClick={() => saveBranch(repo.id)} disabled={branchSaving} className="text-green-500 text-sm disabled:opacity-50">
+                            {branchSaving ? 'Syncing…' : 'Save'}
+                          </button>
+                          <button
+                            onClick={() => { setEditingBranchId(null); setBranchError(null); }}
+                            disabled={branchSaving}
+                            className="text-gray-500 text-sm disabled:opacity-50"
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                        {branchError && <p className="text-xs text-red-500 mt-1">{branchError}</p>}
+                      </div>
+                    ) : (
+                      <span
+                        onClick={() => { setEditingBranchId(repo.id); setEditBranch(repo.defaultBranch); setBranchError(null); }}
+                        className="cursor-pointer hover:text-blue-400 font-mono"
+                      >
+                        {repo.defaultBranch}
                       </span>
                     )}
                   </td>
