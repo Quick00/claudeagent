@@ -3,6 +3,8 @@
 import { useEffect, useState, useRef, useCallback, useMemo } from 'react';
 import Link from 'next/link';
 import ForceGraph2D, { type ForceGraphMethods } from 'react-force-graph-2d';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import { useTheme } from '@/components/ThemeProvider';
 import { formatDateTime } from '@/lib/format-date';
 
@@ -289,7 +291,9 @@ export default function KnowledgeGraph() {
                         {entry.subject}
                       </div>
                     )}
-                    <p className="text-sm text-gray-700 dark:text-gray-300">{entry.content}</p>
+                    <div className="prose prose-sm max-w-none text-gray-700 prose-headings:mb-1 prose-headings:mt-2 prose-p:my-1 prose-ol:my-1 prose-ul:my-1 prose-li:my-0 prose-pre:bg-gray-800 prose-pre:text-gray-100 prose-code:text-pink-600 dark:prose-invert dark:text-gray-300 dark:prose-pre:bg-gray-900">
+                      <ReactMarkdown remarkPlugins={[remarkGfm]}>{entry.content}</ReactMarkdown>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -309,9 +313,9 @@ export default function KnowledgeGraph() {
                   {selectedEntry.subject}
                 </h2>
               )}
-              <p className="mb-4 text-sm leading-relaxed text-gray-800 dark:text-gray-200">
-                {selectedEntry.content}
-              </p>
+              <div className="prose prose-sm mb-4 max-w-none leading-relaxed text-gray-800 prose-headings:mb-1 prose-headings:mt-2 prose-p:my-1 prose-ol:my-1 prose-ul:my-1 prose-li:my-0 prose-pre:bg-gray-800 prose-pre:text-gray-100 prose-code:text-pink-600 dark:prose-invert dark:text-gray-200 dark:prose-pre:bg-gray-900">
+                <ReactMarkdown remarkPlugins={[remarkGfm]}>{selectedEntry.content}</ReactMarkdown>
+              </div>
               {selectedEntry.tags && (
                 <div className="mb-4 flex flex-wrap gap-1.5">
                   {selectedEntry.tags.split(',').map((tag: string) => (
