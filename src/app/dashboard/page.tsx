@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import { formatDateTime } from '@/lib/format-date';
 
 interface DashboardData {
@@ -116,19 +118,6 @@ export default function DashboardPage() {
     },
     [performSearch],
   );
-
-  // Clicking a suggestion chip fills the search and runs it immediately.
-  const runSuggestion = useCallback(
-    (query: string) => {
-      setSearchQuery(query);
-      if (debounceRef.current) clearTimeout(debounceRef.current);
-      performSearch(query);
-    },
-    [performSearch],
-  );
-
-  // Always-shown chip — surfaces the Sales easter egg (and its SC Heerenveen jab).
-  const SALES_CHIP = 'How good is the Sales team?';
 
   if (!data) {
     return (
@@ -332,17 +321,6 @@ export default function DashboardPage() {
               )}
             </div>
 
-            {searchResults === null && !isSearching && (
-              <div className="mb-4 flex flex-wrap gap-2">
-                <button
-                  onClick={() => runSuggestion(SALES_CHIP)}
-                  className="rounded-full border border-gray-200 bg-white px-3 py-1 text-xs text-gray-600 transition-colors hover:border-blue-300 hover:bg-blue-50 hover:text-blue-600 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 dark:hover:border-blue-600 dark:hover:bg-gray-800"
-                >
-                  {SALES_CHIP}
-                </button>
-              </div>
-            )}
-
             <h2 className="mb-3 text-sm font-semibold uppercase text-gray-500 dark:text-gray-400">
               {searchResults !== null ? (
                 <>
@@ -405,9 +383,11 @@ export default function DashboardPage() {
                         {entry.subject}
                       </h3>
                     )}
-                    <p className="text-sm leading-relaxed text-gray-800 dark:text-gray-200">
-                      {entry.content}
-                    </p>
+                    <div className="prose prose-sm max-w-none leading-relaxed text-gray-800 prose-p:my-1 prose-ul:my-1 prose-ol:my-1 prose-li:my-0 prose-headings:mb-1 prose-headings:mt-2 prose-pre:bg-gray-800 prose-pre:text-gray-100 prose-code:text-pink-600 dark:prose-invert dark:text-gray-200 dark:prose-pre:bg-gray-900">
+                      <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                        {entry.content}
+                      </ReactMarkdown>
+                    </div>
                     {entry.tags && (
                       <div className="mt-2 flex flex-wrap gap-1.5">
                         {entry.tags.split(',').map((tag, i) => {
