@@ -12,7 +12,7 @@ mkdir -p /app/uploads
 chown -R nextjs:nodejs /app/uploads
 
 echo "Syncing database schema..."
-su-exec nextjs npx prisma db push
+su-exec nextjs npx prisma db push --accept-data-loss
 
 echo "Starting server..."
 exec su-exec nextjs node server.js
