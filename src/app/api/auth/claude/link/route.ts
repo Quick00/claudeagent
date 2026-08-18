@@ -1,14 +1,12 @@
-import { getServerSession } from 'next-auth';
 import { NextResponse } from 'next/server';
-import { authOptions } from '@/lib/auth';
+import { requireApprovedUser } from '@/lib/api-auth';
 import { prisma } from '@/lib/prisma';
 import { encrypt } from '@/lib/crypto';
 
 export async function POST(request: Request) {
-  const session = await getServerSession(authOptions);
-  if (!session?.user?.email) {
-    return new NextResponse('Unauthorized', { status: 401 });
-  }
+  const auth = await requireApprovedUser();
+  if (!auth.ok) return auth.response;
+  const user = auth.user;
 
   const body = await request.json();
   const { token } = body as { token: string };
@@ -19,10 +17,10 @@ export async function POST(request: Request) {
   }
 
   await prisma.user.update({
-    where: { email: session.user.email },
+    where: { id: user.id },
     data: {
       claudeToken: encrypt(cleaned),
-      claudeEmail: session.user.email,
+      claudeEmail: user.email,
     },
   });
 

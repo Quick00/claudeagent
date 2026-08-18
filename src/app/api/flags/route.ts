@@ -1,20 +1,11 @@
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/lib/auth';
+import { requireApprovedUser, requireAdminUser } from '@/lib/api-auth';
 import { prisma } from '@/lib/prisma';
 import { NextResponse } from 'next/server';
 
 export async function POST(request: Request) {
-  const session = await getServerSession(authOptions);
-  if (!session?.user?.email) {
-    return new Response('Unauthorized', { status: 401 });
-  }
-
-  const user = await prisma.user.findUnique({
-    where: { email: session.user.email },
-  });
-  if (!user) {
-    return new Response('User not found', { status: 404 });
-  }
+  const auth = await requireApprovedUser();
+  if (!auth.ok) return auth.response;
+  const user = auth.user;
 
   const { conversationId, reason } = (await request.json()) as {
     conversationId: string;
@@ -51,17 +42,8 @@ export async function POST(request: Request) {
 }
 
 export async function GET() {
-  const session = await getServerSession(authOptions);
-  if (!session?.user?.email) {
-    return new Response('Unauthorized', { status: 401 });
-  }
-
-  const currentUser = await prisma.user.findUnique({
-    where: { email: session.user.email },
-  });
-  if (!currentUser || currentUser.role !== 'admin') {
-    return new Response('Forbidden', { status: 403 });
-  }
+  const auth = await requireAdminUser();
+  if (!auth.ok) return auth.response;
 
   const flags = await prisma.flag.findMany({
     orderBy: [

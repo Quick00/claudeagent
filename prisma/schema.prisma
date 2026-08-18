@@ -14,12 +14,21 @@ model User {
   claudeToken          String?
   claudeEmail          String?
   role                 String    @default("user")
+  status               String    @default("APPROVED") // "PENDING" | "APPROVED" | "REJECTED"
+  approvedAt           DateTime?
+  approvedById         String?
   createdAt            DateTime  @default(now())
   conversations        Conversation[]
   flags            Flag[] @relation("UserFlags")
   adminFlags       Flag[] @relation("AdminFlags")
   adminSentMessages    Message[] @relation("AdminSentMessages")
   feedbackPosts    FeedbackPost[]
+}
+
+model AppSetting {
+  key       String   @id
+  value     String
+  updatedAt DateTime @default(now()) @updatedAt
 }
 
 model Conversation {

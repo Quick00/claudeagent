@@ -26,7 +26,7 @@ describe('GET /api/conversations/[id] — ownership extensions', () => {
 
   it('returns isOwner=true, isAdmin=false, ownerHasClaudeToken=true for the owner', async () => {
     mockSession.mockResolvedValue({ user: { email: 'owner@example.com' } });
-    mockUser.mockResolvedValue({ id: 'u-owner', role: 'user', claudeToken: 'enc' });
+    mockUser.mockResolvedValue({ id: 'u-owner', role: 'user', status: 'APPROVED', claudeToken: 'enc' });
     mockConv.mockResolvedValue({
       id: 'c1', userId: 'u-owner', title: 't', claudeSessionId: 's',
       messages: [], flags: [],
@@ -42,7 +42,7 @@ describe('GET /api/conversations/[id] — ownership extensions', () => {
 
   it('returns isOwner=false, isAdmin=true for an admin viewing another user', async () => {
     mockSession.mockResolvedValue({ user: { email: 'admin@example.com' } });
-    mockUser.mockResolvedValue({ id: 'u-admin', role: 'admin', claudeToken: null });
+    mockUser.mockResolvedValue({ id: 'u-admin', role: 'admin', status: 'APPROVED', claudeToken: null });
     mockConv.mockResolvedValue({
       id: 'c1', userId: 'u-other', title: 't', claudeSessionId: 's',
       messages: [], flags: [],
@@ -58,7 +58,7 @@ describe('GET /api/conversations/[id] — ownership extensions', () => {
 
   it('marks all unseen messages as seen when owner reads', async () => {
     mockSession.mockResolvedValue({ user: { email: 'owner@example.com' } });
-    mockUser.mockResolvedValue({ id: 'u-owner', role: 'user', claudeToken: 'enc' });
+    mockUser.mockResolvedValue({ id: 'u-owner', role: 'user', status: 'APPROVED', claudeToken: 'enc' });
     mockConv.mockResolvedValue({
       id: 'c1', userId: 'u-owner', title: 't', claudeSessionId: 's',
       messages: [], flags: [],
@@ -75,7 +75,7 @@ describe('GET /api/conversations/[id] — ownership extensions', () => {
 
   it('does NOT mark messages seen when admin reads someone else\u2019s conversation', async () => {
     mockSession.mockResolvedValue({ user: { email: 'admin@example.com' } });
-    mockUser.mockResolvedValue({ id: 'u-admin', role: 'admin', claudeToken: null });
+    mockUser.mockResolvedValue({ id: 'u-admin', role: 'admin', status: 'APPROVED', claudeToken: null });
     mockConv.mockResolvedValue({
       id: 'c1', userId: 'u-other', title: 't', claudeSessionId: 's',
       messages: [], flags: [],

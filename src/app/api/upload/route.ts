@@ -1,15 +1,12 @@
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/lib/auth';
+import { requireApprovedUser } from '@/lib/api-auth';
 import { prisma } from '@/lib/prisma';
 import { config } from '@/lib/config';
 import { validateMagicBytes, getExtensionFromMime, sanitizeFilename, saveUploadedFile, deleteUploadedFile } from '@/lib/upload';
 import { NextResponse } from 'next/server';
 
 export async function POST(request: Request) {
-  const session = await getServerSession(authOptions);
-  if (!session?.user?.email) {
-    return new Response('Unauthorized', { status: 401 });
-  }
+  const auth = await requireApprovedUser();
+  if (!auth.ok) return auth.response;
 
   const contentLength = parseInt(request.headers.get('content-length') || '0', 10);
   if (contentLength > config.maxFileSize) {

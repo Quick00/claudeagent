@@ -12,6 +12,8 @@ export default function SettingsPanel() {
   const [unlinking, setUnlinking] = useState(false);
   const [showModal, setShowModal] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
+  const [requireApproval, setRequireApproval] = useState<boolean | null>(null);
+  const [savingApproval, setSavingApproval] = useState(false);
   const { preference, setPreference } = useTheme();
 
   const fetchStatus = () => {
@@ -26,6 +28,12 @@ export default function SettingsPanel() {
     fetch('/api/admin/repos').then((res) => {
       if (res.ok) setIsAdmin(true);
     }).catch(() => {});
+    fetch('/api/admin/settings')
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data) setRequireApproval(data.requireUserApproval);
+      })
+      .catch(() => {});
   }, []);
 
   const handleUnlink = async () => {
@@ -37,6 +45,24 @@ export default function SettingsPanel() {
       console.error('Failed to unlink:', err);
     } finally {
       setUnlinking(false);
+    }
+  };
+
+  const toggleRequireApproval = async () => {
+    if (requireApproval === null) return;
+    const next = !requireApproval;
+    setSavingApproval(true);
+    try {
+      const res = await fetch('/api/admin/settings', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ requireUserApproval: next }),
+      });
+      if (res.ok) setRequireApproval(next);
+    } catch (err) {
+      console.error('Failed to update approval setting:', err);
+    } finally {
+      setSavingApproval(false);
     }
   };
 
@@ -122,6 +148,32 @@ export default function SettingsPanel() {
         {isAdmin && (
           <div className="border-t border-gray-200 pt-4 dark:border-gray-700">
             <h3 className="mb-3 text-sm font-medium text-gray-700 dark:text-gray-300">Admin</h3>
+            {requireApproval !== null && (
+              <div className="mb-3 flex items-start justify-between gap-3 rounded-lg border border-gray-200 px-3 py-2 dark:border-gray-700">
+                <div>
+                  <p className="text-sm text-gray-700 dark:text-gray-300">Require approval for new accounts</p>
+                  <p className="text-xs text-gray-400 dark:text-gray-500">
+                    New sign-ups wait for an admin before they can use the app.
+                  </p>
+                </div>
+                <button
+                  role="switch"
+                  aria-checked={requireApproval}
+                  aria-label="Require approval for new accounts"
+                  onClick={toggleRequireApproval}
+                  disabled={savingApproval}
+                  className={`relative mt-0.5 h-6 w-11 shrink-0 rounded-full transition-colors disabled:opacity-50 ${
+                    requireApproval ? 'bg-blue-600' : 'bg-gray-300 dark:bg-gray-600'
+                  }`}
+                >
+                  <span
+                    className={`absolute top-0.5 h-5 w-5 rounded-full bg-white transition-transform ${
+                      requireApproval ? 'translate-x-5' : 'translate-x-0.5'
+                    }`}
+                  />
+                </button>
+              </div>
+            )}
             <Link
               href="/admin/repos"
               className="flex items-center gap-2 rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-600 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800"
