@@ -11,9 +11,16 @@ interface UserRow {
   name: string;
   email: string;
   role: string;
+  status: string;
   claudeLinked: boolean;
   createdAt: string;
 }
+
+const STATUS_STYLES: Record<string, string> = {
+  PENDING: 'bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300',
+  APPROVED: 'bg-green-100 text-green-700 dark:bg-green-950 dark:text-green-300',
+  REJECTED: 'bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300',
+};
 
 export default function AdminUsersPanel() {
   const { data: session } = useSession();
@@ -47,6 +54,16 @@ export default function AdminUsersPanel() {
     setUsers((prev) => prev.map((u) => (u.id === userId ? { ...u, role: newRole } : u)));
   };
 
+  const setStatus = async (userId: string, status: 'APPROVED' | 'REJECTED') => {
+    const res = await fetch('/api/admin/users', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId, status }),
+    });
+    if (!res.ok) return;
+    setUsers((prev) => prev.map((u) => (u.id === userId ? { ...u, status } : u)));
+  };
+
   const deleteUser = async (userId: string, name: string) => {
     if (!confirm(`Delete user "${name}"? This will also delete their conversations.`)) return;
     const res = await fetch('/api/admin/users', {
@@ -69,6 +86,7 @@ export default function AdminUsersPanel() {
             <th className="pb-3 pr-4 font-medium">Name</th>
             <th className="pb-3 pr-4 font-medium">Email</th>
             <th className="pb-3 pr-4 font-medium">Role</th>
+            <th className="pb-3 pr-4 font-medium">Status</th>
             <th className="pb-3 pr-4 font-medium">Claude</th>
             <th className="pb-3 pr-4 font-medium">Joined</th>
             <th className="pb-3 font-medium"></th>
@@ -97,12 +115,27 @@ export default function AdminUsersPanel() {
                   )}
                 </td>
                 <td className="py-3 pr-4">
+                  <span className={`rounded-full px-2 py-0.5 text-xs ${STATUS_STYLES[user.status] ?? 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400'}`}>
+                    {user.status.toLowerCase()}
+                  </span>
+                </td>
+                <td className="py-3 pr-4">
                   <span className={user.claudeLinked ? 'inline-block h-2 w-2 rounded-full bg-green-500' : 'inline-block h-2 w-2 rounded-full bg-gray-300 dark:bg-gray-600'} />
                 </td>
                 <td className="py-3 pr-4 text-gray-500 dark:text-gray-400">
                   {formatDateTime(user.createdAt)}
                 </td>
                 <td className="space-x-3 py-3">
+                  {!isSelf && user.status !== 'APPROVED' && (
+                    <button onClick={() => setStatus(user.id, 'APPROVED')} className="text-xs font-medium text-green-600 hover:text-green-700 dark:text-green-400">
+                      Approve
+                    </button>
+                  )}
+                  {!isSelf && user.status === 'PENDING' && (
+                    <button onClick={() => setStatus(user.id, 'REJECTED')} className="text-xs text-gray-400 hover:text-red-500 dark:text-gray-500" title="Deny access to this account">
+                      Reject
+                    </button>
+                  )}
                   <button onClick={() => setViewingConvos({ userId: user.id, name: user.name })} className="text-xs text-blue-600 hover:text-blue-700 dark:text-blue-400">
                     Conversations
                   </button>

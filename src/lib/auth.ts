@@ -2,6 +2,7 @@ import { NextAuthOptions } from 'next-auth';
 import GoogleProvider from 'next-auth/providers/google';
 import CredentialsProvider from 'next-auth/providers/credentials';
 import { prisma } from '@/lib/prisma';
+import { applySignIn } from '@/lib/sign-in';
 
 const isTestMode = process.env.AUTH_TEST_MODE === 'true';
 
@@ -19,11 +20,8 @@ if (isTestMode) {
         const email = credentials?.email || 'test@example.com';
         const name = credentials?.name || 'Test User';
 
-        const user = await prisma.user.upsert({
-          where: { email },
-          update: { name },
-          create: { email, name },
-        });
+        const { allowed, user } = await applySignIn({ email, name });
+        if (!allowed || !user) return null;
 
         return { id: user.id, email: user.email, name: user.name };
       },
@@ -47,22 +45,16 @@ export const authOptions: NextAuthOptions = {
     async signIn({ user }) {
       if (!user.email) return false;
 
-      if (!isTestMode) {
-        await prisma.user.upsert({
-          where: { email: user.email },
-          update: {
-            name: user.name || 'Unknown',
-            image: user.image,
-          },
-          create: {
-            email: user.email,
-            name: user.name || 'Unknown',
-            image: user.image,
-          },
-        });
-      }
+      // Test mode already went through applySignIn inside authorize().
+      if (isTestMode) return true;
 
-      return true;
+      const { allowed } = await applySignIn({
+        email: user.email,
+        name: user.name || 'Unknown',
+        image: user.image,
+      });
+
+      return allowed;
     },
     async jwt({ token, user }: { token: Record<string, unknown>; user?: { id?: string } }) {
       if (user) {
@@ -78,6 +70,7 @@ export const authOptions: NextAuthOptions = {
         if (dbUser) {
           (session.user as Record<string, unknown>).id = dbUser.id;
           (session.user as Record<string, unknown>).role = dbUser.role;
+          (session.user as Record<string, unknown>).status = dbUser.status;
         }
       }
       return session;

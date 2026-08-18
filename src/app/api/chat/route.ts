@@ -1,5 +1,4 @@
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/lib/auth';
+import { requireApprovedUser } from '@/lib/api-auth';
 import { prisma } from '@/lib/prisma';
 import { sessionManager } from '@/lib/session-manager';
 import { config } from '@/lib/config';
@@ -13,38 +12,16 @@ import { NextResponse } from 'next/server';
 
 const MAX_RETRIES = 2;
 
-async function getUserClaudeToken(userEmail: string): Promise<{ token: string } | { error: string; status: number }> {
-  const user = await prisma.user.findUnique({
-    where: { email: userEmail },
-    select: { claudeToken: true },
-  });
-
-  if (!user?.claudeToken) {
-    return { error: 'claude_account_not_linked', status: 403 };
-  }
-
-  return { token: decrypt(user.claudeToken) };
-}
-
 export async function POST(request: Request) {
-  const session = await getServerSession(authOptions);
-  if (!session?.user?.email) {
-    return new Response('Unauthorized', { status: 401 });
-  }
-
-  const user = await prisma.user.findUnique({
-    where: { email: session.user.email },
-  });
-  if (!user) {
-    return new Response('User not found', { status: 404 });
-  }
+  const auth = await requireApprovedUser();
+  if (!auth.ok) return auth.response;
+  const user = auth.user;
   const userId = user.id;
 
-  const tokenResult = await getUserClaudeToken(session.user.email);
-  if ('error' in tokenResult) {
-    return NextResponse.json({ error: tokenResult.error }, { status: tokenResult.status });
+  if (!user.claudeToken) {
+    return NextResponse.json({ error: 'claude_account_not_linked' }, { status: 403 });
   }
-  const userClaudeToken = tokenResult.token;
+  const userClaudeToken = decrypt(user.claudeToken);
 
   const body = await request.json();
   const { conversationId, message, attachmentIds } = body as {

@@ -1,4 +1,5 @@
 import { Resend } from 'resend';
+import { prisma } from '@/lib/prisma';
 
 let resend: Resend | null = null;
 
@@ -159,4 +160,99 @@ export async function sendFeedbackDoneEmail(
 </html>
     `,
   });
+}
+
+/** Email addresses of every admin, used for account notifications. */
+export async function getAdminEmails(): Promise<string[]> {
+  const admins = await prisma.user.findMany({
+    where: { role: 'admin' },
+    select: { email: true },
+  });
+  return admins.map((admin) => admin.email);
+}
+
+export async function sendNewAccountNotification(
+  account: { name: string; email: string },
+  requiresApproval: boolean
+): Promise<void> {
+  const client = getResend();
+  if (!client) return;
+
+  const from = process.env.FROM_EMAIL;
+  if (!from) return;
+
+  const recipients = await getAdminEmails();
+  if (recipients.length === 0) return;
+
+  const safeName = escapeHtml(account.name);
+  const safeEmail = escapeHtml(account.email);
+  const heading = requiresApproval ? 'Account Awaiting Approval' : 'New Account Created';
+  const intro = requiresApproval
+    ? 'signed up and needs an admin to approve the account before they can use the app:'
+    : 'just created an account and can use the app right away:';
+  const footer = requiresApproval
+    ? 'Approve or reject this account from the Users panel.'
+    : 'No action needed \u2014 review accounts in the Users panel.';
+
+  const html = `
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
+<body style="margin: 0; padding: 0; background-color: #f4f4f5; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color: #f4f4f5; padding: 40px 20px;">
+    <tr>
+      <td align="center">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width: 520px; background-color: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.08);">
+          <tr>
+            <td style="background: linear-gradient(135deg, #2563eb, #1d4ed8); padding: 32px 40px; text-align: center;">
+              <div style="font-size: 36px; margin-bottom: 8px;">\u{1F464}</div>
+              <h1 style="margin: 0; color: #ffffff; font-size: 20px; font-weight: 600;">${heading}</h1>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding: 32px 40px;">
+              <p style="margin: 0 0 20px; color: #374151; font-size: 15px; line-height: 1.6;">
+                <strong>${safeName}</strong> ${intro}
+              </p>
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+                <tr>
+                  <td style="background-color: #eff6ff; border-left: 4px solid #3b82f6; border-radius: 0 8px 8px 0; padding: 16px 20px;">
+                    <div style="font-size: 16px; color: #111827; font-weight: 600; margin-bottom: 4px;">${safeName}</div>
+                    <div style="font-size: 14px; color: #374151;">${safeEmail}</div>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding: 20px 40px; border-top: 1px solid #f3f4f6;">
+              <p style="margin: 0; color: #9ca3af; font-size: 12px; text-align: center;">
+                ${footer}
+              </p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>
+  `;
+
+  const subject = requiresApproval
+    ? `\u{1F464} Approval needed: ${account.name} signed up`
+    : `\u{1F464} New account: ${account.name}`;
+
+  // One email per admin so recipients never see each other's addresses.
+  await Promise.all(
+    recipients.map((to) =>
+      client.emails.send({
+        from,
+        to,
+        replyTo: process.env.REPLY_TO_EMAIL || from,
+        subject,
+        html,
+      })
+    )
+  );
 }

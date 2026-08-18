@@ -52,6 +52,7 @@ describe('GET /api/admin/users', () => {
       id: '1',
       email: 'admin@example.com',
       role: 'admin',
+      status: 'APPROVED',
     });
     const users = [
       {
