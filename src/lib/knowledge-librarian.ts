@@ -1,3 +1,5 @@
+import type { Freshness } from '@/lib/knowledge-freshness';
+
 const OPENROUTER_API_URL = 'https://openrouter.ai/api/v1/chat/completions';
 const LIBRARIAN_MODEL = 'anthropic/claude-haiku-4.5';
 
@@ -7,6 +9,16 @@ export interface LibrarianCandidate {
   content: string;
   category: string;
   tags: string;
+  kind: string;
+  freshness: Freshness;
+}
+
+export interface LibrarianRequest {
+  content: string;
+  category: string;
+  subject?: string;
+  basedOnPaths: string[];
+  candidates: LibrarianCandidate[];
 }
 
 export interface LibrarianDecisionUpdate {
@@ -32,27 +44,34 @@ export interface LibrarianDecisionSkip {
 
 export type LibrarianDecision = LibrarianDecisionUpdate | LibrarianDecisionCreate | LibrarianDecisionSkip;
 
-export async function askLibrarian(
-  newContent: string,
-  newCategory: string,
-  suggestedSubject: string | undefined,
-  candidates: LibrarianCandidate[],
-): Promise<LibrarianDecision> {
+function describeFreshness(f: Freshness): string {
+  if (f.state === 'stale') return `STALE — these files changed since the page was written: ${f.changedPaths.join(', ')}`;
+  if (f.state === 'unverified') return 'UNVERIFIED — written without reading code';
+  return 'FRESH — matches the current code';
+}
+
+export async function askLibrarian(req: LibrarianRequest): Promise<LibrarianDecision> {
   const apiKey = process.env.OPENROUTER_API_KEY;
   if (!apiKey) {
     throw new Error('OPENROUTER_API_KEY is not set');
   }
 
-  const candidateList = candidates
-    .map((c, i) => `Page ${i + 1} (id: ${c.id}):\n  Subject: ${c.subject}\n  Category: ${c.category}\n  Tags: ${c.tags}\n  Content: ${c.content}`)
+  const candidateList = req.candidates
+    .map((c, i) =>
+      `Page ${i + 1} (id: ${c.id}):\n  Subject: ${c.subject}\n  Category: ${c.category}\n  Tags: ${c.tags}\n  Status: ${describeFreshness(c.freshness)}\n  Content: ${c.content}`)
     .join('\n\n');
+
+  const basedOn = req.basedOnPaths.length > 0
+    ? req.basedOnPaths.join(', ')
+    : '(none — the new knowledge was written without reading repository files)';
 
   const prompt = `You are a knowledge base librarian. Your job is to keep the knowledge base clean, honest, and free of duplicates.
 
 A new piece of knowledge has been submitted:
-- Category: ${newCategory}
-- Suggested subject: ${suggestedSubject || '(none)'}
-- Content: ${newContent}
+- Category: ${req.category}
+- Suggested subject: ${req.subject || '(none)'}
+- Based on files: ${basedOn}
+- Content: ${req.content}
 
 Here are existing pages that might be related:
 
@@ -60,11 +79,11 @@ ${candidateList}
 
 Decide ONE of the following:
 
-1. "update" — the new knowledge belongs on an existing page. Return the page ID and rewrite the FULL page content integrating the new information. Generalize where possible — save the principle, not the specific instance. If the new info contradicts existing content, the new info wins (it's more recent). Keep the content comprehensive but concise (2-4 sentences for simple topics, more for complex ones).
+1. "update" — the new knowledge belongs on an existing page. Return the page ID and rewrite the FULL page content integrating the new information. Prefer describing where a feature lives and what its key concepts are over long behavioural descriptions; keep behavioural claims short. If the new info contradicts existing content, the new info wins (it is more recent). If the page is STALE, any claim that depends on one of the changed files must be dropped or rewritten from the new information — never carry it forward unchanged. Keep the content comprehensive but concise (2-4 sentences for simple topics, more for complex ones).
 
 2. "create" — this is a genuinely new subject not covered by any existing page. Return a clear, broad subject title and the page content. Write it as a reusable description, not a narrow one-time observation.
 
-3. "skip" — the existing pages already fully cover this information. Nothing new to add.
+3. "skip" — the existing pages already fully cover this information AND none of them is STALE. Nothing new to add.
 
 Respond with ONLY valid JSON in this exact format (no markdown, no explanation):
 

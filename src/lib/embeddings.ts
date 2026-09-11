@@ -2,12 +2,13 @@ import { prisma } from '@/lib/prisma';
 import { embedText } from '@/lib/embed-text';
 export { embedText };
 
-interface SimilarPage {
+export interface SimilarPage {
   id: string;
   subject: string;
   category: string;
   content: string;
   tags: string;
+  kind: string;
   similarity: number;
 }
 
@@ -19,10 +20,11 @@ export async function findSimilarPages(
   const vectorStr = `[${embedding.join(',')}]`;
 
   const results: SimilarPage[] = await prisma.$queryRaw`
-    SELECT id, subject, category, content, tags,
+    SELECT id, subject, category, content, tags, kind,
            1 - (embedding <=> ${vectorStr}::vector) as similarity
     FROM "KnowledgeEntry"
     WHERE embedding IS NOT NULL
+    AND status = 'active'
     AND 1 - (embedding <=> ${vectorStr}::vector) > ${threshold}
     ORDER BY embedding <=> ${vectorStr}::vector
     LIMIT ${limit}

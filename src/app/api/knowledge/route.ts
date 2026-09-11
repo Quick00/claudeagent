@@ -2,8 +2,7 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { NextResponse } from 'next/server';
-import { embedText, findSimilarPages } from '@/lib/embeddings';
-import { askLibrarian } from '@/lib/knowledge-librarian';
+import { KNOWLEDGE_CATEGORIES, saveKnowledge } from '@/lib/knowledge-save';
 
 export async function POST(request: Request) {
   const authHeader = request.headers.get('authorization');
@@ -11,181 +10,36 @@ export async function POST(request: Request) {
     return new Response('Unauthorized', { status: 401 });
   }
 
-  const body = await request.json();
-  const { category, content, tags, source, repositoryId, subject } = body as {
-    category: string;
-    content: string;
+  const body = (await request.json()) as {
+    category?: string;
+    content?: string;
     tags?: string;
-    source?: string;
-    repositoryId?: string;
     subject?: string;
+    provenanceKey?: string;
+    basedOn?: unknown;
   };
 
-  if (!category || !content) {
+  if (!body.category || !body.content) {
     return new Response('category and content are required', { status: 400 });
   }
-
-  const validCategories = ['terminology', 'product_insight', 'process', 'developer'];
-  if (!validCategories.includes(category)) {
-    return new Response(`category must be one of: ${validCategories.join(', ')}`, { status: 400 });
+  if (!KNOWLEDGE_CATEGORIES.includes(body.category as (typeof KNOWLEDGE_CATEGORIES)[number])) {
+    return new Response(`category must be one of: ${KNOWLEDGE_CATEGORIES.join(', ')}`, { status: 400 });
   }
 
-  // Step 1: Embed the incoming content
-  let embedding: number[];
-  try {
-    embedding = await embedText(content);
-  } catch (err) {
-    console.error('[knowledge] Failed to generate embedding:', (err as Error).message);
-    // Fall back to simple save without dedup
-    const entry = await prisma.knowledgeEntry.create({
-      data: {
-        subject: subject || '',
-        category,
-        content,
-        tags: tags || '',
-      },
-    });
-    return NextResponse.json({ status: 'saved', id: entry.id, action: 'create', subject: subject || '' });
-  }
+  const basedOn = Array.isArray(body.basedOn)
+    ? body.basedOn.filter((p): p is string => typeof p === 'string').slice(0, 50)
+    : undefined;
 
-  // Step 2: Search for similar existing pages
-  const similarPages = await findSimilarPages(embedding, 5);
-
-  // Step 3: Decide — if no similar pages, create directly; otherwise ask the librarian
-  if (similarPages.length === 0) {
-    const pageSubject = subject || '';
-    const entry = await prisma.knowledgeEntry.create({
-      data: {
-        subject: pageSubject,
-        category,
-        content,
-        tags: tags || '',
-      },
-    });
-
-    const vectorStr = `[${embedding.join(',')}]`;
-    await prisma.$executeRaw`
-      UPDATE "KnowledgeEntry"
-      SET embedding = ${vectorStr}::vector
-      WHERE id = ${entry.id}
-    `;
-
-    console.log(`[knowledge] New page created: "${pageSubject}" [${category}]`);
-    return NextResponse.json({
-      status: 'saved',
-      id: entry.id,
-      action: 'create',
-      subject: pageSubject,
-      message: `Created new page '${pageSubject}'.`,
-    });
-  }
-
-  // Step 4: Ask the librarian
-  let decision;
-  try {
-    decision = await askLibrarian(
-      content,
-      category,
-      subject,
-      similarPages.map((p) => ({
-        id: p.id,
-        subject: p.subject,
-        content: p.content,
-        category: p.category,
-        tags: p.tags,
-      })),
-    );
-  } catch (err) {
-    console.error('[knowledge] Librarian failed, saving as new:', (err as Error).message);
-    const entry = await prisma.knowledgeEntry.create({
-      data: {
-        subject: subject || '',
-        category,
-        content,
-        tags: tags || '',
-      },
-    });
-    const vectorStr = `[${embedding.join(',')}]`;
-    await prisma.$executeRaw`
-      UPDATE "KnowledgeEntry"
-      SET embedding = ${vectorStr}::vector
-      WHERE id = ${entry.id}
-    `;
-    return NextResponse.json({ status: 'saved', id: entry.id, action: 'create', subject: subject || '' });
-  }
-
-  // Step 5: Execute the decision
-  if (decision.action === 'update') {
-    const validIds = similarPages.map((p) => p.id);
-    if (!validIds.includes(decision.pageId)) {
-      console.error(`[knowledge] Librarian returned invalid pageId: ${decision.pageId}`);
-      decision = { action: 'create' as const, subject: decision.subject, content: decision.content, tags: decision.tags };
-    }
-  }
-
-  if (decision.action === 'update') {
-    const newEmbedding = await embedText(decision.content);
-    const vectorStr = `[${newEmbedding.join(',')}]`;
-
-    await prisma.knowledgeEntry.update({
-      where: { id: decision.pageId },
-      data: {
-        subject: decision.subject,
-        content: decision.content,
-        tags: decision.tags,
-      },
-    });
-    await prisma.$executeRaw`
-      UPDATE "KnowledgeEntry"
-      SET embedding = ${vectorStr}::vector
-      WHERE id = ${decision.pageId}
-    `;
-
-    console.log(`[knowledge] Updated page: "${decision.subject}" (${decision.pageId})`);
-    return NextResponse.json({
-      status: 'saved',
-      id: decision.pageId,
-      action: 'update',
-      subject: decision.subject,
-      message: `Updated page '${decision.subject}' — integrated your finding.`,
-    });
-  }
-
-  if (decision.action === 'create') {
-    const entry = await prisma.knowledgeEntry.create({
-      data: {
-        subject: decision.subject,
-        category,
-        content: decision.content,
-        tags: decision.tags,
-      },
-    });
-    const createEmbedding = await embedText(decision.content);
-    const vectorStr = `[${createEmbedding.join(',')}]`;
-    await prisma.$executeRaw`
-      UPDATE "KnowledgeEntry"
-      SET embedding = ${vectorStr}::vector
-      WHERE id = ${entry.id}
-    `;
-
-    console.log(`[knowledge] New page created: "${decision.subject}" [${category}]`);
-    return NextResponse.json({
-      status: 'saved',
-      id: entry.id,
-      action: 'create',
-      subject: decision.subject,
-      message: `Created new page '${decision.subject}'.`,
-    });
-  }
-
-  // action === 'skip'
-  console.log(`[knowledge] Skipped: ${decision.reason} (covered by "${decision.coveredBy}")`);
-  return NextResponse.json({
-    status: 'skipped',
-    action: 'skip',
-    reason: decision.reason,
-    message: `Already covered in '${decision.coveredBy}'.`,
+  const result = await saveKnowledge({
+    category: body.category,
+    content: body.content,
+    tags: body.tags,
+    subject: body.subject,
+    provenanceKey: typeof body.provenanceKey === 'string' && body.provenanceKey ? body.provenanceKey : undefined,
+    basedOn,
   });
+
+  return NextResponse.json(result);
 }
 
 export async function GET() {
