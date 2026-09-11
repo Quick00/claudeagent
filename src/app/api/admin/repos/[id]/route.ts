@@ -57,21 +57,35 @@ export async function PATCH(
 
       // Validate-on-save: fetch + reset to the new branch before persisting.
       // If the branch doesn't exist the fetch fails and the working tree is untouched.
+      // Only syncRepo belongs in this try — anything after it runs with the clone
+      // already on the new branch, so its failure is not "branch not found".
+      let fromSha: string;
+      let toSha: string;
       try {
-        const { fromSha, toSha } = await syncRepo({
+        ({ fromSha, toSha } = await syncRepo({
           localPath: existing.localPath,
           branch,
           token,
           gitlabUrl: existing.gitlabUrl,
-        });
-        const changed = diffCommits(existing.localPath, fromSha, toSha);
-        await recordRepoSync(prisma, existing, fromSha, toSha, changed, 'branch_change');
+        }));
       } catch (err) {
         const redacted = (err as Error).message.replace(/\/\/[^@\s/]+@/g, '//***@');
         console.error(`[repos] Branch sync failed for "${branch}":`, redacted);
         return NextResponse.json(
           { error: `Branch "${branch}" not found or sync failed` },
           { status: 400 },
+        );
+      }
+
+      // The switch already happened on disk. Recording it is bookkeeping and must
+      // not fail the branch change, or the clone and the DB would disagree.
+      try {
+        const changed = diffCommits(existing.localPath, fromSha, toSha);
+        await recordRepoSync(prisma, existing, fromSha, toSha, changed, 'branch_change');
+      } catch (err) {
+        console.error(
+          `[repos] Branch changed to "${branch}" but recording the sync failed:`,
+          (err as Error).message,
         );
       }
 
@@ -118,7 +132,7 @@ export async function DELETE(
 
   let headSha = '';
   try {
-    headSha = getHeadSha(repo.localPath);
+    headSha = await getHeadSha(repo.localPath);
   } catch {
     // clone may already be gone; record the removal anyway
   }

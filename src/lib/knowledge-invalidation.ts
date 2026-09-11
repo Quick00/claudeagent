@@ -78,7 +78,9 @@ export async function recordRepoSync(
       gitlabProjectId: repo.gitlabProjectId,
       fromSha,
       toSha,
-      changedFiles: changed.map((c) => c.path),
+      // A rename is one change with two paths; record both so the row can answer
+      // "what was this renamed from", which a bare destination path cannot.
+      changedFiles: changed.map((c) => (c.oldPath ? `${c.oldPath} -> ${c.path}` : c.path)),
       reason,
       wouldStaleCount: affected.length,
     },

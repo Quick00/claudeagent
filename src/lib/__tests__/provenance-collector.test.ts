@@ -92,7 +92,7 @@ describe('ProvenanceCollector', () => {
     expect(collector.has('nope')).toBe(false);
   });
 
-  it('windows reads between saves and falls back to the whole run when the window is empty', () => {
+  it('windows reads between saves', () => {
     collector.recordToolUse('m1', 'Read', { file_path: '/repos/1/a.php' });
     collector.recordToolUse('m1', 'Read', { file_path: '/repos/1/b.php' });
     expect(collector.snapshot('m1').map((p) => p.relativePath)).toEqual(['a.php', 'b.php']);
@@ -100,10 +100,20 @@ describe('ProvenanceCollector', () => {
 
     collector.recordToolUse('m1', 'Read', { file_path: '/repos/1/c.php' });
     expect(collector.snapshot('m1').map((p) => p.relativePath)).toEqual(['c.php']);
+  });
+
+  it('returns nothing for a save with no reads since the previous one, never the whole run', () => {
+    for (const f of ['a', 'b', 'c']) {
+      collector.recordToolUse('m1', 'Read', { file_path: `/repos/1/${f}.php` });
+    }
+    expect(collector.snapshot('m1').map((p) => p.relativePath)).toEqual(['a.php', 'b.php', 'c.php']);
     collector.markSave('m1');
 
-    // no reads since last save → whole run
-    expect(collector.snapshot('m1').map((p) => p.relativePath)).toEqual(['a.php', 'b.php', 'c.php']);
+    // A second save with nothing read in between owns nothing: re-attaching the
+    // run would give it three sources it was never based on.
+    expect(collector.snapshot('m1')).toEqual([]);
+    collector.markSave('m1');
+    expect(collector.snapshot('m1')).toEqual([]);
   });
 
   it('dedupes and caps at knowledgeMaxSourcesPerSave keeping the most recent reads', () => {

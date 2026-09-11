@@ -10,7 +10,7 @@ Prisma ORM configuration for PostgreSQL.
 - `Attachment` — File uploads (images) linked to messages or feedback posts
 - `KnowledgeEntry` — Knowledge pages with categories, tags, subject, pgvector embeddings (1024 dims), `kind` (`"derived"` | `"pinned"`), `status` (`"active"` | `"retired"`), and retrieval counters. Freshness is NOT stored; it is computed from `KnowledgeSource` blob hashes.
 - `KnowledgeSource` — One row per (entry, gitlabProjectId, relative path): the git blob and commit the entry was verified against. Keyed by `gitlabProjectId`, not `Repository.id`, so provenance survives a repo being removed and re-added.
-- `RepoSync` — One row per repo sync: from/to SHA, changed files, reason (`sync` | `branch_change` | `removed`), and `wouldStaleCount` (entries with a source among the changed files).
+- `RepoSync` — One row per repo sync: from/to SHA, changed files (a rename is recorded as `old -> new`), reason (`sync` | `branch_change` | `removed`), and `wouldStaleCount` (entries with a source among the changed files; renames are excluded, the file moved but its content did not).
 - `Flag` — Conversation flags from users with admin responses
 - `FeedbackPost` — User-submitted feature requests and bug reports with status workflow (TODO → IN_PROGRESS → DONE)
 - `Repository` — GitLab repository configurations (name, gitlabProjectId, localPath, active status)

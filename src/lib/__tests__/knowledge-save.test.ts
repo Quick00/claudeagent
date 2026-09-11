@@ -174,6 +174,40 @@ describe('saveKnowledge', () => {
     expect(tx.knowledgeEntry.update).not.toHaveBeenCalled();
   });
 
+  it('leaves the provenance window intact when the librarian skips', async () => {
+    provenanceCollector.recordToolUse('m1', 'Read', { file_path: '/repos/1/a.php' });
+    mockSimilar.mockResolvedValue([{ id: 'p1', subject: 's', content: 'old', category: 'process', tags: '', kind: 'derived', similarity: 0.9 }]);
+    mockLibrarian.mockResolvedValue({ action: 'skip', reason: 'covered', coveredBy: 's' });
+
+    await saveKnowledge({ category: 'process', content: 'x', provenanceKey: 'm1' });
+
+    // nothing was written, so the read is still available to the next save
+    expect(provenanceCollector.snapshot('m1').map((p) => p.relativePath)).toEqual(['a.php']);
+  });
+
+  it('does not re-attach the whole run to a second save that read nothing new', async () => {
+    provenanceCollector.recordToolUse('m1', 'Read', { file_path: '/repos/1/a.php' });
+    provenanceCollector.recordToolUse('m1', 'Read', { file_path: '/repos/1/b.php' });
+    mockSimilar.mockResolvedValue([]);
+
+    await saveKnowledge({ category: 'process', content: 'first', provenanceKey: 'm1' });
+    const second = await saveKnowledge({ category: 'process', content: 'second', provenanceKey: 'm1' });
+
+    expect(mockCreate.mock.calls[0][0].data.sources.create).toHaveLength(2);
+    expect(second).toMatchObject({ action: 'create', sourceCount: 0 });
+    expect(mockCreate.mock.calls[1][0].data.sources.create).toEqual([]);
+  });
+
+  it('warns when a provenanceKey has no live collector run', async () => {
+    const consoleWarn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+    mockSimilar.mockResolvedValue([]);
+
+    await saveKnowledge({ category: 'process', content: 'x', provenanceKey: 'swept-away' });
+
+    expect(consoleWarn).toHaveBeenCalledWith(expect.stringContaining('swept-away'));
+    consoleWarn.mockRestore();
+  });
+
   it('saves without embedding when embedText fails', async () => {
     mockEmbed.mockRejectedValue(new Error('down'));
     const result = await saveKnowledge({ category: 'process', content: 'x', subject: 'S' });

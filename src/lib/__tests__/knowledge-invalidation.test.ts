@@ -66,7 +66,7 @@ describe('recordRepoSync', () => {
         gitlabProjectId: 42,
         fromSha: 'aaa',
         toSha: 'bbb',
-        changedFiles: ['app/a.php', 'app/to.php', 'app/gone.php'],
+        changedFiles: ['app/a.php', 'app/from.php -> app/to.php', 'app/gone.php'],
         reason: 'sync',
         wouldStaleCount: 2,
       },
@@ -74,10 +74,27 @@ describe('recordRepoSync', () => {
     expect(result).toEqual({ wouldStaleCount: 2 });
   });
 
-  it('skips the source query when nothing but renames changed', async () => {
+  it('skips the source query when nothing changed at all', async () => {
     const d = db();
     await recordRepoSync(d as never, { id: null, gitlabProjectId: 1 }, 'a', 'b', [], 'removed');
     expect(d.knowledgeSource.findMany).not.toHaveBeenCalled();
     expect(d.repoSync.create).toHaveBeenCalledWith({ data: expect.objectContaining({ repositoryId: null, reason: 'removed', wouldStaleCount: 0 }) });
+  });
+
+  it('excludes renames from wouldStaleCount — the file moved, its content did not', async () => {
+    const d = db();
+    const changed = [{ status: 'R' as const, path: 'app/to.php', oldPath: 'app/from.php' }];
+
+    const result = await recordRepoSync(d as never, { id: 'repo-1', gitlabProjectId: 42 }, 'aaa', 'bbb', changed);
+
+    expect(d.knowledgeSource.updateMany).toHaveBeenCalledTimes(1);
+    expect(d.knowledgeSource.findMany).not.toHaveBeenCalled();
+    expect(result).toEqual({ wouldStaleCount: 0 });
+    expect(d.repoSync.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        changedFiles: ['app/from.php -> app/to.php'],
+        wouldStaleCount: 0,
+      }),
+    });
   });
 });

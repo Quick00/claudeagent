@@ -19,6 +19,15 @@ function send(msg) {
   process.stdout.write(JSON.stringify(msg) + '\n');
 }
 
+/**
+ * Repo paths come from git output in a synced repository - untrusted content.
+ * Flatten control characters so a crafted filename cannot forge a heading
+ * inside the tool result Claude reads.
+ */
+function renderPaths(paths) {
+  return (paths || []).map((p) => String(p).replace(/[\x00-\x1f\x7f]/g, ' ')).join(', ');
+}
+
 rl.on('line', async (line) => {
   let request;
   try {
@@ -147,7 +156,7 @@ rl.on('line', async (line) => {
           text = `Found ${entries.length} relevant knowledge entries:\n\n` +
             entries.map((e, i) => {
               const label = e.freshness === 'stale'
-                ? `possibly outdated — files changed since it was saved: ${(e.changedPaths || []).join(', ')}`
+                ? `possibly outdated — files changed since it was saved: ${renderPaths(e.changedPaths)}`
                 : e.freshness === 'unverified'
                   ? 'unverified — saved without reading code; treat as a hint'
                   : e.kind === 'pinned' ? 'verified, pinned business rule' : 'verified against current code';

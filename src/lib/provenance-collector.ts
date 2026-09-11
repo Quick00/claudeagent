@@ -79,12 +79,19 @@ export class ProvenanceCollector {
     run.reads.push(captured);
   }
 
-  /** Reads since the last markSave (or the whole run if that window is empty), deduped, most-recent-first capped. */
+  /**
+   * Reads since the last markSave, deduped, most-recent-first capped.
+   *
+   * There is deliberately no "fall back to the whole run" rule: before the first
+   * save `windowStart` is 0, so the window already *is* the whole run, and after
+   * a save an empty window honestly means "nothing was read since". Re-attaching
+   * the run would give every later save the same sources — exactly the
+   * over-attribution windowing exists to prevent.
+   */
   snapshot(key: string): CapturedPath[] {
     const run = this.runs.get(key);
     if (!run) return [];
-    let window = run.reads.slice(run.windowStart);
-    if (window.length === 0) window = run.reads;
+    const window = run.reads.slice(run.windowStart);
 
     const seen = new Set<string>();
     const result: CapturedPath[] = [];
@@ -99,6 +106,7 @@ export class ProvenanceCollector {
     return result;
   }
 
+  /** Consume the window. Call only when a save actually wrote something. */
   markSave(key: string): void {
     const run = this.runs.get(key);
     if (run) run.windowStart = run.reads.length;

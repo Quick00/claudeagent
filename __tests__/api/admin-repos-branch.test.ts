@@ -91,6 +91,22 @@ describe('PATCH /api/admin/repos/[id] — defaultBranch', () => {
     });
   });
 
+  it('still persists the branch when recording the sync fails — the clone already switched', async () => {
+    const consoleError = jest.spyOn(console, 'error').mockImplementation(() => {});
+    mockSync.mockResolvedValue({ fromSha: 'aaa', toSha: 'bbb' });
+    mockRecordRepoSync.mockRejectedValue(new Error('connection terminated unexpectedly'));
+
+    const res = await PATCH(req({ defaultBranch: 'develop' }), params('r1'));
+
+    expect(res.status).toBe(200);
+    expect(mockRepoUpdate).toHaveBeenCalledWith({
+      where: { id: 'r1' },
+      data: expect.objectContaining({ defaultBranch: 'develop', lastPulledAt: expect.any(Date) }),
+    });
+    expect(consoleError.mock.calls[0][0]).not.toContain('not found');
+    consoleError.mockRestore();
+  });
+
   it('400 when sync fails, no DB write', async () => {
     mockSync.mockRejectedValue(new Error('fatal: couldn\'t find remote ref nope'));
     const res = await PATCH(req({ defaultBranch: 'nope' }), params('r1'));

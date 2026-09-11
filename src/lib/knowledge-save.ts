@@ -121,17 +121,34 @@ function created(id: string, subject: string, sourceCount: number): SaveResult {
   return { status: 'saved', action: 'create', id, subject, message: `Created new page '${subject}'.`, sourceCount };
 }
 
+/**
+ * Save or merge a knowledge page.
+ *
+ * The provenance window is consumed only when something was actually written:
+ * a `skip` persists nothing, so the reads it looked at stay available to the
+ * next save in the same run rather than being silently dropped.
+ */
 export async function saveKnowledge(input: SaveKnowledgeInput): Promise<SaveResult> {
+  const result = await runSave(input);
+  if (input.provenanceKey && result.status === 'saved') provenanceCollector.markSave(input.provenanceKey);
+  return result;
+}
+
+async function runSave(input: SaveKnowledgeInput): Promise<SaveResult> {
   const category = input.category;
   const content = input.content;
   const tags = input.tags || '';
   const subject = input.subject || '';
 
-  // 1. Provenance: what this run read, narrowed by Claude's hint, hashed at HEAD. Then consume the window.
+  // 1. Provenance: what this run read, narrowed by Claude's hint, hashed at HEAD.
+  if (input.provenanceKey && !provenanceCollector.has(input.provenanceKey)) {
+    console.warn(
+      `[knowledge] save with provenanceKey ${input.provenanceKey} but no live run — saving unverified`,
+    );
+  }
   const headTrees = await loadActiveHeadTrees();
   const captured = input.provenanceKey ? provenanceCollector.snapshot(input.provenanceKey) : [];
   const sources = toSourceInputs(narrowByBasedOn(captured, input.basedOn), headTrees);
-  if (input.provenanceKey) provenanceCollector.markSave(input.provenanceKey);
 
   // 2. Embed; without an embedding we can only append.
   let embedding: number[];

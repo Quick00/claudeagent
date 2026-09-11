@@ -9,12 +9,14 @@ export async function loadActiveHeadTrees(): Promise<Map<number, HeadTree>> {
   });
 
   const trees = new Map<number, HeadTree>();
-  for (const repo of repos) {
-    try {
-      trees.set(repo.gitlabProjectId, getHeadTree(repo.localPath));
-    } catch (err) {
-      console.error(`[knowledge] Cannot read HEAD tree for ${repo.name}:`, (err as Error).message);
-    }
-  }
+  await Promise.all(
+    repos.map(async (repo) => {
+      try {
+        trees.set(repo.gitlabProjectId, await getHeadTree(repo.localPath));
+      } catch (err) {
+        console.error(`[knowledge] Cannot read HEAD tree for ${repo.name}:`, (err as Error).message);
+      }
+    }),
+  );
   return trees;
 }

@@ -63,12 +63,24 @@ export async function retrieveKnowledge(query: string, limit: number = 10): Prom
     };
   });
 
+  // Credit only the entries that survive dedupe — the losers are never rendered
+  // into the prompt, and hitCount drives the phase-3 verification queue.
+  const shown = dedupeBySubject(labelled);
   await prisma.knowledgeEntry.updateMany({
-    where: { id: { in: ids } },
+    where: { id: { in: shown.map((e) => e.id) } },
     data: { hitCount: { increment: 1 }, lastRetrievedAt: new Date() },
   });
 
-  return dedupeBySubject(labelled);
+  return shown;
+}
+
+/**
+ * Repo paths come from `git ls-tree`/`git diff` output, i.e. from a synced
+ * repository — untrusted content. Flatten control characters so a crafted
+ * filename cannot forge a section header inside the system prompt.
+ */
+function renderPaths(paths: string[]): string {
+  return paths.map((p) => p.replace(/[\x00-\x1f\x7f]/g, ' ')).join(', ');
 }
 
 function heading(e: LabelledEntry): string {
@@ -102,7 +114,7 @@ export function formatKnowledgeBlock(entries: LabelledEntry[]): string {
   if (stale.length > 0) {
     block += '\n\n---\nPOSSIBLY OUTDATED KNOWLEDGE — the code it describes has changed since it was saved. Read the code before repeating any of it:\n';
     for (const e of stale) {
-      const changed = e.freshness.state === 'stale' ? e.freshness.changedPaths.join(', ') : '';
+      const changed = e.freshness.state === 'stale' ? renderPaths(e.freshness.changedPaths) : '';
       block += `\n## ${heading(e)} (changed since: ${changed})\n${e.content}\n`;
     }
   }
@@ -118,7 +130,7 @@ export function formatKnowledgeBlock(entries: LabelledEntry[]): string {
 }
 
 function stateLabel(e: LabelledEntry): string {
-  if (e.freshness.state === 'stale') return `possibly outdated — changed: ${e.freshness.changedPaths.join(', ')}`;
+  if (e.freshness.state === 'stale') return `possibly outdated — changed: ${renderPaths(e.freshness.changedPaths)}`;
   if (e.freshness.state === 'unverified') return 'unverified';
   return e.kind === 'pinned' ? 'verified, pinned business rule' : 'verified';
 }
