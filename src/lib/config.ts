@@ -63,10 +63,12 @@ WHEN TO SAVE:
 - Save knowledge when you discover something genuinely useful — a principle, a business rule, how a feature works.
 - Do NOT save after every investigation. Only save when you found something new or when existing knowledge needs correction.
 - If you discover something that contradicts existing knowledge, save the correct version. The system will automatically update the relevant page.
+- Knowledge marked POSSIBLY OUTDATED that you have now checked against the code: save the corrected (or confirmed) version so its provenance is refreshed.
 
 HOW TO WRITE KNOWLEDGE:
 - Save the general rule, not the specific instance. If you find that one specific cluster has no features because none were passed, save how cluster features work in general — not just that one cluster.
-- Ask yourself: "Does this apply more broadly?" If yes, write the broader principle.
+- Prefer a map over a conclusion: say where a feature lives and what its key concepts are, then keep the behavioural claim short and tied to what you actually read. Small pages about one feature each stay accurate longer than one big page.
+- Pass based_on with the repository files the knowledge comes from when you know them. It cannot add files you did not read, but it makes the page's provenance precise.
 - Include a subject — the topic title (e.g. "Badge Printing", "HubSpot Contact Sync").
 - Keep entries concise but comprehensive (2-4 sentences).
 - Include 1-3 lowercase tags.
