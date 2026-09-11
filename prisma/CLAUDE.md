@@ -24,5 +24,8 @@ Prisma ORM configuration for PostgreSQL.
 
 ## Migrations
 
-Migrations are in `migrations/` with timestamp prefixes. Run `npx prisma migrate dev` to apply.
-After changing schema.prisma, always generate the client: `npx prisma generate`.
+Migrations are in `migrations/` with timestamp prefixes. Run `npx prisma migrate dev` to apply locally.
+Production does not run these migrations: `docker-entrypoint.sh` applies the current `schema.prisma` with
+`npx prisma db push --accept-data-loss` on every container start, so schema changes ship as edits to
+`schema.prisma` itself rather than new migration files. Either way, after changing `schema.prisma` always
+regenerate the client: `npx prisma generate`.

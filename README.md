@@ -260,7 +260,7 @@ scripts/
   backfill-embeddings.ts      # One-off: backfill embeddings for existing entries
   cleanup-uploads.ts          # Cron: delete orphaned/old uploads
   consolidate-knowledge.ts    # One-off: merge duplicate knowledge entries
-  sync-repos.ts               # Cron: git pull all registered repos
+  sync-repos.ts               # Cron: fetch + reset all registered repos, record RepoSync rows
 ```
 
 ## Running tests
@@ -303,6 +303,12 @@ The system prompt can be customized in `src/lib/config.ts`. It controls how Clau
 - Never mention file paths, code, or technical terms
 - Answer in the same language as the question
 - Save important discoveries to the knowledge base
+
+Knowledge retrieval and provenance are tuned via environment variables (all optional, defaults shown):
+
+- `KNOWLEDGE_RETRIEVAL_THRESHOLD` (`0.45`) — minimum cosine similarity for a knowledge entry to be injected into a chat
+- `KNOWLEDGE_MAX_SOURCES_PER_SAVE` (`15`) — cap on provenance files attached to one save
+- `CLAUDE_DISALLOWED_TOOLS` (`Bash,Task,Write,Edit,NotebookEdit,WebFetch,WebSearch`) — tools removed from the Claude Code CLI so file reads are observable and repos stay read-only
 
 ## Customizing for your team
 
