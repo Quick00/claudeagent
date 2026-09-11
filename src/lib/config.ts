@@ -8,6 +8,14 @@ export const config = {
   maxFileSize: 10 * 1024 * 1024, // 10MB
   maxFilesPerMessage: 3,
   allowedMimeTypes: ['image/jpeg', 'image/png', 'image/gif', 'image/webp'] as readonly string[],
+  claudeDisallowedTools: (process.env.CLAUDE_DISALLOWED_TOOLS || 'Bash,Task,Write,Edit,NotebookEdit,WebFetch,WebSearch')
+    .split(',')
+    .map((t) => t.trim())
+    .filter(Boolean),
+  knowledgeRetrievalThreshold: parseFloat(process.env.KNOWLEDGE_RETRIEVAL_THRESHOLD || '0.45'),
+  knowledgeMaxSourcesPerSave: parseInt(process.env.KNOWLEDGE_MAX_SOURCES_PER_SAVE || '15', 10),
+  knowledgeIgnoreSegments: ['translations', 'vendor', 'node_modules', 'dist', 'build'] as readonly string[],
+  knowledgeIgnoreBasenames: ['package-lock.json', 'composer.lock', 'yarn.lock', 'pnpm-lock.yaml'] as readonly string[],
   systemPrompt: `You are an internal support assistant for our event management platform.
 You answer questions about how the product works by reading the actual codebase — but your audience is non-technical support staff.
 
