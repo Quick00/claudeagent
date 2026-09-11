@@ -16,6 +16,7 @@ import * as Sentry from '@sentry/nextjs';
 import { PrismaClient } from '@prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { syncRepo } from '../src/lib/repo-manager';
+import { diffCommits, recordRepoSync } from '../src/lib/knowledge-invalidation';
 
 Sentry.init({
   dsn: process.env.NEXT_PUBLIC_SENTRY_DSN,
@@ -45,7 +46,7 @@ async function main() {
     try {
       console.log(`[sync] Syncing ${repo.name} (${repo.gitlabProjectId})...`);
 
-      await syncRepo({
+      const { fromSha, toSha } = await syncRepo({
         localPath: repo.localPath,
         branch: repo.defaultBranch,
         token,
@@ -57,7 +58,10 @@ async function main() {
         data: { lastPulledAt: new Date() },
       });
 
-      console.log(`[sync] ${repo.name} synced successfully`);
+      const changed = diffCommits(repo.localPath, fromSha, toSha);
+      const { wouldStaleCount } = await recordRepoSync(prisma, repo, fromSha, toSha, changed);
+
+      console.log(`[sync] ${repo.name} synced: ${fromSha.slice(0, 7)} → ${toSha.slice(0, 7)}, ${changed.length} files changed, ${wouldStaleCount} knowledge entries affected`);
     } catch (err) {
       console.error(`[sync] Failed to sync ${repo.name}:`, (err as Error).message);
       Sentry.captureException(err, {
