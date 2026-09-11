@@ -150,7 +150,7 @@ describe('POST /api/admin/conversations/[id]/messages — happy path', () => {
       'Hello from admin',
       'dec(enc)',
       'u-other',
-      'r1',
+      'admin-untracked',
     );
   });
 });

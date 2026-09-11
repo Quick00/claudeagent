@@ -30,6 +30,7 @@ jest.mock('@/lib/config', () => ({
     sessionIdleTimeoutMs: 1000,
     claudeMaxTurns: 25,
     systemPrompt: 'Test prompt',
+    claudeDisallowedTools: ['Bash', 'Task', 'Write', 'Edit', 'NotebookEdit', 'WebFetch', 'WebSearch'],
   },
 }));
 

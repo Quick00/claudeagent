@@ -55,7 +55,6 @@ export async function POST(
   const conversationId = conversation.id;
   const ownerUserId = conversation.user.id;
   const ownerClaudeToken = decrypt(conversation.user.claudeToken);
-  const repositoryId = conversation.repositoryId ?? undefined;
   const sessionId = conversation.claudeSessionId;
 
   // Persist admin message + flip PENDING flags atomically so the admin's
@@ -133,7 +132,7 @@ export async function POST(
       content,
       ownerClaudeToken,
       ownerUserId,
-      repositoryId,
+      'admin-untracked',
     );
 
     if (procOrPromise instanceof Promise) {

@@ -49,7 +49,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'No repositories configured. Please ask an admin to add a repository.' }, { status: 503 });
   }
 
-  let conversation: { id: string; claudeSessionId: string | null; repositoryId: string | null };
+  let conversation: { id: string; claudeSessionId: string | null };
   if (conversationId) {
     const existing = await prisma.conversation.findFirst({
       where: { id: conversationId, userId: userId },
@@ -211,8 +211,8 @@ export async function POST(request: Request) {
             retrying = true;
             const retryRequestId = `${conversation.id}-retry-${Date.now()}`;
             const retryProcOrPromise = conversation.claudeSessionId
-              ? sessionManager.resumeSession(retryRequestId, conversation.claudeSessionId, effectiveMessage, userClaudeToken, userId, conversation.repositoryId || undefined)
-              : sessionManager.startSession(retryRequestId, effectiveMessage, systemPrompt, userClaudeToken, userId, repoPaths);
+              ? sessionManager.resumeSession(retryRequestId, conversation.claudeSessionId, effectiveMessage, userClaudeToken, userId, userMessage.id)
+              : sessionManager.startSession(retryRequestId, effectiveMessage, systemPrompt, userClaudeToken, userId, repoPaths, userMessage.id);
 
             if (retryProcOrPromise instanceof Promise) {
               retryProcOrPromise.then((retryProc) => attachProcess(retryProc, retryCount + 1)).catch((err) => {
@@ -281,8 +281,8 @@ export async function POST(request: Request) {
     console.log(`[chat] Starting request (requestId=${requestId}, conversationId=${conversation.id}, resume=${!!conversation.claudeSessionId}, knowledgeEntries=${knowledgeEntries.length})`);
 
     const procOrPromise = conversation.claudeSessionId
-      ? sessionManager.resumeSession(requestId, conversation.claudeSessionId, effectiveMessage, userClaudeToken, userId, conversation.repositoryId || undefined)
-      : sessionManager.startSession(requestId, effectiveMessage, systemPrompt, userClaudeToken, userId, repoPaths);
+      ? sessionManager.resumeSession(requestId, conversation.claudeSessionId, effectiveMessage, userClaudeToken, userId, userMessage.id)
+      : sessionManager.startSession(requestId, effectiveMessage, systemPrompt, userClaudeToken, userId, repoPaths, userMessage.id);
 
     if (procOrPromise instanceof Promise) {
       procOrPromise.then((proc) => {

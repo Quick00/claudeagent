@@ -11,7 +11,7 @@ import { createInterface } from 'readline';
 const API_URL = process.env.KNOWLEDGE_API_URL || 'http://localhost:3000/api/knowledge';
 const SEARCH_URL = process.env.KNOWLEDGE_SEARCH_URL || 'http://localhost:3000/api/knowledge/search';
 const API_SECRET = process.env.KNOWLEDGE_API_SECRET || '';
-const REPOSITORY_ID = process.env.REPOSITORY_ID || '';
+const PROVENANCE_KEY = process.env.PROVENANCE_KEY || '';
 
 const rl = createInterface({ input: process.stdin });
 
@@ -56,7 +56,7 @@ rl.on('line', async (line) => {
           {
             name: 'save_knowledge',
             description:
-              'Save or update a knowledge page. The system automatically finds the right page and integrates your knowledge, or creates a new one if the subject is genuinely new. You do not need to worry about duplicates — the system handles deduplication and merging.',
+              'Save or update a knowledge page. The system automatically finds the right page and integrates your knowledge, or creates a new one if the subject is genuinely new. You do not need to worry about duplicates — the system handles deduplication and merging. Prefer describing where a feature lives and its key concepts over long behavioural descriptions; keep behavioural claims short and tied to files you actually read.',
             inputSchema: {
               type: 'object',
               properties: {
@@ -80,6 +80,12 @@ rl.on('line', async (line) => {
                   type: 'string',
                   description:
                     'Comma-separated topic tags (lowercase, 1-2 words each). E.g. "badges,printing" or "registration,hubspot".',
+                },
+                based_on: {
+                  type: 'array',
+                  items: { type: 'string' },
+                  description:
+                    'Optional. Repository file paths this knowledge is based on, if you know them (relative or absolute). Used to narrow provenance to the files that matter; you cannot add files you did not read.',
                 },
               },
               required: ['category', 'content', 'tags'],
@@ -139,7 +145,14 @@ rl.on('line', async (line) => {
           text = 'No knowledge entries found for this query.';
         } else {
           text = `Found ${entries.length} relevant knowledge entries:\n\n` +
-            entries.map((e, i) => `${i + 1}. [${e.category}] ${e.content}`).join('\n');
+            entries.map((e, i) => {
+              const label = e.freshness === 'stale'
+                ? `possibly outdated — files changed since it was saved: ${(e.changedPaths || []).join(', ')}`
+                : e.freshness === 'unverified'
+                  ? 'unverified — saved without reading code; treat as a hint'
+                  : e.kind === 'pinned' ? 'verified, pinned business rule' : 'verified against current code';
+              return `${i + 1}. ${e.subject || e.category} [${label}]\n   ${e.content}`;
+            }).join('\n\n');
         }
 
         send({
@@ -173,7 +186,8 @@ rl.on('line', async (line) => {
             content: args.content,
             tags: args.tags || '',
             subject: args.subject || '',
-            repositoryId: REPOSITORY_ID || undefined,
+            provenanceKey: PROVENANCE_KEY || undefined,
+            basedOn: Array.isArray(args.based_on) ? args.based_on : undefined,
           }),
         });
 

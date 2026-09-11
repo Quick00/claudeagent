@@ -6,7 +6,7 @@ import { config } from '@/lib/config';
 const PROJECT_ROOT = path.resolve(process.cwd());
 const SESSIONS_DIR = process.env.SESSIONS_DIR || path.join('/tmp', 'claude-sessions');
 
-function getMcpConfig(repositoryId?: string): string {
+function getMcpConfig(provenanceKey: string): string {
   return JSON.stringify({
     mcpServers: {
       knowledge: {
@@ -16,7 +16,7 @@ function getMcpConfig(repositoryId?: string): string {
           KNOWLEDGE_API_URL: `${process.env.NEXTAUTH_URL || 'http://localhost:3000'}/api/knowledge`,
           KNOWLEDGE_SEARCH_URL: `${process.env.NEXTAUTH_URL || 'http://localhost:3000'}/api/knowledge/search`,
           KNOWLEDGE_API_SECRET: process.env.KNOWLEDGE_API_SECRET || '',
-          REPOSITORY_ID: repositoryId || '',
+          PROVENANCE_KEY: provenanceKey,
         },
       },
     },
@@ -43,7 +43,7 @@ export class SessionManager {
     return this.queue.length;
   }
 
-  startSession(requestId: string, message: string, systemPrompt: string, claudeToken: string, userId: string, repoPaths: string[], repositoryId?: string): ChildProcess | Promise<ChildProcess> {
+  startSession(requestId: string, message: string, systemPrompt: string, claudeToken: string, userId: string, repoPaths: string[], provenanceKey: string): ChildProcess | Promise<ChildProcess> {
     const addDirArgs: string[] = [];
     for (const p of repoPaths) {
       addDirArgs.push('--add-dir', p);
@@ -57,22 +57,24 @@ export class SessionManager {
       '--max-turns', String(config.claudeMaxTurns),
       ...addDirArgs,
       '--system-prompt', systemPrompt,
-      '--mcp-config', getMcpConfig(repositoryId),
+      '--mcp-config', getMcpConfig(provenanceKey),
       '--permission-mode', 'bypassPermissions',
+      '--disallowedTools', ...config.claudeDisallowedTools,
     ];
 
     return this.spawnOrQueue(requestId, args, message, claudeToken, userId);
   }
 
-  resumeSession(requestId: string, claudeSessionId: string, message: string, claudeToken: string, userId: string, repositoryId?: string): ChildProcess | Promise<ChildProcess> {
+  resumeSession(requestId: string, claudeSessionId: string, message: string, claudeToken: string, userId: string, provenanceKey: string): ChildProcess | Promise<ChildProcess> {
     const args = [
       '--resume', claudeSessionId,
       '--print',
       '--verbose',
       '--output-format', 'stream-json',
       '--include-partial-messages',
-      '--mcp-config', getMcpConfig(repositoryId),
+      '--mcp-config', getMcpConfig(provenanceKey),
       '--permission-mode', 'bypassPermissions',
+      '--disallowedTools', ...config.claudeDisallowedTools,
     ];
 
     return this.spawnOrQueue(requestId, args, message, claudeToken, userId);
