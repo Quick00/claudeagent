@@ -57,3 +57,6 @@ next-env.d.ts
 
 # internal planning/design docs
 /docs
+
+# Subagent-driven-development scratch workspace
+.superpowers/
