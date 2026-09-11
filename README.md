@@ -261,7 +261,6 @@ scripts/
   cleanup-uploads.ts          # Cron: delete orphaned/old uploads
   consolidate-knowledge.ts    # One-off: merge duplicate knowledge entries
   sync-repos.ts               # Cron: git pull all registered repos
-  verify-knowledge.ts         # One-off: validate knowledge entry integrity
 ```
 
 ## Running tests

@@ -19,7 +19,6 @@ interface Entry {
   content: string;
   tags: string;
   createdAt: Date;
-  repositoryId: string | null;
 }
 
 interface ConsolidatedPage {
@@ -169,7 +168,7 @@ async function main() {
   // Step 1: Load all entries (embeddings stay in the DB)
   const rawEntries: Entry[] = await prisma.knowledgeEntry.findMany({
     orderBy: { createdAt: 'asc' },
-    select: { id: true, category: true, content: true, tags: true, createdAt: true, repositoryId: true },
+    select: { id: true, category: true, content: true, tags: true, createdAt: true },
   });
 
   if (rawEntries.length === 0) {
@@ -187,9 +186,9 @@ async function main() {
   const entryMap = new Map<string, Entry>();
   for (const e of rawEntries) entryMap.set(e.id, e);
 
-  const byRepo = new Map<string | null, string[]>();
+  const byRepo = new Map<string, string[]>();
   for (const entry of rawEntries) {
-    const key = entry.repositoryId;
+    const key = 'all';
     if (!byRepo.has(key)) byRepo.set(key, []);
     byRepo.get(key)!.push(entry.id);
   }
@@ -237,7 +236,6 @@ async function main() {
             category: page.category,
             content: page.content,
             tags: page.tags,
-            repositoryId: repoId,
           },
         });
         if (embedding) {

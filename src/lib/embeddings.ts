@@ -37,9 +37,8 @@ export interface KnowledgeEntryResult {
   category: string;
   content: string;
   tags: string;
-  source: string | null;
+  kind: string;
   createdAt: Date;
-  repositoryName: string | null;
 }
 
 export async function findRelevantEntries(
@@ -50,9 +49,8 @@ export async function findRelevantEntries(
   const vectorStr = `[${queryEmbedding.join(',')}]`;
 
   const results: KnowledgeEntryResult[] = await prisma.$queryRaw`
-    SELECT ke.id, ke.subject, ke.category, ke.content, ke.tags, ke.source, ke."createdAt", r.name as "repositoryName"
+    SELECT ke.id, ke.subject, ke.category, ke.content, ke.tags, ke.kind, ke."createdAt"
     FROM "KnowledgeEntry" ke
-    LEFT JOIN "Repository" r ON ke."repositoryId" = r.id
     WHERE ke.embedding IS NOT NULL
     ORDER BY ke.embedding <=> ${vectorStr}::vector
     LIMIT ${limit}

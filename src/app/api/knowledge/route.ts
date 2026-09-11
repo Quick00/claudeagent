@@ -43,8 +43,6 @@ export async function POST(request: Request) {
         category,
         content,
         tags: tags || '',
-        source,
-        repositoryId: repositoryId || null,
       },
     });
     return NextResponse.json({ status: 'saved', id: entry.id, action: 'create', subject: subject || '' });
@@ -62,8 +60,6 @@ export async function POST(request: Request) {
         category,
         content,
         tags: tags || '',
-        source,
-        repositoryId: repositoryId || null,
       },
     });
 
@@ -107,8 +103,6 @@ export async function POST(request: Request) {
         category,
         content,
         tags: tags || '',
-        source,
-        repositoryId: repositoryId || null,
       },
     });
     const vectorStr = `[${embedding.join(',')}]`;
@@ -164,8 +158,6 @@ export async function POST(request: Request) {
         category,
         content: decision.content,
         tags: decision.tags,
-        source,
-        repositoryId: repositoryId || null,
       },
     });
     const createEmbedding = await embedText(decision.content);
@@ -210,7 +202,6 @@ export async function GET() {
   const entries = await prisma.knowledgeEntry.findMany({
     where,
     orderBy: { updatedAt: 'desc' },
-    ...(session?.user?.email ? { include: { repository: { select: { name: true } } } } : {}),
   });
   return NextResponse.json(entries);
 }

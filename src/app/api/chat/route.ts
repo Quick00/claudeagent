@@ -119,7 +119,7 @@ export async function POST(request: Request) {
     const fallback = await prisma.knowledgeEntry.findMany({
       orderBy: { createdAt: 'asc' },
     });
-    knowledgeEntries = fallback.map((e) => ({ ...e, repositoryName: null }));
+    knowledgeEntries = fallback;
   }
 
   let systemPrompt = config.systemPrompt;
@@ -129,8 +129,7 @@ export async function POST(request: Request) {
 
     for (const entry of knowledgeEntries) {
       const heading = entry.subject || entry.category.replace('_', ' ');
-      const source = entry.repositoryName ? ` [from: ${entry.repositoryName}]` : '';
-      knowledgeBlock += `\n## ${heading}${source}\n${entry.content}\n`;
+      knowledgeBlock += `\n## ${heading}\n${entry.content}\n`;
     }
 
     systemPrompt += knowledgeBlock;

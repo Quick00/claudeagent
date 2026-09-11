@@ -121,10 +121,6 @@ export async function DELETE(
       where: { repositoryId: id },
       data: { repositoryId: null },
     }),
-    prisma.knowledgeEntry.updateMany({
-      where: { repositoryId: id },
-      data: { repositoryId: null },
-    }),
     prisma.repository.delete({ where: { id } }),
   ]);
 

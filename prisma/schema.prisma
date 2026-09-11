@@ -73,17 +73,47 @@ model Attachment {
 }
 
 model KnowledgeEntry {
-  id           String                          @id @default(uuid())
-  subject      String                          @default("")
-  category     String
-  content      String
-  tags         String                          @default("")
-  source       String?
-  repositoryId String?
-  embedding    Unsupported("vector(1024)")?
-  createdAt    DateTime                        @default(now())
-  updatedAt    DateTime                        @default(now()) @updatedAt
-  repository   Repository? @relation(fields: [repositoryId], references: [id], onDelete: SetNull)
+  id              String    @id @default(uuid())
+  subject         String    @default("")
+  category        String
+  content         String
+  tags            String    @default("")
+  kind            String    @default("derived") // "derived" | "pinned"
+  status          String    @default("active")  // "active" | "retired"
+  hitCount        Int       @default(0)
+  lastRetrievedAt DateTime?
+  correctionCount Int       @default(0)
+  embedding       Unsupported("vector(1024)")?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @default(now()) @updatedAt
+  sources         KnowledgeSource[]
+}
+
+model KnowledgeSource {
+  id              String   @id @default(uuid())
+  entryId         String
+  gitlabProjectId Int
+  path            String
+  blobSha         String
+  commitSha       String
+  verifiedAt      DateTime @default(now())
+  entry           KnowledgeEntry @relation(fields: [entryId], references: [id], onDelete: Cascade)
+
+  @@unique([entryId, gitlabProjectId, path])
+  @@index([gitlabProjectId, path])
+}
+
+model RepoSync {
+  id              String   @id @default(uuid())
+  repositoryId    String?
+  gitlabProjectId Int
+  fromSha         String
+  toSha           String
+  changedFiles    String[]
+  reason          String   @default("sync") // "sync" | "branch_change" | "removed"
+  wouldStaleCount Int      @default(0)
+  syncedAt        DateTime @default(now())
+  repository      Repository? @relation(fields: [repositoryId], references: [id], onDelete: SetNull)
 }
 
 model Flag {
@@ -132,5 +162,5 @@ model Repository {
   updatedAt        DateTime  @updatedAt
 
   conversations    Conversation[]
-  knowledgeEntries KnowledgeEntry[]
+  syncs            RepoSync[]
 }
