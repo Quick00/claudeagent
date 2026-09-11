@@ -119,7 +119,8 @@ export async function POST(request: Request) {
     const fallback = await prisma.knowledgeEntry.findMany({
       orderBy: { createdAt: 'asc' },
     });
-    knowledgeEntries = fallback;
+    // No embedding search ran, so there is no real similarity score to report.
+    knowledgeEntries = fallback.map((entry) => ({ ...entry, similarity: 1 }));
   }
 
   let systemPrompt = config.systemPrompt;

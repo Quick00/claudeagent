@@ -1,5 +1,6 @@
 import { prisma } from '@/lib/prisma';
 import { embedText } from '@/lib/embed-text';
+import { config } from '@/lib/config';
 export { embedText };
 
 export interface SimilarPage {
@@ -41,22 +42,34 @@ export interface KnowledgeEntryResult {
   tags: string;
   kind: string;
   createdAt: Date;
+  updatedAt: Date;
+  similarity: number;
 }
 
+/**
+ * Nearest active entries above the cosine-similarity threshold. Logs the
+ * similarity of every returned row so the default threshold can be tuned
+ * from real traffic.
+ */
 export async function findRelevantEntries(
   query: string,
   limit: number = 5,
+  threshold: number = config.knowledgeRetrievalThreshold,
 ): Promise<KnowledgeEntryResult[]> {
   const queryEmbedding = await embedText(query);
   const vectorStr = `[${queryEmbedding.join(',')}]`;
 
   const results: KnowledgeEntryResult[] = await prisma.$queryRaw`
-    SELECT ke.id, ke.subject, ke.category, ke.content, ke.tags, ke.kind, ke."createdAt"
+    SELECT ke.id, ke.subject, ke.category, ke.content, ke.tags, ke.kind, ke."createdAt", ke."updatedAt",
+           1 - (ke.embedding <=> ${vectorStr}::vector) AS similarity
     FROM "KnowledgeEntry" ke
     WHERE ke.embedding IS NOT NULL
+    AND ke.status = 'active'
+    AND 1 - (ke.embedding <=> ${vectorStr}::vector) >= ${threshold}
     ORDER BY ke.embedding <=> ${vectorStr}::vector
     LIMIT ${limit}
   `;
 
+  console.log(`[knowledge] retrieval: ${results.length} rows ≥ ${threshold}; similarities=${results.map((r) => r.similarity.toFixed(3)).join(',')}`);
   return results;
 }
