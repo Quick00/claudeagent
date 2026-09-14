@@ -18,6 +18,7 @@ import {
 import { Skeleton } from '@/components/ui/skeleton';
 import { EmptyState } from '@/components/shared/EmptyState';
 import { MarkdownContent } from '@/components/shared/MarkdownContent';
+import { PageContainer } from '@/components/shared/PageContainer';
 import { KnowledgeDashboardSkeleton } from './KnowledgeDashboardSkeleton';
 
 interface DashboardData {
@@ -136,7 +137,11 @@ export function KnowledgeDashboard() {
   );
 
   if (!data) {
-    return <KnowledgeDashboardSkeleton />;
+    return (
+      <PageContainer className="space-y-8">
+        <KnowledgeDashboardSkeleton />
+      </PageContainer>
+    );
   }
 
   const filteredEntries = selectedTag
@@ -152,7 +157,7 @@ export function KnowledgeDashboard() {
   const visibleEntries = searchResults ?? filteredEntries;
 
   return (
-    <div className="mx-auto max-w-6xl space-y-8">
+    <PageContainer className="space-y-8">
       {/* Stats */}
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
         <StatCard label="Knowledge Pages" value={data.stats.totalEntries} />
@@ -164,13 +169,13 @@ export function KnowledgeDashboard() {
       {/* Category breakdown */}
       <div>
         <h2 className="mb-3 text-sm font-semibold uppercase text-muted-foreground">By Category</h2>
-        <div className="flex gap-3">
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
           {Object.entries(CATEGORY_LABELS)
             .filter(([key]) => data.isAdmin || key !== 'developer')
             .map(([key, label]) => {
               const count = data.stats.categories[key] || 0;
               return (
-                <Card key={key} size="sm" className="flex-1">
+                <Card key={key} size="sm">
                   <CardContent>
                     <div className="flex items-center gap-2">
                       <span
@@ -404,7 +409,7 @@ export function KnowledgeDashboard() {
           )}
         </div>
       </div>
-    </div>
+    </PageContainer>
   );
 }
 

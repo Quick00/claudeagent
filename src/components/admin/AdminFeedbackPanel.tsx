@@ -5,6 +5,7 @@ import { Bug, Lightbulb } from 'lucide-react';
 import { toast } from 'sonner';
 import { EmptyState } from '@/components/shared/EmptyState';
 import { MarkdownContent } from '@/components/shared/MarkdownContent';
+import { PageContainer } from '@/components/shared/PageContainer';
 import { PageHeader } from '@/components/shared/PageHeader';
 import { StatusBadge } from '@/components/shared/StatusBadge';
 import { Button } from '@/components/ui/button';
@@ -66,7 +67,7 @@ export default function AdminFeedbackPanel() {
   const filtered = posts.filter((p) => filter === 'ALL' || p.status === filter);
 
   return (
-    <div className="space-y-6">
+    <PageContainer>
       <PageHeader title="Feedback" description="Feature requests and bug reports from users." />
 
       <div className="flex justify-end">
@@ -149,6 +150,6 @@ export default function AdminFeedbackPanel() {
           })}
         </div>
       )}
-    </div>
+    </PageContainer>
   );
 }

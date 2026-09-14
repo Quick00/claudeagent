@@ -5,6 +5,7 @@ import { useSession } from 'next-auth/react';
 import { MoreHorizontal, Users as UsersIcon } from 'lucide-react';
 import { toast } from 'sonner';
 import { EmptyState } from '@/components/shared/EmptyState';
+import { PageContainer } from '@/components/shared/PageContainer';
 import { PageHeader } from '@/components/shared/PageHeader';
 import { StatusBadge } from '@/components/shared/StatusBadge';
 import { AdminTableSkeleton } from '@/components/admin/AdminTableSkeleton';
@@ -104,7 +105,7 @@ export default function AdminUsersPanel() {
   };
 
   return (
-    <div className="space-y-6">
+    <PageContainer>
       <PageHeader title="Users" description="Manage roles, approvals, and access." />
 
       {loading ? (
@@ -206,6 +207,6 @@ export default function AdminUsersPanel() {
           {viewingConvos && <AdminUserConversationsPanel userId={viewingConvos.userId} />}
         </DialogContent>
       </Dialog>
-    </div>
+    </PageContainer>
   );
 }

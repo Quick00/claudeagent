@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { useSession } from 'next-auth/react';
 import { useTheme } from 'next-themes';
 import { Circle, CircleCheck, Laptop, Moon, Sun } from 'lucide-react';
+import { PageContainer } from '@/components/shared/PageContainer';
 import { PageHeader } from '@/components/shared/PageHeader';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -54,7 +55,7 @@ export default function UserSettings() {
   };
 
   return (
-    <div className="max-w-2xl space-y-6 p-6">
+    <PageContainer width="form">
       <PageHeader title="Settings" description="Manage your account and appearance." />
 
       <Card>
@@ -117,15 +118,15 @@ export default function UserSettings() {
               if (value) setTheme(value);
             }}
           >
-            <ToggleGroupItem value="system" aria-label="System" className="w-24 flex-col gap-1.5 py-3">
+            <ToggleGroupItem value="system" aria-label="System" className="h-auto w-24 flex-col gap-1.5 py-3">
               <Laptop className="size-5" />
               System
             </ToggleGroupItem>
-            <ToggleGroupItem value="light" aria-label="Light" className="w-24 flex-col gap-1.5 py-3">
+            <ToggleGroupItem value="light" aria-label="Light" className="h-auto w-24 flex-col gap-1.5 py-3">
               <Sun className="size-5" />
               Light
             </ToggleGroupItem>
-            <ToggleGroupItem value="dark" aria-label="Dark" className="w-24 flex-col gap-1.5 py-3">
+            <ToggleGroupItem value="dark" aria-label="Dark" className="h-auto w-24 flex-col gap-1.5 py-3">
               <Moon className="size-5" />
               Dark
             </ToggleGroupItem>
@@ -134,6 +135,6 @@ export default function UserSettings() {
       </Card>
 
       <LinkClaudeModal open={modalOpen} onOpenChange={setModalOpen} onLinked={handleLinked} />
-    </div>
+    </PageContainer>
   );
 }

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
+import { PageContainer } from '@/components/shared/PageContainer';
 import { PageHeader } from '@/components/shared/PageHeader';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -83,16 +84,16 @@ export default function AdminSettings() {
 
   if (data === null) {
     return (
-      <div className="max-w-2xl space-y-6 p-6">
+      <PageContainer width="form">
         <PageHeader title="Admin Settings" description="Account approval and knowledge provenance." />
         <Skeleton className="h-24 w-full" />
         <Skeleton className="h-48 w-full" />
-      </div>
+      </PageContainer>
     );
   }
 
   return (
-    <div className="max-w-2xl space-y-6 p-6">
+    <PageContainer width="form">
       <PageHeader title="Admin Settings" description="Account approval and knowledge provenance." />
 
       <Card>
@@ -141,6 +142,6 @@ export default function AdminSettings() {
           </div>
         </CardContent>
       </Card>
-    </div>
+    </PageContainer>
   );
 }

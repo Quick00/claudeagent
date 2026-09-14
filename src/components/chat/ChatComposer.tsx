@@ -4,7 +4,7 @@ import { useCallback, useRef, useState } from 'react';
 import { Paperclip, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
-import { Textarea } from '@/components/ui/textarea';
+import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupTextarea } from '@/components/ui/input-group';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import type { Attachment } from './useConversation';
 
@@ -142,43 +142,46 @@ export function ChatComposer({ onSend, disabled }: ChatComposerProps) {
           </div>
         )}
         <div className="flex items-end gap-3" onDrop={handleDrop} onDragOver={(e) => e.preventDefault()}>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon"
-                disabled={disabled || uploading || images.length >= MAX_FILES}
-                onClick={() => fileInputRef.current?.click()}
-              >
-                <Paperclip />
-                <span className="sr-only">Attach image</span>
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>Attach an image (up to {MAX_FILES})</TooltipContent>
-          </Tooltip>
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept="image/jpeg,image/png,image/gif,image/webp"
-            multiple
-            className="hidden"
-            onChange={(e) => {
-              if (e.target.files) addFiles(e.target.files);
-              e.target.value = '';
-            }}
-          />
-          {/* `field-sizing-content` on Textarea grows it as you type — no resize effect. */}
-          <Textarea
-            aria-label="Message"
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={handleKeyDown}
-            onPaste={handlePaste}
-            placeholder="Ask a question about the platform..."
-            disabled={disabled || uploading}
-            rows={1}
-            className="max-h-48 min-h-11 flex-1 resize-none rounded-xl"
-          />
+          <InputGroup className="flex-1 rounded-xl">
+            <InputGroupAddon align="inline-start">
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <InputGroupButton
+                    size="icon-sm"
+                    disabled={disabled || uploading || images.length >= MAX_FILES}
+                    onClick={() => fileInputRef.current?.click()}
+                  >
+                    <Paperclip />
+                    <span className="sr-only">Attach image</span>
+                  </InputGroupButton>
+                </TooltipTrigger>
+                <TooltipContent>Attach an image (up to {MAX_FILES})</TooltipContent>
+              </Tooltip>
+            </InputGroupAddon>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/jpeg,image/png,image/gif,image/webp"
+              multiple
+              className="hidden"
+              onChange={(e) => {
+                if (e.target.files) addFiles(e.target.files);
+                e.target.value = '';
+              }}
+            />
+            {/* `field-sizing-content` on Textarea grows it as you type — no resize effect. */}
+            <InputGroupTextarea
+              aria-label="Message"
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={handleKeyDown}
+              onPaste={handlePaste}
+              placeholder="Ask a question about the platform..."
+              disabled={disabled || uploading}
+              rows={1}
+              className="max-h-48 min-h-11"
+            />
+          </InputGroup>
           <Button
             size="lg"
             className="rounded-xl"

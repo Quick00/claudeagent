@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { Flag } from 'lucide-react';
 import { toast } from 'sonner';
 import { EmptyState } from '@/components/shared/EmptyState';
+import { PageContainer } from '@/components/shared/PageContainer';
 import { PageHeader } from '@/components/shared/PageHeader';
 import { StatusBadge } from '@/components/shared/StatusBadge';
 import { Button } from '@/components/ui/button';
@@ -87,7 +88,7 @@ export default function AdminFlagsPanel() {
   const filtered = flags.filter((f) => filter === 'ALL' || f.status === filter);
 
   return (
-    <div className="space-y-6">
+    <PageContainer>
       <PageHeader title="Flags" description="Conversations users have flagged for review." />
 
       <div className="flex justify-end">
@@ -194,6 +195,6 @@ export default function AdminFlagsPanel() {
           })}
         </div>
       )}
-    </div>
+    </PageContainer>
   );
 }

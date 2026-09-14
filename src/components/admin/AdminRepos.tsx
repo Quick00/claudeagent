@@ -5,6 +5,7 @@ import { FolderGit2, MoreHorizontal } from 'lucide-react';
 import { toast } from 'sonner';
 import { AdminTableSkeleton } from '@/components/admin/AdminTableSkeleton';
 import { EmptyState } from '@/components/shared/EmptyState';
+import { PageContainer } from '@/components/shared/PageContainer';
 import { PageHeader } from '@/components/shared/PageHeader';
 import { Button } from '@/components/ui/button';
 import {
@@ -183,7 +184,7 @@ export default function AdminRepos() {
   };
 
   return (
-    <div className="space-y-8">
+    <PageContainer className="space-y-8">
       <PageHeader title="Repositories" description="Repositories Claude can read from when answering questions." />
 
       <div>
@@ -386,6 +387,6 @@ export default function AdminRepos() {
           )}
         </DialogContent>
       </Dialog>
-    </div>
+    </PageContainer>
   );
 }

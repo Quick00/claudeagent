@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { AdminTableSkeleton } from '@/components/admin/AdminTableSkeleton';
 import { EmptyState } from '@/components/shared/EmptyState';
+import { PageContainer } from '@/components/shared/PageContainer';
 import { PageHeader } from '@/components/shared/PageHeader';
 import { StatusBadge } from '@/components/shared/StatusBadge';
 import { Button } from '@/components/ui/button';
@@ -91,10 +92,10 @@ export default function AdminKnowledgeAttention() {
 
   if (!data) {
     return (
-      <div className="space-y-6">
-        <PageHeader title="Knowledge Attention" />
+      <PageContainer>
+        <PageHeader title="Knowledge" description="Stale, unverified, and pinned knowledge entries." />
         <AdminTableSkeleton columns={5} />
-      </div>
+      </PageContainer>
     );
   }
 
@@ -223,9 +224,10 @@ export default function AdminKnowledgeAttention() {
   }
 
   return (
-    <div className="space-y-6">
+    <PageContainer>
       <PageHeader
-        title="Knowledge Attention"
+        title="Knowledge"
+        description="Stale, unverified, and pinned knowledge entries."
         actions={<Button onClick={() => setCreating(true)}>New pinned rule</Button>}
       />
 
@@ -341,7 +343,7 @@ export default function AdminKnowledgeAttention() {
           />
         </DialogContent>
       </Dialog>
-    </div>
+    </PageContainer>
   );
 }
 
