@@ -6,6 +6,7 @@ import { refreshSourcesToHead, updateEntry } from '@/lib/knowledge-admin';
 import { provenanceCollector } from '@/lib/provenance-collector';
 import { loadActiveHeadTrees } from '@/lib/knowledge-repos';
 import { sessionManager } from '@/lib/session-manager';
+import { config } from '@/lib/config';
 
 jest.mock('@/lib/prisma', () => ({
   prisma: {
@@ -353,6 +354,19 @@ describe('reconcileStrandedRuns', () => {
     // The cutoff is in the past: a run started just now is never swept.
     expect(call.where.createdAt.lt.getTime()).toBeLessThan(Date.now());
     expect(call.data.outcome).toBe('failed');
+  });
+
+  it('does not sweep a run still inside the worst-case queue-wait-plus-execution window', async () => {
+    // Worst case: awaitProcess can leave a request queued for up to
+    // verificationTimeoutMs before a process exists, and runToCompletion then
+    // allows the process itself up to verificationTimeoutMs again. A run that
+    // young is still legitimately live and must not be swept.
+    mockUpdateManyRun.mockResolvedValue({ count: 0 });
+    const before = Date.now();
+    await reconcileStrandedRuns();
+    const call = mockUpdateManyRun.mock.calls[0][0];
+    const cutoffAge = before - call.where.createdAt.lt.getTime();
+    expect(cutoffAge).toBeGreaterThanOrEqual(2 * config.verificationTimeoutMs + 60_000);
   });
 
   it('sweeps before the in-flight guard, so a stranded row cannot lock an entry out for good', async () => {

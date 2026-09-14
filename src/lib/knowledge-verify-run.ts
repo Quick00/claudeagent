@@ -201,11 +201,16 @@ function awaitProcess(started: ChildProcess | Promise<ChildProcess>, timeoutMs: 
  *
  * Called when a tier 2 run starts and when the admin panel is loaded, rather
  * than from a boot hook, so the reconciliation is deterministic and testable.
- * The cutoff is the subprocess timeout plus a minute of slack, so a run that
- * is genuinely still going is never swept out from under itself.
+ * The cutoff allows for the worst case a still-live run can take: `awaitProcess`
+ * lets a request sit in the session queue for up to `verificationTimeoutMs`
+ * before a process even exists, and `runToCompletion` then allows the process
+ * itself up to `verificationTimeoutMs` again — so a run can legitimately still
+ * be pending at twice the single-stage timeout. The cutoff is twice that
+ * timeout plus a minute of slack, so a run that is genuinely still going is
+ * never swept out from under itself.
  */
 export async function reconcileStrandedRuns(): Promise<number> {
-  const cutoff = new Date(Date.now() - config.verificationTimeoutMs - 60_000);
+  const cutoff = new Date(Date.now() - 2 * config.verificationTimeoutMs - 60_000);
   const { count } = await prisma.verificationRun.updateMany({
     where: { outcome: 'pending', createdAt: { lt: cutoff } },
     data: { outcome: 'failed', reason: 'the run never reported back (process restart or crash)' },
