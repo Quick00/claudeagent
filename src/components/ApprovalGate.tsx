@@ -21,7 +21,7 @@ export default function ApprovalGate({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
 
-  const accountStatus = (session?.user as Record<string, unknown> | undefined)?.status;
+  const accountStatus = session?.user?.status;
   const blocked =
     status === 'authenticated' && accountStatus !== undefined && accountStatus !== 'APPROVED';
   const shouldRedirect = blocked && !EXEMPT_PATHS.includes(pathname);

@@ -8,7 +8,7 @@ import { MessageBubble } from './MessageBubble';
 import { useConversations } from './ConversationsProvider';
 import type { Flag, Message } from './useConversation';
 
-export type ChatMessagesProps = {
+type ChatMessagesProps = {
   messages: Message[];
   streamingContent: string;
   toolStatus: string | null;

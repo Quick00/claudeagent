@@ -14,7 +14,7 @@ import { Button } from '@/components/ui/button';
 import { Collapsible, CollapsibleContent } from '@/components/ui/collapsible';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Textarea } from '@/components/ui/textarea';
-import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
+import { StatusFilterToggle } from '@/components/admin/StatusFilterToggle';
 import { useDeferredSkeleton } from '@/hooks/use-deferred-skeleton';
 import { apiFetch, jsonBody } from '@/lib/api';
 import { ROUTES } from '@/lib/navigation';
@@ -35,6 +35,12 @@ interface FlagRow {
 
 type Filter = 'PENDING' | 'RESPONDED' | 'ALL';
 
+const FILTER_LABELS: Record<Filter, string> = {
+  PENDING: 'Pending',
+  RESPONDED: 'Responded',
+  ALL: 'All',
+};
+
 export default function AdminFlagsPanel() {
   const queryClient = useQueryClient();
   const [respondingTo, setRespondingTo] = useState<string | null>(null);
@@ -48,14 +54,17 @@ export default function AdminFlagsPanel() {
     error,
   } = useQuery({
     queryKey: qk.flags.adminList(),
-    queryFn: () => apiFetch<FlagRow[]>('/api/flags'),
+    queryFn: ({ signal }) => apiFetch<FlagRow[]>('/api/flags', { signal }),
   });
 
   const respondMutation = useMutation({
     mutationFn: ({ flagId, adminResponse }: { flagId: string; adminResponse: string }) =>
       apiFetch(`/api/flags/${flagId}`, jsonBody('PATCH', { adminResponse })),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: qk.flags.adminList() });
+      // `qk.flags.all` so the rail badge's `adminNotifications()` query is
+      // caught too — invalidation is prefix matching and a sibling key never
+      // matches. Same reason as `useConversation`'s flag invalidation.
+      queryClient.invalidateQueries({ queryKey: qk.flags.all });
       setRespondingTo(null);
       setResponseText('');
       toast.success('Response sent');
@@ -69,6 +78,11 @@ export default function AdminFlagsPanel() {
   };
 
   const filtered = flags.filter((f) => filter === 'ALL' || f.status === filter);
+  const filterOptions = (Object.keys(FILTER_LABELS) as Filter[]).map((value) => ({
+    value,
+    label: FILTER_LABELS[value],
+    count: value === 'ALL' ? flags.length : flags.filter((f) => f.status === value).length,
+  }));
   const showSkeleton = useDeferredSkeleton(isPending);
 
   return (
@@ -78,19 +92,7 @@ export default function AdminFlagsPanel() {
       </RiseIn>
 
       <RiseIn delay={0.06}>
-      <div className="flex justify-end">
-        <ToggleGroup type="single" variant="outline" value={filter} onValueChange={(v) => v && setFilter(v as Filter)}>
-          <ToggleGroupItem value="PENDING">
-            Pending <span className="ml-1.5 text-muted-foreground">{flags.filter((f) => f.status === 'PENDING').length}</span>
-          </ToggleGroupItem>
-          <ToggleGroupItem value="RESPONDED">
-            Responded <span className="ml-1.5 text-muted-foreground">{flags.filter((f) => f.status === 'RESPONDED').length}</span>
-          </ToggleGroupItem>
-          <ToggleGroupItem value="ALL">
-            All <span className="ml-1.5 text-muted-foreground">{flags.length}</span>
-          </ToggleGroupItem>
-        </ToggleGroup>
-      </div>
+      <StatusFilterToggle value={filter} onChange={setFilter} options={filterOptions} />
       </RiseIn>
 
       <RiseIn delay={0.12}>

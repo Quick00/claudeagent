@@ -8,7 +8,7 @@ import { MarkdownContent } from '@/components/shared/MarkdownContent';
 import { formatDateTimeShort } from '@/lib/format-date';
 import type { Attachment } from './useConversation';
 
-export type MessageBubbleProps = {
+type MessageBubbleProps = {
   role: 'user' | 'assistant' | 'admin';
   content: string;
   adminName?: string;

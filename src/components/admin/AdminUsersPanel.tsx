@@ -51,7 +51,7 @@ export default function AdminUsersPanel() {
     error,
   } = useQuery({
     queryKey: qk.users.list(),
-    queryFn: () => apiFetch<UserRow[]>('/api/admin/users'),
+    queryFn: ({ signal }) => apiFetch<UserRow[]>('/api/admin/users', { signal }),
   });
 
   const invalidateUsers = () => queryClient.invalidateQueries({ queryKey: qk.users.list() });
@@ -85,7 +85,7 @@ export default function AdminUsersPanel() {
     onError: () => toast.error('Failed to delete user'),
   });
 
-  const currentUserId = (session?.user as Record<string, unknown> | undefined)?.id;
+  const currentUserId = session?.user?.id;
 
   const setRole = (userId: string, role: string) => roleMutation.mutate({ userId, role });
 

@@ -13,7 +13,7 @@ import { StatusBadge } from '@/components/shared/StatusBadge';
 import { Button } from '@/components/ui/button';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Skeleton } from '@/components/ui/skeleton';
-import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
+import { StatusFilterToggle } from '@/components/admin/StatusFilterToggle';
 import { useDeferredSkeleton } from '@/hooks/use-deferred-skeleton';
 import { apiFetch, jsonBody } from '@/lib/api';
 import { qk } from '@/lib/query-keys';
@@ -32,6 +32,8 @@ interface FeedbackRow {
 
 type Filter = 'TODO' | 'DONE' | 'ALL';
 
+const FILTER_LABELS: Record<Filter, string> = { TODO: 'To Do', DONE: 'Done', ALL: 'All' };
+
 export default function AdminFeedbackPanel() {
   const queryClient = useQueryClient();
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -44,14 +46,17 @@ export default function AdminFeedbackPanel() {
     error,
   } = useQuery({
     queryKey: qk.feedback.adminList(),
-    queryFn: () => apiFetch<FeedbackRow[]>('/api/admin/feedback'),
+    queryFn: ({ signal }) => apiFetch<FeedbackRow[]>('/api/admin/feedback', { signal }),
   });
 
   const updateStatusMutation = useMutation({
     mutationFn: ({ id, status }: { id: string; status: 'TODO' | 'DONE' }) =>
       apiFetch(`/api/admin/feedback/${id}`, jsonBody('PATCH', { status })),
     onSuccess: (_data, variables) => {
-      queryClient.invalidateQueries({ queryKey: qk.feedback.adminList() });
+      // `qk.feedback.all`, not `adminList()`: invalidation is prefix matching,
+      // so the more specific `['feedback','admin-list','all']` would never
+      // match the rail badge's `['feedback','admin-list','TODO']`.
+      queryClient.invalidateQueries({ queryKey: qk.feedback.all });
       toast.success(variables.status === 'DONE' ? 'Marked as done' : 'Reopened');
     },
     onError: () => toast.error('Failed to update feedback'),
@@ -63,6 +68,11 @@ export default function AdminFeedbackPanel() {
   const updatingId = updateStatusMutation.isPending ? updateStatusMutation.variables?.id ?? null : null;
 
   const filtered = posts.filter((p) => filter === 'ALL' || p.status === filter);
+  const filterOptions = (Object.keys(FILTER_LABELS) as Filter[]).map((value) => ({
+    value,
+    label: FILTER_LABELS[value],
+    count: value === 'ALL' ? posts.length : posts.filter((p) => p.status === value).length,
+  }));
   const showSkeleton = useDeferredSkeleton(isPending);
 
   return (
@@ -72,19 +82,7 @@ export default function AdminFeedbackPanel() {
       </RiseIn>
 
       <RiseIn delay={0.06}>
-      <div className="flex justify-end">
-        <ToggleGroup type="single" variant="outline" value={filter} onValueChange={(v) => v && setFilter(v as Filter)}>
-          <ToggleGroupItem value="TODO">
-            To Do <span className="ml-1.5 text-muted-foreground">{posts.filter((p) => p.status === 'TODO').length}</span>
-          </ToggleGroupItem>
-          <ToggleGroupItem value="DONE">
-            Done <span className="ml-1.5 text-muted-foreground">{posts.filter((p) => p.status === 'DONE').length}</span>
-          </ToggleGroupItem>
-          <ToggleGroupItem value="ALL">
-            All <span className="ml-1.5 text-muted-foreground">{posts.length}</span>
-          </ToggleGroupItem>
-        </ToggleGroup>
-      </div>
+      <StatusFilterToggle value={filter} onChange={setFilter} options={filterOptions} />
       </RiseIn>
 
       <RiseIn delay={0.12}>
@@ -106,7 +104,7 @@ export default function AdminFeedbackPanel() {
       ) : posts.length === 0 ? (
         <EmptyState icon={Lightbulb} title="No feedback submissions yet" />
       ) : filtered.length === 0 ? (
-        <EmptyState icon={Lightbulb} title={`No ${filter === 'TODO' ? 'to-do' : filter === 'DONE' ? 'done' : ''} feedback`} />
+        <EmptyState icon={Lightbulb} title={`No ${FILTER_LABELS[filter].toLowerCase()} feedback`} />
       ) : (
         <div className="space-y-4">
           {filtered.map((post) => {

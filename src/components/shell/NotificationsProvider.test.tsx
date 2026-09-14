@@ -66,8 +66,11 @@ describe('NotificationsProvider', () => {
     expect(screen.getByTestId('feedback')).toHaveTextContent('0');
   });
 
-  test('clears the polling interval on unmount', async () => {
-    const clearSpy = jest.spyOn(global, 'clearInterval');
+  // Asserts the poll actually stops, not that some timer was cleared: the
+  // provider owns no `setInterval` of its own (polling is Query's
+  // `refetchInterval`), so a `clearInterval` spy would pass unconditionally.
+  test('stops polling once unmounted', async () => {
+    jest.useFakeTimers();
     const { unmount } = renderWithProviders(
       <NotificationsProvider isAdmin={false}>
         <Probe />
@@ -75,9 +78,16 @@ describe('NotificationsProvider', () => {
     );
 
     await waitFor(() => expect(screen.getByTestId('ids')).toHaveTextContent('c1,c2'));
+    expect(calledUrls()).toHaveLength(1);
+
     unmount();
-    expect(clearSpy).toHaveBeenCalled();
-    clearSpy.mockRestore();
+
+    await act(async () => {
+      jest.advanceTimersByTime(120_000);
+    });
+
+    expect(calledUrls()).toHaveLength(1);
+    jest.useRealTimers();
   });
 
   test('keeps polling on the 30s interval', async () => {

@@ -37,7 +37,7 @@ export default function AdminUserConversationsPanel({ userId }: AdminUserConvers
     error,
   } = useQuery({
     queryKey: qk.users.conversations(userId),
-    queryFn: () => apiFetch<ConvRow[]>(`/api/admin/users/${userId}/conversations`),
+    queryFn: ({ signal }) => apiFetch<ConvRow[]>(`/api/admin/users/${userId}/conversations`, { signal }),
     enabled: Boolean(userId),
   });
 

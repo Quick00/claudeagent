@@ -375,7 +375,7 @@ export function useConversation(initialConversationId: string | null) {
       const adminAttribution =
         isAdminSend && session?.user
           ? {
-              id: (session.user as { id?: string }).id ?? '',
+              id: session.user.id ?? '',
               name: session.user.name ?? 'Admin',
             }
           : null;

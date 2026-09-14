@@ -70,6 +70,12 @@ export default function AdminSettings() {
       }
       toast.error('Failed to update approval setting');
     },
+    // Reconcile against the server once the mutation settles. The optimistic
+    // write is safe from this: `onMutate` already cancelled in-flight queries,
+    // so the refetch this triggers starts after the mutation has resolved.
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: qk.settings.admin() });
+    },
   });
 
   const toggleRequireApproval = (next: boolean) => {

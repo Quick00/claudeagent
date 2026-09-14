@@ -17,7 +17,7 @@ export default function PendingPage() {
   const [rejected, setRejected] = useState(false);
   const probing = useRef(false);
 
-  const accountStatus = (session?.user as Record<string, unknown> | undefined)?.status;
+  const accountStatus = session?.user?.status;
 
   // Nobody should sit on this screen if they can already get in, or aren't signed in.
   useEffect(() => {

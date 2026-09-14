@@ -13,7 +13,7 @@ type PendingImage = {
   preview: string;
 };
 
-export type ChatComposerProps = {
+type ChatComposerProps = {
   onSend: (message: string, attachments: Attachment[]) => void;
   disabled: boolean;
 };

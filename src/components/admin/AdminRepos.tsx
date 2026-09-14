@@ -78,7 +78,7 @@ export default function AdminRepos() {
     error: reposError,
   } = useQuery({
     queryKey: qk.repos.list(),
-    queryFn: () => apiFetch<Repository[]>('/api/admin/repos'),
+    queryFn: ({ signal }) => apiFetch<Repository[]>('/api/admin/repos', { signal }),
   });
 
   // No search input exists in this panel yet — every load asks for the same
@@ -92,7 +92,7 @@ export default function AdminRepos() {
     error: projectsError,
   } = useQuery({
     queryKey: qk.repos.gitlabSearch(''),
-    queryFn: () => apiFetch<GitLabProject[]>('/api/admin/gitlab/search'),
+    queryFn: ({ signal }) => apiFetch<GitLabProject[]>('/api/admin/gitlab/search', { signal }),
     placeholderData: keepPreviousData,
   });
 

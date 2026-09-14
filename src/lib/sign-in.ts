@@ -9,8 +9,11 @@ interface SignInInput {
   name: string;
   image?: string | null;
   /**
-   * Force the account's role. Only the test-credentials provider passes this;
-   * the Google path must never set it, or signing in would be self-promotion.
+   * Role for a NEWLY CREATED account. Only the test-credentials provider
+   * passes this; the Google path must never set it, or signing in would be
+   * self-promotion. It is applied on create only — an existing account keeps
+   * whatever role it already has, so a stray test-mode sign-in cannot
+   * permanently promote a real user's row.
    */
   role?: 'admin' | 'user';
 }
@@ -39,7 +42,7 @@ export async function applySignIn(
     update: {
       name: input.name,
       ...(input.image === undefined ? {} : { image: input.image }),
-      ...(input.role === undefined ? {} : { role: input.role }),
+      // Deliberately no `role` here: see the doc comment on `SignInInput.role`.
     },
     create: {
       email: input.email,

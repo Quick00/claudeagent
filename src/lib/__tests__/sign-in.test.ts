@@ -147,18 +147,15 @@ describe('applySignIn with an explicit role', () => {
     );
   });
 
-  // Otherwise the first test-mode sign-in would be admin and every later one
-  // would silently stay on whatever role the row already had.
-  it('promotes an existing account to that role', async () => {
+  // The role must NOT leak into the update half: a single test-mode sign-in
+  // typed against a real colleague's email would otherwise make their row
+  // admin permanently, outliving `AUTH_TEST_MODE` itself.
+  it('leaves an existing account\'s role alone', async () => {
     mockFindUnique.mockResolvedValue({ id: 'u1', status: 'APPROVED', role: 'user' });
 
     await applySignIn({ ...account, role: 'admin' });
 
-    expect(mockUpsert).toHaveBeenCalledWith(
-      expect.objectContaining({
-        update: expect.objectContaining({ role: 'admin' }),
-      }),
-    );
+    expect(mockUpsert.mock.calls[0][0].update).not.toHaveProperty('role');
   });
 
   it('leaves the role alone when none is given, so Google sign-ins cannot self-promote', async () => {

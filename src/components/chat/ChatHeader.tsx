@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { FlagPopover } from './FlagPopover';
 
-export type ChatHeaderProps = {
+type ChatHeaderProps = {
   conversationId: string;
   /** Only the owner may flag their own conversation. */
   canFlag: boolean;

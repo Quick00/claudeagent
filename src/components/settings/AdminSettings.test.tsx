@@ -8,15 +8,18 @@ type FetchCall = [string, RequestInit | undefined];
 describe('AdminSettings', () => {
   let fetchMock: jest.Mock;
 
+  // A server that actually remembers a PATCH. The approval mutation writes
+  // optimistically and then invalidates on settle, so a mock that kept
+  // answering with the old value would be asserting against a server that
+  // never saves — and the switch would (correctly) snap back.
   beforeEach(() => {
+    let settings = { requireUserApproval: false, knowledgeIgnorePatterns: 'node_modules/' };
     fetchMock = jest.fn(async (_url: string, init?: RequestInit) => {
       if (init?.method === 'PATCH') {
+        settings = { ...settings, ...JSON.parse(String(init.body)) };
         return { ok: true, json: async () => ({}) };
       }
-      return {
-        ok: true,
-        json: async () => ({ requireUserApproval: false, knowledgeIgnorePatterns: 'node_modules/' }),
-      };
+      return { ok: true, json: async () => settings };
     });
     global.fetch = fetchMock as unknown as typeof fetch;
   });
@@ -39,7 +42,16 @@ describe('AdminSettings', () => {
     expect(url).toBe('/api/admin/settings');
     expect(init?.body).toBe(JSON.stringify({ requireUserApproval: true }));
 
+    // Still on after the post-mutation refetch: the optimistic write survives
+    // because the server agrees, rather than because nothing re-read it.
     await waitFor(() => expect(toggle).toHaveAttribute('aria-checked', 'true'));
+    await waitFor(() =>
+      expect(
+        (fetchMock.mock.calls as unknown as FetchCall[]).filter(([, i]) => i?.method !== 'PATCH')
+          .length,
+      ).toBeGreaterThan(1),
+    );
+    expect(toggle).toHaveAttribute('aria-checked', 'true');
   });
 
   test('loads the ignore patterns into the textarea', async () => {

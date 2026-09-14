@@ -9,7 +9,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 
-export type FlagPopoverProps = {
+type FlagPopoverProps = {
   hasPendingFlag: boolean;
   submitting: boolean;
   onSubmit: (reason: string) => Promise<boolean>;

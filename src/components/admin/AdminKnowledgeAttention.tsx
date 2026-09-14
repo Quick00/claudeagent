@@ -54,10 +54,14 @@ export default function AdminKnowledgeAttention() {
     error,
   } = useQuery({
     queryKey: qk.knowledge.attention(),
-    queryFn: () => apiFetch<Attention>('/api/admin/knowledge'),
+    queryFn: ({ signal }) => apiFetch<Attention>('/api/admin/knowledge', { signal }),
   });
 
-  const invalidateAttention = () => queryClient.invalidateQueries({ queryKey: qk.knowledge.attention() });
+  // Invalidate the whole knowledge area, not just the attention list: these
+  // actions (edit, create, retire, verify) also change what the graph, the
+  // entries list and the dashboard counts should show, and those keys would
+  // otherwise be served from cache for the app-wide 30s staleTime.
+  const invalidateKnowledge = () => queryClient.invalidateQueries({ queryKey: qk.knowledge.all });
 
   const actMutation = useMutation({
     mutationFn: (vars: {
@@ -70,7 +74,7 @@ export default function AdminKnowledgeAttention() {
     },
     onSuccess: (body, vars) => {
       toast.success(vars.okMessage ? vars.okMessage(body) : 'Done');
-      invalidateAttention();
+      invalidateKnowledge();
     },
     onError: (err) => {
       if (err instanceof ApiError) {
@@ -78,7 +82,7 @@ export default function AdminKnowledgeAttention() {
         // tier 2 run is already in flight) — the server may still have
         // recorded something, so refresh rather than leaving the tab stale.
         toast.error(`Error: ${(err.body as { error?: string } | null)?.error ?? err.status}`);
-        invalidateAttention();
+        invalidateKnowledge();
         return;
       }
       // A full verification holds the connection for as long as the verifier

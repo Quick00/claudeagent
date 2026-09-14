@@ -149,6 +149,33 @@ describe('ConversationList', () => {
     expect(await screen.findByText('No conversations yet')).toBeInTheDocument();
   });
 
+  // Regression guard for the hydration fix. `SidebarMenuSkeleton` sizes its
+  // placeholder with `Math.random()`, so the server HTML and the first client
+  // render disagreed and React logged a hydration error on every cold /chat.
+  // Reintroducing a random width would make these two renders differ.
+  test('renders identical, non-random skeleton widths on every render', async () => {
+    mockFetch.mockReset();
+    // Never resolves, so the list stays in its loading state.
+    mockFetch.mockImplementation(() => new Promise(() => {}));
+
+    const widthsOf = (container: HTMLElement) =>
+      Array.from(container.querySelectorAll('[data-slot="skeleton"]')).map(
+        (el) => (el as HTMLElement).style.width,
+      );
+
+    const first = renderList();
+    const firstWidths = widthsOf(first.container);
+    first.unmount();
+
+    const second = renderList();
+    const secondWidths = widthsOf(second.container);
+
+    // The literal set, so a width randomised once at module scope is caught
+    // as well as one randomised per render.
+    expect(firstWidths).toEqual(['72%', '54%', '84%', '61%', '77%']);
+    expect(secondWidths).toEqual(firstWidths);
+  });
+
   // A 500 used to be swallowed and render as "No conversations yet", which is
   // a different and much more alarming statement than "we could not reach the
   // server". `apiFetch` throws now, so the two are distinguishable.
