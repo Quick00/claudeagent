@@ -310,6 +310,15 @@ Knowledge retrieval and provenance are tuned via environment variables (all opti
 - `KNOWLEDGE_MAX_SOURCES_PER_SAVE` (`15`) — cap on provenance files attached to one save
 - `CLAUDE_DISALLOWED_TOOLS` (`Bash,Task,Write,Edit,NotebookEdit,WebFetch,WebSearch`) — tools removed from the Claude Code CLI so file reads are observable and repos stay read-only
 
+### Knowledge maintenance
+
+Knowledge entries can be marked **pinned** — human-owned business rules that Claude can never overwrite and that always render as fresh. Everything else is **derived**: freshness is never stored, only computed on the fly from whether its source files still match the code at HEAD.
+
+Admins review stale, unverified, conflicting, and duplicate knowledge at **Settings → Knowledge Attention** (`/admin/knowledge`). From there an entry can be edited, pinned or unpinned, retired, or re-verified against the code:
+
+- **Quick check** (tier 1) sends the entry and its recorded source files to Haiku via OpenRouter, and either confirms it, proposes a correction for an admin to accept, or gives up as unsure.
+- **Full verification** (tier 2) runs Claude Code against the entry, free to explore the whole repository — on the admin's own linked Claude account, since this phase has no separate service account for it.
+
 ## Customizing for your team
 
 The default `systemPrompt` and `knowledgeToolsPrompt` in `src/lib/config.ts` contain example references from the project this was originally built for (event management, HubSpot, Summit, badge printing). Before rolling this out inside your own team, rewrite those prompts to describe **your** product, terminology, and integrations. The suggested starter questions in `src/components/ChatMessages.tsx` and the example tags in `src/mcp/knowledge-server.mjs` use the same domain and should be updated too.

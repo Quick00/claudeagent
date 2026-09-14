@@ -6,6 +6,7 @@ Next.js 16 App Router directory.
 
 - `api/` — Server-side API route handlers (REST endpoints)
 - `admin/repos/` — Admin repository management page
+- `admin/knowledge/` — Admin attention page: stale, unverified, reviews, syncs; edit / pin / retire / verify
 - `conversation/[id]/` — Individual conversation view
 - `dashboard/` — Knowledge dashboard with stats and semantic search
 - `knowledge/` — Knowledge graph visualization
@@ -35,3 +36,5 @@ prefer the guards for new code.
 Use `NextResponse.json()` for JSON responses, `new Response()` for plain/streaming.
 
 `/api/account-status` deliberately skips the approval guard so the pending page can poll it.
+
+The knowledge attention page is backed by four `requireAdminUser()`-guarded routes: `GET /api/admin/knowledge` (returns `buildAttention()`) and `POST /api/admin/knowledge` (creates a pinned entry), `PATCH /api/admin/knowledge/[id]` (admin field edits, including retiring — `{status: 'retired'}` — and pin/unpin — `kind`), `POST /api/admin/knowledge/[id]/verify` (`{tier: 1 | 2}`, tier 2 needs the admin's own linked Claude token), and `PATCH /api/admin/knowledge/reviews/[id]` (`{action: 'accept' | 'dismiss'}`). These all sit behind the session-based admin guard, unlike `/api/knowledge/verify-result` (see `src/mcp/CLAUDE.md`), which is called by the MCP server rather than a signed-in admin and checks the `KNOWLEDGE_API_SECRET` bearer token instead.
