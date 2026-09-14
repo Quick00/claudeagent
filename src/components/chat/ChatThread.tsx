@@ -22,7 +22,7 @@ export function ChatThread({ initialConversationId }: { initialConversationId: s
   const {
     conversationId,
     messages,
-    streamingContent,
+    streamingSegments,
     toolStatus,
     isLoading,
     initialLoading,
@@ -95,7 +95,7 @@ export function ChatThread({ initialConversationId }: { initialConversationId: s
       {isAdminSend && <AdminViewBanner ownerName={ownership.ownerName} />}
       <ChatMessages
         messages={messages}
-        streamingContent={streamingContent}
+        streamingSegments={streamingSegments}
         toolStatus={toolStatus}
         isLoading={isLoading}
         onSendSuggestion={send}

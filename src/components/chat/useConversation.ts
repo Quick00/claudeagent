@@ -154,7 +154,9 @@ export function useConversation(initialConversationId: string | null) {
   const queryClient = useQueryClient();
 
   const [conversationId, setConversationId] = useState<string | null>(initialConversationId);
-  const [streamingContent, setStreamingContent] = useState('');
+  // The live answer, one entry per bubble. A tool call mid-answer closes the
+  // current bubble and opens the next, so a turn can land as several.
+  const [streamingSegments, setStreamingSegments] = useState<string[]>([]);
   const [toolStatus, setToolStatus] = useState<string | null>(null);
   const [isStreaming, setIsStreaming] = useState(false);
 
@@ -389,7 +391,7 @@ export function useConversation(initialConversationId: string | null) {
         sentByAdmin: adminAttribution,
       });
       setIsStreaming(true);
-      setStreamingContent('');
+      setStreamingSegments([]);
       setToolStatus(null);
 
       // ───────────────────────── SSE streaming block ─────────────────────────
@@ -436,13 +438,31 @@ export function useConversation(initialConversationId: string | null) {
 
         const reader = res.body!.getReader();
         const decoder = new TextDecoder();
-        let accumulated = '';
+
+        // The answer as bubbles. The last entry is the one being written; a
+        // `text_break` closes it and opens another. Published as a fresh array
+        // every time, which is what `ChatMessages` keys its auto-scroll off.
+        let segments = [''];
+        // One definition of "this segment is a bubble", used everywhere it is
+        // asked: on screen, at a break, and when the answer is committed.
+        const hasText = (content: string) => content.trim().length > 0;
+        const publish = () => setStreamingSegments(segments.filter(hasText));
+
+        // A frame can be split across two network chunks. Without this buffer the
+        // half-frame fails to parse and is dropped — losing text, or worse losing
+        // a `text_break` and silently merging two bubbles that the reload would
+        // then show apart.
+        let buffer = '';
 
         while (true) {
           const { done, value } = await reader.read();
           if (done) break;
 
-          for (const line of decoder.decode(value).split('\n')) {
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split('\n');
+          buffer = lines.pop() ?? '';
+
+          for (const line of lines) {
             if (!line.startsWith('data: ')) continue;
 
             let event: {
@@ -486,9 +506,14 @@ export function useConversation(initialConversationId: string | null) {
             }
 
             if (event.type === 'text') {
-              accumulated += event.content ?? '';
-              setStreamingContent(accumulated);
+              segments[segments.length - 1] += event.content ?? '';
+              publish();
               setToolStatus(null);
+            }
+
+            if (event.type === 'text_break') {
+              // Guard against a stray break: never leave a trailing empty bubble.
+              if (hasText(segments[segments.length - 1])) segments.push('');
             }
 
             if (event.type === 'tool_use') {
@@ -509,13 +534,22 @@ export function useConversation(initialConversationId: string | null) {
 
             if (event.type === 'done') {
               setToolStatus(null);
-              appendMessage({
-                id: `assistant-${Date.now()}`,
-                role: 'assistant',
-                content: accumulated,
-                createdAt: new Date().toISOString(),
-              });
-              setStreamingContent('');
+              // One message per bubble, timestamps a millisecond apart:
+              // `buildTimeline` sorts on `createdAt`, so the order has to be in
+              // the values rather than resting on sort stability for ties.
+              const base = Date.now();
+              segments
+                .filter(hasText)
+                .forEach((content, i) =>
+                  appendMessage({
+                    id: `assistant-${base}-${i}`,
+                    role: 'assistant',
+                    content,
+                    createdAt: new Date(base + i).toISOString(),
+                  }),
+                );
+              segments = [''];
+              setStreamingSegments([]);
               // The cache, not this hook, is the record of what was said. The
               // bubble above keeps the answer on screen; this replaces it with
               // the server's copy (real ids, real timestamps) as soon as the
@@ -534,7 +568,8 @@ export function useConversation(initialConversationId: string | null) {
             }
 
             if (event.type === 'error') {
-              setStreamingContent('');
+              segments = [''];
+              setStreamingSegments([]);
               setToolStatus(null);
               if (event.errorType === 'claude_token_expired') {
                 setClaudeUnlinked();
@@ -559,7 +594,7 @@ export function useConversation(initialConversationId: string | null) {
           content: 'Failed to connect. Please try again.',
           createdAt: new Date().toISOString(),
         });
-        setStreamingContent('');
+        setStreamingSegments([]);
       } finally {
         if (!signal.aborted) setIsStreaming(false);
       }
@@ -580,7 +615,7 @@ export function useConversation(initialConversationId: string | null) {
   return {
     conversationId,
     messages,
-    streamingContent,
+    streamingSegments,
     toolStatus,
     isLoading,
     initialLoading,
