@@ -87,6 +87,8 @@ model KnowledgeEntry {
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @default(now()) @updatedAt
   sources         KnowledgeSource[]
+  reviews          KnowledgeReview[]
+  verificationRuns VerificationRun[]
 }
 
 model KnowledgeSource {
@@ -101,6 +103,35 @@ model KnowledgeSource {
 
   @@unique([entryId, gitlabProjectId, path])
   @@index([gitlabProjectId, path])
+}
+
+model KnowledgeReview {
+  id           String    @id @default(uuid())
+  entryId      String
+  type         String    // "pinned_conflict" | "supersedes" | "proposed_update"
+  payload      Json
+  status       String    @default("open") // "open" | "resolved"
+  createdAt    DateTime  @default(now())
+  resolvedAt   DateTime?
+  resolvedById String?
+  entry        KnowledgeEntry @relation(fields: [entryId], references: [id], onDelete: Cascade)
+
+  @@index([status, createdAt])
+}
+
+model VerificationRun {
+  id         String   @id @default(uuid())
+  entryId    String
+  tier       Int      // 1 = Haiku over sources, 2 = Claude Code run
+  outcome    String   @default("pending") // "pending" | "confirmed" | "changed" | "unsure" | "retired" | "failed"
+  reason     String   @default("")
+  costUsd    Float?
+  durationMs Int      @default(0)
+  startedById String?
+  createdAt  DateTime @default(now())
+  entry      KnowledgeEntry @relation(fields: [entryId], references: [id], onDelete: Cascade)
+
+  @@index([entryId, createdAt])
 }
 
 model RepoSync {
