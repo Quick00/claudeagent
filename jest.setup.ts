@@ -1,4 +1,5 @@
 import '@testing-library/jest-dom/jest-globals';
+import { TextDecoder as NodeTextDecoder, TextEncoder as NodeTextEncoder } from 'node:util';
 import { cleanup } from '@testing-library/react';
 import { afterEach, beforeEach, jest } from '@jest/globals';
 
@@ -25,6 +26,10 @@ Element.prototype.hasPointerCapture ??= () => false;
 Element.prototype.setPointerCapture ??= () => {};
 Element.prototype.releasePointerCapture ??= () => {};
 Element.prototype.scrollIntoView ??= () => {};
+
+// jest-environment-jsdom ships neither encoder; the SSE reader needs both.
+globalThis.TextDecoder ??= NodeTextDecoder as unknown as typeof globalThis.TextDecoder;
+globalThis.TextEncoder ??= NodeTextEncoder as unknown as typeof globalThis.TextEncoder;
 
 beforeEach(() => {
   window.history.replaceState(null, '', '/');
