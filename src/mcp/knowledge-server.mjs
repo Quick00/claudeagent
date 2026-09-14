@@ -211,7 +211,9 @@ rl.on('line', async (line) => {
                 type: 'text',
                 text: data.message || (data.status === 'saved'
                   ? `Knowledge saved: [${args.category}] ${args.content}`
-                  : `Skipped: ${data.reason || 'unknown'}`),
+                  : data.status === 'conflict'
+                    ? `Not saved: conflicts with pinned rule '${data.subject}'. An admin will review.`
+                    : `Skipped: ${data.reason || 'unknown'}`),
               },
             ],
           },

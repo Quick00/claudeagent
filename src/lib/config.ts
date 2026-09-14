@@ -13,6 +13,7 @@ export const config = {
     .map((t) => t.trim())
     .filter(Boolean),
   knowledgeRetrievalThreshold: parseFloat(process.env.KNOWLEDGE_RETRIEVAL_THRESHOLD || '0.45'),
+  knowledgeSupersedesThreshold: parseFloat(process.env.KNOWLEDGE_SUPERSEDES_THRESHOLD || '0.8'),
   knowledgeMaxSourcesPerSave: parseInt(process.env.KNOWLEDGE_MAX_SOURCES_PER_SAVE || '15', 10),
   knowledgeIgnoreSegments: ['translations', 'vendor', 'node_modules', 'dist', 'build'] as readonly string[],
   knowledgeIgnoreBasenames: ['package-lock.json', 'composer.lock', 'yarn.lock', 'pnpm-lock.yaml'] as readonly string[],
