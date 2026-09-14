@@ -159,6 +159,11 @@
   --animate-bounce-slow: bounce-slow 3s ease-in-out infinite;
   --animate-blink: blink 1s step-end infinite;
   --animate-spin-slow: spin-slow 8s linear infinite;
+  /* Consumed by the vendored react-bits StarBorder. Its README suggests a
+     tailwind.config.js; this project is Tailwind v4, so they are registered
+     here instead. */
+  --animate-star-movement-bottom: star-movement-bottom linear infinite alternate;
+  --animate-star-movement-top: star-movement-top linear infinite alternate;
 
   @keyframes message-in {
     from {
@@ -194,6 +199,28 @@
   @keyframes spin-slow {
     to {
       transform: rotate(360deg);
+    }
+  }
+
+  @keyframes star-movement-bottom {
+    0% {
+      transform: translate(0%, 0%);
+      opacity: 1;
+    }
+    100% {
+      transform: translate(-100%, 0%);
+      opacity: 0;
+    }
+  }
+
+  @keyframes star-movement-top {
+    0% {
+      transform: translate(0%, 0%);
+      opacity: 1;
+    }
+    100% {
+      transform: translate(100%, 0%);
+      opacity: 0;
     }
   }
 }
@@ -288,86 +315,6 @@
     }
     to {
       background-position: -200% center;
-    }
-  }
-
-  /*
-   * StarBorder (adapted from React Bits). Two radial-gradient blobs sweep
-   * along the top and bottom edges; `overflow: hidden` on the container is
-   * what clips them into a border rather than two floating ovals.
-   *
-   * Because the container clips, a focus ring on the *child* would be cut
-   * off — put the ring on the container instead.
-   */
-  .star-border {
-    position: relative;
-    display: block;
-    overflow: hidden;
-    border-radius: var(--radius-xl);
-    isolation: isolate;
-    /* The padding ring is the border at rest; the sweeps light it up as they
-       pass. Without this the composer has no visible edge between sweeps. */
-    background: var(--border);
-  }
-
-  .star-border-sweep-top,
-  .star-border-sweep-bottom {
-    position: absolute;
-    width: 300%;
-    height: 50%;
-    border-radius: 50%;
-    opacity: 0.7;
-    pointer-events: none;
-    z-index: 0;
-  }
-
-  .star-border-sweep-bottom {
-    bottom: -11px;
-    right: -250%;
-    animation: star-sweep-bottom linear infinite alternate;
-  }
-
-  .star-border-sweep-top {
-    top: -11px;
-    left: -250%;
-    animation: star-sweep-top linear infinite alternate;
-  }
-
-  .star-border-inner {
-    position: relative;
-    display: block;
-    border-radius: calc(var(--radius-xl) - 1px);
-    z-index: 1;
-  }
-
-  /* A border that never stops moving is precisely what this rule is for. */
-  @media (prefers-reduced-motion: reduce) {
-    .star-border-sweep-top,
-    .star-border-sweep-bottom {
-      animation: none;
-      opacity: 0.35;
-    }
-  }
-
-  @keyframes star-sweep-bottom {
-    0% {
-      transform: translate(0%, 0%);
-      opacity: 1;
-    }
-    100% {
-      transform: translate(-100%, 0%);
-      opacity: 0;
-    }
-  }
-
-  @keyframes star-sweep-top {
-    0% {
-      transform: translate(0%, 0%);
-      opacity: 1;
-    }
-    100% {
-      transform: translate(100%, 0%);
-      opacity: 0;
     }
   }
 

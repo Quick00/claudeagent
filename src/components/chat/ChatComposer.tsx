@@ -5,7 +5,7 @@ import { Paperclip, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupTextarea } from '@/components/ui/input-group';
-import { StarBorder } from '@/components/shared/StarBorder';
+import StarBorder from '@/components/StarBorder';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import type { Attachment } from './useConversation';
 
@@ -144,12 +144,29 @@ export function ChatComposer({ onSend, disabled }: ChatComposerProps) {
         )}
         <div onDrop={handleDrop} onDragOver={(e) => e.preventDefault()}>
           {/*
-            * The star border clips its children, so InputGroup's own focus
-            * ring would be cut off — it is suppressed there and raised to the
+            * StarBorder clips its children, so InputGroup's own focus ring
+            * would be cut off — it is suppressed there and raised to the
             * wrapper, which sits outside the clip.
+            *
+            * The vendored component is sized for a standalone button
+            * (inline-block, a 20px radius, and 16px/26px of padding on its
+            * inner div) and it does not run its classes through `cn()`, so
+            * conflicting utilities are settled by stylesheet order rather
+            * than by what is passed in. The overrides are therefore marked
+            * important, and the inner div is reached positionally as the last
+            * child. The file itself stays untouched so it remains re-addable.
             */}
-          <StarBorder className="focus-within:ring-3 focus-within:ring-ring/50">
-            <InputGroup className="rounded-xl border-transparent bg-background focus-within:border-transparent has-[[data-slot=input-group-control]:focus-visible]:border-transparent has-[[data-slot=input-group-control]:focus-visible]:ring-0">
+          <StarBorder
+            as="div"
+            className="block! w-full rounded-xl! focus-within:ring-3 focus-within:ring-ring/50 [&>div:last-child]:rounded-xl! [&>div:last-child]:p-0! [&>div:last-child]:text-left! [&>div:last-child]:text-sm! motion-reduce:[&>div]:animate-none"
+            color="var(--primary)"
+            speed="6s"
+            thickness={1}
+            backgroundColor="var(--background)"
+            textColor="var(--foreground)"
+            borderColor="var(--border)"
+          >
+            <InputGroup className="rounded-xl border-transparent bg-transparent focus-within:border-transparent has-[[data-slot=input-group-control]:focus-visible]:border-transparent has-[[data-slot=input-group-control]:focus-visible]:ring-0">
             <InputGroupAddon align="inline-start">
               <Tooltip>
                 <TooltipTrigger asChild>

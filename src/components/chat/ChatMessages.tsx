@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef } from 'react';
 import { MessagesSquare } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { EmptyState } from '@/components/shared/EmptyState';
+import { ChatBackdrop } from './ChatBackdrop';
 import { Shimmer } from '@/components/shared/Shimmer';
 import { MessageBubble } from './MessageBubble';
 import { useConversations } from './ConversationsProvider';
@@ -83,9 +84,13 @@ export function ChatMessages({
     const suggestions = [...PINNED_SUGGESTIONS, ...rest];
 
     return (
-      <div className="flex min-h-0 flex-1 items-center justify-center overflow-y-auto p-6">
+      // `isolate` scopes the backdrop's stacking context; the empty state is
+      // lifted above it because an absolutely positioned sibling otherwise
+      // paints over static ones.
+      <div className="relative isolate flex min-h-0 flex-1 items-center justify-center overflow-hidden p-6">
+        <ChatBackdrop />
         <EmptyState
-          className="w-full max-w-2xl"
+          className="relative z-10 w-full max-w-2xl"
           icon={MessagesSquare}
           title="Codebase Q&A"
           description="Ask a question about how the product works"
