@@ -10,6 +10,7 @@ import { createInterface } from 'readline';
 
 const API_URL = process.env.KNOWLEDGE_API_URL || 'http://localhost:3000/api/knowledge';
 const SEARCH_URL = process.env.KNOWLEDGE_SEARCH_URL || 'http://localhost:3000/api/knowledge/search';
+const VERIFY_URL = process.env.KNOWLEDGE_VERIFY_URL || 'http://localhost:3000/api/knowledge/verify-result';
 const API_SECRET = process.env.KNOWLEDGE_API_SECRET || '';
 const PROVENANCE_KEY = process.env.PROVENANCE_KEY || '';
 
@@ -119,6 +120,28 @@ rl.on('line', async (line) => {
               required: ['query'],
             },
           },
+          {
+            name: 'resolve_verification',
+            description:
+              'Report the result of a knowledge verification run. Only call this when your message asked you to verify a specific page and gave you a run id.',
+            inputSchema: {
+              type: 'object',
+              properties: {
+                run_id: { type: 'string', description: 'The verification run id from your instructions.' },
+                entry_id: { type: 'string', description: 'The knowledge entry id from your instructions.' },
+                outcome: {
+                  type: 'string',
+                  enum: ['confirmed', 'changed', 'retired'],
+                  description:
+                    'confirmed = still accurate; changed = needs the corrected text in content; retired = the feature/rule no longer exists.',
+                },
+                content: { type: 'string', description: 'Full corrected page text. Required when outcome is "changed".' },
+                subject: { type: 'string', description: 'Optional improved page title.' },
+                tags: { type: 'string', description: 'Optional comma-separated tags.' },
+              },
+              required: ['run_id', 'entry_id', 'outcome'],
+            },
+          },
         ],
       },
     });
@@ -224,6 +247,54 @@ rl.on('line', async (line) => {
           id,
           result: {
             content: [{ type: 'text', text: `Error saving knowledge: ${err.message}` }],
+            isError: true,
+          },
+        });
+      }
+      return;
+    }
+
+    if (name === 'resolve_verification') {
+      try {
+        const res = await fetch(VERIFY_URL, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${API_SECRET}`,
+          },
+          body: JSON.stringify({
+            runId: args.run_id,
+            entryId: args.entry_id,
+            outcome: args.outcome,
+            content: args.content,
+            subject: args.subject,
+            tags: args.tags,
+          }),
+        });
+
+        const data = await res.json().catch(() => ({}));
+
+        send({
+          jsonrpc: '2.0',
+          id,
+          result: {
+            content: [
+              {
+                type: 'text',
+                text: res.ok
+                  ? `Verification recorded: ${args.outcome}.`
+                  : `Could not record verification: ${data.error || res.status}`,
+              },
+            ],
+            ...(res.ok ? {} : { isError: true }),
+          },
+        });
+      } catch (err) {
+        send({
+          jsonrpc: '2.0',
+          id,
+          result: {
+            content: [{ type: 'text', text: `Error recording verification: ${err.message}` }],
             isError: true,
           },
         });

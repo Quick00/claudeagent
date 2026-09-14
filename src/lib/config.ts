@@ -17,6 +17,12 @@ export const config = {
   knowledgeMaxSourcesPerSave: parseInt(process.env.KNOWLEDGE_MAX_SOURCES_PER_SAVE || '15', 10),
   knowledgeIgnoreSegments: ['translations', 'vendor', 'node_modules', 'dist', 'build'] as readonly string[],
   knowledgeIgnoreBasenames: ['package-lock.json', 'composer.lock', 'yarn.lock', 'pnpm-lock.yaml'] as readonly string[],
+  verificationTimeoutMs: parseInt(process.env.VERIFICATION_TIMEOUT_MS || '900000', 10),
+  verificationSystemPrompt: `You are verifying ONE knowledge base page against the current codebase. Read the relevant code (start with the files listed as the page's sources, then anything they point to). Then call the resolve_verification tool exactly once:
+- outcome "confirmed" if every claim on the page is still true;
+- outcome "changed" with the full corrected page text in "content" (plain language for non-developer categories, 2-4 sentences) if any claim is no longer true;
+- outcome "retired" if the feature or rule the page describes no longer exists.
+Do not save knowledge with save_knowledge during verification. Do not answer in prose; the tool call is the result.`,
   systemPrompt: `You are an internal support assistant for our event management platform.
 You answer questions about how the product works by reading the actual codebase — but your audience is non-technical support staff.
 

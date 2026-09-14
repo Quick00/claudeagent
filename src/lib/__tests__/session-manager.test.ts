@@ -41,6 +41,10 @@ describe('SessionManager spawn arguments', () => {
     const mcp = JSON.parse(args[args.indexOf('--mcp-config') + 1]);
     expect(mcp.mcpServers.knowledge.env.PROVENANCE_KEY).toBe('msg-1');
     expect(mcp.mcpServers.knowledge.env.REPOSITORY_ID).toBeUndefined();
+    // resolve_verification posts here; without it the MCP server would fall back to localhost:3000.
+    expect(mcp.mcpServers.knowledge.env.KNOWLEDGE_VERIFY_URL).toBe(
+      mcp.mcpServers.knowledge.env.KNOWLEDGE_SEARCH_URL.replace(/\/search$/, '/verify-result'),
+    );
   });
 
   it('does the same on resume', () => {
