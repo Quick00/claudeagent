@@ -92,7 +92,7 @@ describe('AdminUsersPanel', () => {
       );
     });
     expect(await screen.findByText('Approved')).toBeInTheDocument();
-  }, 15000);
+  });
 
   test('rejecting asks for confirmation first and does nothing on cancel', async () => {
     const fetchMock = setupFetch();
@@ -110,7 +110,7 @@ describe('AdminUsersPanel', () => {
       expect.objectContaining({ method: 'PATCH' }),
     );
     expect(screen.getByText('Pending')).toBeInTheDocument();
-  }, 15000);
+  });
 
   test('the role dropdown PATCHes the new role', async () => {
     const fetchMock = setupFetch();
@@ -129,7 +129,7 @@ describe('AdminUsersPanel', () => {
         }),
       );
     });
-  }, 15000);
+  });
 
   test('a mutation invalidates the list so the table reflects the server afterward', async () => {
     const fetchMock = setupFetch();
@@ -154,5 +154,5 @@ describe('AdminUsersPanel', () => {
     // The mutation only invalidated the list key; this row is gone only
     // because the refetch it triggered hit the (now-updated) mock server.
     await waitFor(() => expect(screen.queryByText('Jane Doe')).not.toBeInTheDocument());
-  }, 15000);
+  });
 });
