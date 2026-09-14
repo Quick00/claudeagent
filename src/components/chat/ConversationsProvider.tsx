@@ -28,7 +28,8 @@ export type ConversationsContextValue = {
   /** Refetches and resolves with the rows, so a caller can act on the count. */
   refresh: () => Promise<Conversation[]>;
   remove: (id: string) => Promise<void>;
-  setTitle: (id: string, title: string) => void;
+  /** Resolves true when the server accepted the new title. */
+  rename: (id: string, title: string) => Promise<boolean>;
   /**
    * The conversation the user has just clicked, while the router is still
    * fetching it. Null as soon as the navigation commits. `ChatThread` reads it
@@ -112,20 +113,35 @@ export function ConversationsProvider({ children }: { children: ReactNode }) {
     [removeConversation],
   );
 
-  /**
-   * A local rename, written straight into the cache.
-   *
-   * There is no `PATCH /api/conversations/:id` route to call — titles are
-   * assigned server-side from the first message — so this stays a cache write
-   * rather than becoming a mutation. See the report for the cross-track note.
-   */
-  const setTitle = useCallback(
-    (id: string, title: string) => {
+  const renameMutation = useMutation({
+    mutationFn: ({ id, title }: { id: string; title: string }) =>
+      apiFetch<Conversation>(`/api/conversations/${id}`, jsonBody('PATCH', { title })),
+    onSuccess: (updated) => {
+      // Write the server's own answer into the list so the row settles
+      // immediately, then invalidate the whole area: `conversations.all`
+      // catches the open thread's detail query too, so its header stops
+      // showing the old title.
       queryClient.setQueryData<Conversation[]>(qk.conversations.list(), (prev) =>
-        (prev ?? []).map((c) => (c.id === id ? { ...c, title } : c)),
+        (prev ?? []).map((c) => (c.id === updated.id ? { ...c, title: updated.title } : c)),
       );
+      void queryClient.invalidateQueries({ queryKey: qk.conversations.all });
     },
-    [queryClient],
+    onError: () => toast.error('Could not rename that conversation.'),
+  });
+
+  const { mutateAsync: renameConversation } = renameMutation;
+  const rename = useCallback(
+    async (id: string, title: string) => {
+      try {
+        await renameConversation({ id, title });
+        return true;
+      } catch {
+        // `onError` already raised the toast; the caller only needs to know
+        // whether to keep its editor open.
+        return false;
+      }
+    },
+    [renameConversation],
   );
 
   /**
@@ -162,7 +178,7 @@ export function ConversationsProvider({ children }: { children: ReactNode }) {
       loadFailed,
       refresh,
       remove,
-      setTitle,
+      rename,
       pendingConversationId,
       beginNavigation,
     }),
@@ -172,7 +188,7 @@ export function ConversationsProvider({ children }: { children: ReactNode }) {
       loadFailed,
       refresh,
       remove,
-      setTitle,
+      rename,
       pendingConversationId,
       beginNavigation,
     ],

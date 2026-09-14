@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef } from 'react';
 import { MessagesSquare } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { EmptyState } from '@/components/shared/EmptyState';
+import { Shimmer } from '@/components/shared/Shimmer';
 import { MessageBubble } from './MessageBubble';
 import { useConversations } from './ConversationsProvider';
 import type { Flag, Message } from './useConversation';
@@ -165,8 +166,10 @@ export function ChatMessages({
               <span className="size-2 animate-bounce rounded-full bg-primary [animation-delay:-0.15s]" />
               <span className="size-2 animate-bounce rounded-full bg-primary" />
             </div>
-            <span className="text-sm text-muted-foreground" role="status">
-              {toolStatus || 'Thinking...'}
+            {/* `live={false}`: role="status" is already an aria-live region,
+                so letting Shimmer add its own would announce twice. */}
+            <span className="text-sm" role="status">
+              <Shimmer live={false}>{toolStatus || 'Thinking...'}</Shimmer>
             </span>
           </div>
         )}
