@@ -1,8 +1,8 @@
-name: Build and deploy
+name: Build and publish image
 
 on:
   push:
-    # Verify runs on every branch; build/push/deploy is gated to main below.
+    # Verify runs on every branch; the image build/push is gated to main below.
     branches: ['**']
   workflow_dispatch:
 
@@ -33,9 +33,9 @@ jobs:
         # below only runs on main.
         run: npm run build
 
-  build-and-deploy:
+  build-and-push:
     needs: verify
-    # Docker build, GHCR push, and Dokploy deploy happen only from main —
+    # Docker build and GHCR push happen only from main —
     # including manual workflow_dispatch runs on other branches.
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
@@ -76,18 +76,3 @@ jobs:
             NEXT_PUBLIC_SENTRY_DSN=${{ vars.NEXT_PUBLIC_SENTRY_DSN }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
-      - name: Trigger Dokploy deploy
-        env:
-          DOKPLOY_API_KEY: ${{ secrets.DOKPLOY_API_KEY }}
-          DOKPLOY_APP_ID: ${{ vars.DOKPLOY_APP_ID }}
-        run: |
-          if [ -z "$DOKPLOY_API_KEY" ] || [ -z "$DOKPLOY_APP_ID" ]; then
-            echo "DOKPLOY_API_KEY / DOKPLOY_APP_ID not set; skipping deploy trigger."
-            exit 0
-          fi
-          echo "Triggering Dokploy deploy…"
-          curl -fsSL -X POST 'https://docker.powerofsoftware.com/api/application.deploy' \
-            -A 'Mozilla/5.0' --retry 3 --retry-delay 5 \
-            -H 'accept: application/json' -H 'Content-Type: application/json' \
-            -H "x-api-key: $DOKPLOY_API_KEY" \
-            -d "{\"applicationId\":\"$DOKPLOY_APP_ID\"}"
