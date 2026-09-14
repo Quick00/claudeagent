@@ -1,9 +1,12 @@
 'use client';
 
-import { useEffect, useState, useRef, useCallback, useMemo } from 'react';
+import { useState, useRef, useCallback, useMemo, useEffect } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import ForceGraph2D, { type ForceGraphMethods } from 'react-force-graph-2d';
 import { useTheme } from 'next-themes';
 import { X } from 'lucide-react';
+import { apiFetch } from '@/lib/api';
+import { qk } from '@/lib/query-keys';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -102,26 +105,35 @@ function useElementSize<T extends HTMLElement>() {
 }
 
 export default function KnowledgeGraph() {
-  const [allGraphData, setAllGraphData] = useState<GraphData>({ nodes: [], links: [] });
   const [selectedNode, setSelectedNode] = useState<GraphNode | null>(null);
-  const [entries, setEntries] = useState<KnowledgeEntry[]>([]);
   const [hiddenCategories, setHiddenCategories] = useState<Set<string>>(new Set());
-  const [availableCategories, setAvailableCategories] = useState<string[]>([]);
   const { resolvedTheme: theme } = useTheme();
   const graphRef = useRef<ForceGraphMethods<GraphNode> | undefined>(undefined);
   const { ref: containerRef, size } = useElementSize<HTMLDivElement>();
 
-  useEffect(() => {
-    Promise.all([
-      fetch('/api/knowledge/graph').then((r) => r.json()),
-      fetch('/api/knowledge').then((r) => r.json()),
-    ]).then(([graph, allEntries]) => {
-      setAllGraphData(graph);
-      setEntries(allEntries);
-      const cats = [...new Set(allEntries.map((e: KnowledgeEntry) => e.category))] as string[];
-      setAvailableCategories(cats);
-    });
-  }, []);
+  const graphQuery = useQuery({
+    queryKey: qk.knowledge.graph(),
+    queryFn: ({ signal }) => apiFetch<GraphData>('/api/knowledge/graph', { signal }),
+  });
+  const entriesQuery = useQuery({
+    queryKey: qk.knowledge.entries(),
+    queryFn: ({ signal }) => apiFetch<KnowledgeEntry[]>('/api/knowledge', { signal }),
+  });
+
+  // Memoized so the fallback empty value is referentially stable across
+  // renders while a query has no data yet — otherwise a new `{ nodes: [],
+  // links: [] }` object every render would make the `graphData` useMemo
+  // below (and its dependents) recompute on every render.
+  const allGraphData = useMemo(
+    () => graphQuery.data ?? { nodes: [], links: [] },
+    [graphQuery.data],
+  );
+  const entries = useMemo(() => entriesQuery.data ?? [], [entriesQuery.data]);
+  const isError = graphQuery.isError || entriesQuery.isError;
+  const availableCategories = useMemo(
+    () => [...new Set(entries.map((e) => e.category))],
+    [entries],
+  );
 
   const graphData = useMemo(() => {
     if (hiddenCategories.size === 0) {
@@ -267,7 +279,13 @@ export default function KnowledgeGraph() {
           </div>
         )}
 
-        {graphData.nodes.length > 0 ? (
+        {isError ? (
+          <EmptyState
+            className="h-full"
+            title="Couldn't load the knowledge graph"
+            description="Try refreshing the page."
+          />
+        ) : graphData.nodes.length > 0 ? (
           canMeasure ? (
             <ForceGraph2D
               ref={graphRef}

@@ -3,7 +3,41 @@ import * as ReactDOMServer from 'react-dom/server';
 import * as ReactDOMClient from 'react-dom/client';
 import { beforeEach, describe, expect, jest, test } from '@jest/globals';
 import { screen } from '@testing-library/react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { renderWithProviders } from '@/test/render';
+
+/**
+ * A stateful `/api/auth/claude/*` mock: link/unlink flip an in-memory flag
+ * that subsequent status GETs reflect, so a test can prove the mutation's
+ * `onSuccess` invalidation actually causes the status query to refetch and
+ * pick up the change — not just that a request went out.
+ */
+function makeClaudeStatusFetchMock(initiallyLinked: boolean) {
+  let linked = initiallyLinked;
+  return jest.fn(async (url: string, init?: RequestInit) => {
+    if (url === '/api/auth/claude/status') {
+      return { ok: true, json: async () => ({ linked, email: linked ? 'user@example.com' : null }) };
+    }
+    if (url === '/api/auth/claude/unlink' && init?.method === 'POST') {
+      linked = false;
+      return { ok: true, json: async () => ({}) };
+    }
+    if (url === '/api/auth/claude/link' && init?.method === 'POST') {
+      linked = true;
+      return { ok: true, json: async () => ({}) };
+    }
+    return { ok: true, json: async () => ({}) };
+  });
+}
+
+/** A fresh, retry-off client per hydration pass — UserSettings now reads the
+ * Claude status via `useQuery`, so it needs a provider even in this
+ * server/client hydration reproduction, not just in `renderWithProviders`. */
+function makeHydrationQueryClient() {
+  return new QueryClient({
+    defaultOptions: { queries: { retry: false, gcTime: 0, staleTime: 0 } },
+  });
+}
 
 const mockSetTheme = jest.fn();
 // Mutable so the hydration test can reproduce the real bug: next-themes
@@ -76,7 +110,11 @@ describe('UserSettings', () => {
     // hydration-mismatch error, proving the `mounted` gate keeps the server
     // and first client paint identical regardless of the resolved theme.
     mockTheme = undefined;
-    const html = ReactDOMServer.renderToString(<UserSettings />);
+    const html = ReactDOMServer.renderToString(
+      <QueryClientProvider client={makeHydrationQueryClient()}>
+        <UserSettings />
+      </QueryClientProvider>,
+    );
     expect(html).toContain('aria-label="System"');
 
     const container = document.createElement('div');
@@ -93,7 +131,12 @@ describe('UserSettings', () => {
     let root: ReactDOMClient.Root | undefined;
     try {
       await act(async () => {
-        root = ReactDOMClient.hydrateRoot(container, <UserSettings />);
+        root = ReactDOMClient.hydrateRoot(
+          container,
+          <QueryClientProvider client={makeHydrationQueryClient()}>
+            <UserSettings />
+          </QueryClientProvider>,
+        );
       });
 
       const hydrationErrors = errors.filter((args) =>
@@ -113,5 +156,40 @@ describe('UserSettings', () => {
       }
       container.remove();
     }
+  });
+
+  test('unlinking invalidates the Claude status query, so the card falls back to "Not connected"', async () => {
+    const fetchMock = makeClaudeStatusFetchMock(true);
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    const { user } = renderWithProviders(<UserSettings />);
+
+    expect(await screen.findByText('Connected')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Unlink Claude Account' }));
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/auth/claude/unlink',
+      expect.objectContaining({ method: 'POST' }),
+    );
+    // Proves the mutation's onSuccess invalidated the status query — the
+    // card re-fetches on its own rather than the old hand-set local state.
+    expect(await screen.findByText('Not connected')).toBeInTheDocument();
+  });
+
+  test('linking invalidates the Claude status query, so the card shows "Connected"', async () => {
+    const fetchMock = makeClaudeStatusFetchMock(false);
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    const { user } = renderWithProviders(<UserSettings />);
+
+    await user.click(await screen.findByRole('button', { name: 'Link Claude Account' }));
+    await user.type(
+      await screen.findByPlaceholderText('Paste your Claude token here...'),
+      'sk-test-token',
+    );
+    await user.click(screen.getByRole('button', { name: 'Link Account' }));
+
+    expect(await screen.findByText('Connected')).toBeInTheDocument();
   });
 });

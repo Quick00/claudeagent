@@ -1,8 +1,11 @@
 'use client';
 
 import { useState } from 'react';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { Check, Copy } from 'lucide-react';
+import { apiFetch, jsonBody } from '@/lib/api';
+import { qk } from '@/lib/query-keys';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -33,10 +36,24 @@ interface LinkClaudeModalProps {
 }
 
 export default function LinkClaudeModal({ open, onOpenChange, onLinked }: LinkClaudeModalProps) {
+  const queryClient = useQueryClient();
   const [token, setToken] = useState('');
-  const [saving, setSaving] = useState(false);
   const [os, setOs] = useState<DetectedOs>(() => detectOs());
   const [copied, setCopied] = useState(false);
+
+  const linkMutation = useMutation({
+    mutationFn: (cleanedToken: string) =>
+      apiFetch('/api/auth/claude/link', jsonBody('POST', { token: cleanedToken })),
+    onSuccess: () => {
+      toast.success('Claude account linked');
+      setToken('');
+      queryClient.invalidateQueries({ queryKey: qk.claude.status() });
+      onLinked();
+    },
+    onError: (err) => {
+      toast.error(err instanceof Error ? err.message : 'Something went wrong');
+    },
+  });
 
   const downloadHref = '/install/install-claude-windows.bat';
   const downloadFilename = 'install-claude.bat';
@@ -81,36 +98,17 @@ export default function LinkClaudeModal({ open, onOpenChange, onLinked }: LinkCl
   // pasted token from state rather than leaving a live credential sitting in
   // memory (and ready to repopulate the textarea) until the next link flow.
   const handleOpenChange = (next: boolean) => {
-    if (!next) setToken('');
+    if (!next) {
+      setToken('');
+      linkMutation.reset();
+    }
     onOpenChange(next);
   };
 
-  const handleSubmit = async () => {
+  const handleSubmit = () => {
     const cleaned = token.replace(/\s+/g, '');
     if (!cleaned) return;
-
-    setSaving(true);
-
-    try {
-      const res = await fetch('/api/auth/claude/link', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ token: cleaned }),
-      });
-
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        throw new Error(data.error || 'Failed to save token');
-      }
-
-      toast.success('Claude account linked');
-      setToken('');
-      onLinked();
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Something went wrong');
-    } finally {
-      setSaving(false);
-    }
+    linkMutation.mutate(cleaned);
   };
 
   const installSteps =
@@ -247,8 +245,8 @@ export default function LinkClaudeModal({ open, onOpenChange, onLinked }: LinkCl
           <Button variant="outline" onClick={() => handleOpenChange(false)}>
             Cancel
           </Button>
-          <Button onClick={handleSubmit} disabled={saving || !token.replace(/\s+/g, '')}>
-            {saving ? 'Saving...' : 'Link Account'}
+          <Button onClick={handleSubmit} disabled={linkMutation.isPending || !token.replace(/\s+/g, '')}>
+            {linkMutation.isPending ? 'Saving...' : 'Link Account'}
           </Button>
         </DialogFooter>
       </DialogContent>

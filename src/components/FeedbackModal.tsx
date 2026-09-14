@@ -1,12 +1,14 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { useMutation } from '@tanstack/react-query';
 import { useSession } from 'next-auth/react';
 import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import TiptapLink from '@tiptap/extension-link';
 import Placeholder from '@tiptap/extension-placeholder';
 import { Markdown } from 'tiptap-markdown';
+import { apiFetch, jsonBody } from '@/lib/api';
 import {
   ArrowLeft,
   Bold,
@@ -73,12 +75,18 @@ export default function FeedbackModal({ open: openProp, onOpenChange: onOpenChan
   const [description, setDescription] = useState('');
   const [image, setImage] = useState<UploadedImage | null>(null);
   const [uploading, setUploading] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [linkPopoverOpen, setLinkPopoverOpen] = useState(false);
   const [linkUrl, setLinkUrl] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const feedbackMutation = useMutation({
+    mutationFn: (payload: { type: FeedbackType; title: string; description: string; imageId?: string }) =>
+      apiFetch('/api/feedback', jsonBody('POST', payload)),
+    onSuccess: () => setSubmitted(true),
+    onError: (err) => setError(err instanceof Error ? err.message : 'Failed to submit feedback'),
+  });
 
   const onEditorUpdate = useCallback(({ editor: e }: { editor: ReturnType<typeof useEditor> }) => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -108,7 +116,6 @@ export default function FeedbackModal({ open: openProp, onOpenChange: onOpenChan
     setDescription('');
     setImage(null);
     setUploading(false);
-    setSubmitting(false);
     setSubmitted(false);
     setError(null);
   }, []);
@@ -120,6 +127,7 @@ export default function FeedbackModal({ open: openProp, onOpenChange: onOpenChan
     if (open) {
       reset();
       editor?.commands.clearContent();
+      feedbackMutation.reset();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
@@ -177,35 +185,19 @@ export default function FeedbackModal({ open: openProp, onOpenChange: onOpenChan
     }
   };
 
-  const handleSubmit = async () => {
-    if (!type || !title.trim() || !description.trim() || submitting || uploading) return;
+  const handleSubmit = () => {
+    if (!type || !title.trim() || !description.trim() || feedbackMutation.isPending || uploading) return;
     if (status !== 'authenticated') {
       setError('Please sign in to submit feedback');
       return;
     }
-    setSubmitting(true);
     setError(null);
-    try {
-      const res = await fetch('/api/feedback', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          type,
-          title: title.trim(),
-          description: description.trim(),
-          imageId: image?.id || undefined,
-        }),
-      });
-      if (!res.ok) {
-        setError(await safeResponseError(res, 'Failed to submit feedback'));
-        return;
-      }
-      setSubmitted(true);
-    } catch {
-      setError('Failed to submit feedback');
-    } finally {
-      setSubmitting(false);
-    }
+    feedbackMutation.mutate({
+      type,
+      title: title.trim(),
+      description: description.trim(),
+      imageId: image?.id || undefined,
+    });
   };
 
   const openLink = () => {
@@ -436,9 +428,9 @@ export default function FeedbackModal({ open: openProp, onOpenChange: onOpenChan
                 </Tooltip>
                 <Button
                   onClick={handleSubmit}
-                  disabled={!title.trim() || !description.trim() || submitting || uploading}
+                  disabled={!title.trim() || !description.trim() || feedbackMutation.isPending || uploading}
                 >
-                  {submitting ? 'Submitting...' : 'Create A New Post'}
+                  {feedbackMutation.isPending ? 'Submitting...' : 'Create A New Post'}
                 </Button>
               </div>
             </>

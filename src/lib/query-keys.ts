@@ -45,6 +45,7 @@ export const qk = {
     all: ['knowledge'] as const,
     attention: () => [...qk.knowledge.all, 'attention'] as const,
     graph: () => [...qk.knowledge.all, 'graph'] as const,
+    entries: () => [...qk.knowledge.all, 'entries'] as const,
     dashboard: () => [...qk.knowledge.all, 'dashboard'] as const,
     search: (q: string) => [...qk.knowledge.all, 'search', q] as const,
   },

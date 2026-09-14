@@ -1,9 +1,13 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSession } from 'next-auth/react';
 import { useTheme } from 'next-themes';
+import { toast } from 'sonner';
 import { Circle, CircleCheck, Laptop, Moon, Sun } from 'lucide-react';
+import { apiFetch, jsonBody } from '@/lib/api';
+import { qk } from '@/lib/query-keys';
 import { PageContainer } from '@/components/shared/PageContainer';
 import { PageHeader } from '@/components/shared/PageHeader';
 import { Button } from '@/components/ui/button';
@@ -22,8 +26,7 @@ type ClaudeStatus = { linked: boolean; email: string | null };
 export default function UserSettings() {
   const { data: session } = useSession();
   const { theme, setTheme } = useTheme();
-  const [claudeStatus, setClaudeStatus] = useState<ClaudeStatus | null>(null);
-  const [unlinking, setUnlinking] = useState(false);
+  const queryClient = useQueryClient();
   const [modalOpen, setModalOpen] = useState(false);
   // next-themes can't know the resolved theme on the server (it lives in
   // localStorage), so the server always renders as if theme were unset. Until
@@ -33,36 +36,40 @@ export default function UserSettings() {
   // hydration mismatch.
   const [mounted, setMounted] = useState(false);
 
+  // Deliberate mount-detection idiom for the hydration-safety gate described
+  // above; the "fix" the rule below suggests (deriving this from an external
+  // store) is what would reintroduce the mismatch.
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setMounted(true);
   }, []);
 
-  const fetchStatus = () => {
-    fetch('/api/auth/claude/status')
-      .then((res) => res.json())
-      .then(setClaudeStatus)
-      .catch(console.error);
+  const statusQuery = useQuery({
+    queryKey: qk.claude.status(),
+    queryFn: ({ signal }) => apiFetch<ClaudeStatus>('/api/auth/claude/status', { signal }),
+  });
+  const claudeStatus = statusQuery.data ?? null;
+
+  const unlinkMutation = useMutation({
+    mutationFn: () => apiFetch('/api/auth/claude/unlink', jsonBody('POST')),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: qk.claude.status() });
+    },
+    onError: () => {
+      toast.error('Failed to unlink Claude account');
+    },
+  });
+
+  const handleUnlink = () => {
+    unlinkMutation.mutate();
   };
 
-  useEffect(() => {
-    fetchStatus();
-  }, []);
-
-  const handleUnlink = async () => {
-    setUnlinking(true);
-    try {
-      await fetch('/api/auth/claude/unlink', { method: 'POST' });
-      setClaudeStatus({ linked: false, email: null });
-    } catch (err) {
-      console.error('Failed to unlink:', err);
-    } finally {
-      setUnlinking(false);
-    }
-  };
-
+  // The link mutation itself lives in LinkClaudeModal (it owns the token
+  // form); on success it invalidates the status query directly, so by the
+  // time this fires the card already has fresh data. This just closes the
+  // modal.
   const handleLinked = () => {
     setModalOpen(false);
-    fetchStatus();
   };
 
   return (
@@ -83,9 +90,11 @@ export default function UserSettings() {
           <CardTitle>Claude Account</CardTitle>
         </CardHeader>
         <CardContent>
-          {claudeStatus === null ? (
+          {statusQuery.isPending ? (
             <Skeleton className="h-16 w-full" />
-          ) : claudeStatus.linked ? (
+          ) : statusQuery.isError ? (
+            <p className="text-sm text-destructive">Couldn&rsquo;t load your Claude account status.</p>
+          ) : claudeStatus?.linked ? (
             <div className="space-y-3">
               <div className="flex items-center gap-2">
                 <CircleCheck className="size-4 text-success" />
@@ -94,8 +103,13 @@ export default function UserSettings() {
                   <span className="text-sm text-muted-foreground">({claudeStatus.email})</span>
                 )}
               </div>
-              <Button variant="destructive" size="sm" onClick={handleUnlink} disabled={unlinking}>
-                {unlinking ? 'Unlinking…' : 'Unlink Claude Account'}
+              <Button
+                variant="destructive"
+                size="sm"
+                onClick={handleUnlink}
+                disabled={unlinkMutation.isPending}
+              >
+                {unlinkMutation.isPending ? 'Unlinking…' : 'Unlink Claude Account'}
               </Button>
             </div>
           ) : (

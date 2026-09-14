@@ -2,9 +2,12 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
+import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { Inbox, MessagesSquare, Search, Tags, X } from 'lucide-react';
+import { apiFetch, jsonBody } from '@/lib/api';
 import { formatDateTime } from '@/lib/format-date';
 import { ROUTES } from '@/lib/navigation';
+import { qk } from '@/lib/query-keys';
 import { cn } from '@/lib/utils';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -79,72 +82,78 @@ const CATEGORY_LABELS: Record<string, string> = {
 };
 
 export function KnowledgeDashboard() {
-  const [data, setData] = useState<DashboardData | null>(null);
   const [selectedTag, setSelectedTag] = useState<string | null>(null);
   const [showAllTopics, setShowAllTopics] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const [searchResults, setSearchResults] = useState<SearchEntry[] | null>(null);
-  const [isSearching, setIsSearching] = useState(false);
+  const [debouncedQuery, setDebouncedQuery] = useState('');
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const abortControllerRef = useRef<AbortController | null>(null);
 
-  useEffect(() => {
-    fetch('/api/dashboard')
-      .then((r) => r.json())
-      .then(setData);
-  }, []);
+  const dashboardQuery = useQuery({
+    queryKey: qk.knowledge.dashboard(),
+    queryFn: ({ signal }) => apiFetch<DashboardData>('/api/dashboard', { signal }),
+  });
+  const data = dashboardQuery.data;
 
-  const performSearch = useCallback((query: string) => {
-    if (!query.trim()) {
-      setSearchResults(null);
-      setIsSearching(false);
+  // Query cancels a superseded in-flight request on its own (once the query
+  // key changes), so there is no manual AbortController here — the request's
+  // signal still has to reach `apiFetch`, though, or a stale response could
+  // resolve after a newer one.
+  const searchResultsQuery = useQuery({
+    queryKey: qk.knowledge.search(debouncedQuery),
+    queryFn: ({ signal }) =>
+      apiFetch<{ entries: SearchEntry[] }>(
+        '/api/dashboard/search',
+        { ...jsonBody('POST', { query: debouncedQuery, limit: 20 }), signal },
+      ),
+    enabled: debouncedQuery.length > 0,
+    // Keeps the previous search's results on screen while the next term's
+    // request is in flight, instead of the old behaviour of swapping to a
+    // loading skeleton on every keystroke.
+    placeholderData: keepPreviousData,
+  });
+
+  const handleSearchChange = useCallback((value: string) => {
+    setSearchQuery(value);
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    const trimmed = value.trim();
+    if (!trimmed) {
+      setDebouncedQuery('');
       return;
     }
-    if (abortControllerRef.current) abortControllerRef.current.abort();
-    const controller = new AbortController();
-    abortControllerRef.current = controller;
-
-    setIsSearching(true);
-    fetch('/api/dashboard/search', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ query: query.trim(), limit: 20 }),
-      signal: controller.signal,
-    })
-      .then((r) => r.json())
-      .then((data) => {
-        if (!controller.signal.aborted) setSearchResults(data.entries);
-      })
-      .catch(() => {
-        if (!controller.signal.aborted) setSearchResults(null);
-      })
-      .finally(() => {
-        if (!controller.signal.aborted) setIsSearching(false);
-      });
+    debounceRef.current = setTimeout(() => setDebouncedQuery(trimmed), 500);
   }, []);
 
-  const handleSearchChange = useCallback(
-    (value: string) => {
-      setSearchQuery(value);
-      if (debounceRef.current) clearTimeout(debounceRef.current);
-      if (!value.trim()) {
-        if (abortControllerRef.current) abortControllerRef.current.abort();
-        setSearchResults(null);
-        setIsSearching(false);
-        return;
-      }
-      setIsSearching(true);
-      debounceRef.current = setTimeout(() => performSearch(value), 500);
-    },
-    [performSearch],
-  );
+  useEffect(() => () => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+  }, []);
 
-  const showSkeleton = useDeferredSkeleton(data === null);
+  const isSearchActive = debouncedQuery.length > 0;
+  // `isPending` (no cached data for this query yet) rather than `isFetching`:
+  // once a search has resolved once, switching to a new term keeps the
+  // previous results visible (via placeholderData) instead of blanking to a
+  // skeleton on every keystroke.
+  const isSearching = isSearchActive && searchResultsQuery.isPending;
+  const searchError = isSearchActive && searchResultsQuery.isError;
+  const searchResults = isSearchActive ? (searchResultsQuery.data?.entries ?? null) : null;
 
-  if (!data) {
+  const showSkeleton = useDeferredSkeleton(dashboardQuery.isPending);
+
+  if (dashboardQuery.isPending) {
     // Within the initial grace period this renders nothing at all — see
     // useDeferredSkeleton — so a fast response never flashes the skeleton.
     return showSkeleton ? <KnowledgeDashboardSkeleton /> : null;
+  }
+
+  if (dashboardQuery.isError || !data) {
+    return (
+      <PageContainer>
+        <EmptyState
+          icon={Inbox}
+          title="Couldn't load the dashboard"
+          description="Try refreshing the page."
+        />
+      </PageContainer>
+    );
   }
 
   const filteredEntries = selectedTag
@@ -324,6 +333,12 @@ export function KnowledgeDashboard() {
               <Skeleton className="h-28 w-full rounded-xl" />
               <Skeleton className="h-28 w-full rounded-xl" />
             </div>
+          ) : searchError ? (
+            <EmptyState
+              icon={Inbox}
+              title="Couldn't search knowledge"
+              description="Try again in a moment."
+            />
           ) : (
             <div className="space-y-3">
               {visibleEntries.length > 0 ? (

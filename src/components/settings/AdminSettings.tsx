@@ -1,7 +1,11 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
+import { apiFetch, jsonBody } from '@/lib/api';
+import { qk } from '@/lib/query-keys';
+import { EmptyState } from '@/components/shared/EmptyState';
 import { PageContainer } from '@/components/shared/PageContainer';
 import { PageHeader } from '@/components/shared/PageHeader';
 import { RiseIn } from '@/components/shared/RiseIn';
@@ -24,69 +28,82 @@ type AdminSettingsData = {
  * this never needs to probe whether the current user is an admin.
  */
 export default function AdminSettings() {
-  const [data, setData] = useState<AdminSettingsData | null>(null);
-  const [savingApproval, setSavingApproval] = useState(false);
+  const queryClient = useQueryClient();
   const [ignoreText, setIgnoreText] = useState('');
   const [ignoreDirty, setIgnoreDirty] = useState(false);
-  const [ignoreSaving, setIgnoreSaving] = useState(false);
+  // The ignore-patterns textarea is a local edit buffer, seeded once from the
+  // first successful load — not resynced on every refetch, or an unrelated
+  // invalidation (e.g. toggling approval) would clobber an in-progress edit.
+  const seededIgnoreText = useRef(false);
 
+  const settingsQuery = useQuery({
+    queryKey: qk.settings.admin(),
+    queryFn: ({ signal }) => apiFetch<AdminSettingsData>('/api/admin/settings', { signal }),
+  });
+  const data = settingsQuery.data;
+
+  // Deliberate one-time seed of a local edit buffer from server data (see
+  // comment on `seededIgnoreText` above); it must not re-run on every
+  // refetch, so it can't be expressed as a plain derived value.
   useEffect(() => {
-    fetch('/api/admin/settings')
-      .then((res) => (res.ok ? res.json() : null))
-      .then((json: AdminSettingsData | null) => {
-        if (json) {
-          setData(json);
-          setIgnoreText(json.knowledgeIgnorePatterns ?? '');
-        }
-      })
-      .catch(() => {});
-  }, []);
+    if (data && !seededIgnoreText.current) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setIgnoreText(data.knowledgeIgnorePatterns ?? '');
+      seededIgnoreText.current = true;
+    }
+  }, [data]);
 
-  const toggleRequireApproval = async (next: boolean) => {
-    if (!data) return;
-    setSavingApproval(true);
-    try {
-      const res = await fetch('/api/admin/settings', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ requireUserApproval: next }),
-      });
-      if (res.ok) {
-        setData({ ...data, requireUserApproval: next });
-      } else {
-        toast.error('Failed to update approval setting');
+  const approvalMutation = useMutation({
+    mutationFn: (next: boolean) =>
+      apiFetch('/api/admin/settings', jsonBody('PATCH', { requireUserApproval: next })),
+    onMutate: async (next) => {
+      await queryClient.cancelQueries({ queryKey: qk.settings.admin() });
+      const previous = queryClient.getQueryData<AdminSettingsData>(qk.settings.admin());
+      queryClient.setQueryData<AdminSettingsData | undefined>(qk.settings.admin(), (old) =>
+        old ? { ...old, requireUserApproval: next } : old,
+      );
+      return { previous };
+    },
+    onError: (_err, _next, context) => {
+      if (context?.previous) {
+        queryClient.setQueryData(qk.settings.admin(), context.previous);
       }
-    } catch {
       toast.error('Failed to update approval setting');
-    } finally {
-      setSavingApproval(false);
-    }
+    },
+  });
+
+  const toggleRequireApproval = (next: boolean) => {
+    approvalMutation.mutate(next);
   };
 
-  const saveIgnorePatterns = async () => {
-    setIgnoreSaving(true);
-    try {
-      const res = await fetch('/api/admin/settings', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ knowledgeIgnorePatterns: ignoreText }),
-      });
-      if (res.ok) {
-        toast.success('Saved');
-        setIgnoreDirty(false);
-      } else {
-        toast.error('Failed to save ignore patterns');
-      }
-    } catch {
+  const savePatternsMutation = useMutation({
+    mutationFn: (patterns: string) =>
+      apiFetch('/api/admin/settings', jsonBody('PATCH', { knowledgeIgnorePatterns: patterns })),
+    onSuccess: () => {
+      toast.success('Saved');
+      setIgnoreDirty(false);
+      queryClient.invalidateQueries({ queryKey: qk.settings.admin() });
+    },
+    onError: () => {
       toast.error('Failed to save ignore patterns');
-    } finally {
-      setIgnoreSaving(false);
-    }
+    },
+  });
+
+  const saveIgnorePatterns = () => {
+    savePatternsMutation.mutate(ignoreText);
   };
 
-  const showSkeleton = useDeferredSkeleton(data === null);
+  const showSkeleton = useDeferredSkeleton(settingsQuery.isPending);
 
-  if (data === null) {
+  if (!data) {
+    if (settingsQuery.isError) {
+      return (
+        <PageContainer width="form">
+          <PageHeader title="Admin Settings" description="Account approval and knowledge provenance." />
+          <EmptyState title="Couldn't load settings" description="Try refreshing the page." />
+        </PageContainer>
+      );
+    }
     if (!showSkeleton) return null;
     return (
       <PageContainer width="form">
@@ -118,7 +135,7 @@ export default function AdminSettings() {
                 id="require-approval"
                 checked={data.requireUserApproval}
                 onCheckedChange={toggleRequireApproval}
-                disabled={savingApproval}
+                disabled={approvalMutation.isPending}
                 aria-label="Require approval for new accounts"
               />
             </div>
@@ -146,8 +163,8 @@ export default function AdminSettings() {
               className="font-mono text-xs"
             />
             <div className="mt-2">
-              <Button size="sm" onClick={saveIgnorePatterns} disabled={ignoreSaving || !ignoreDirty}>
-                {ignoreSaving ? 'Saving…' : 'Save'}
+              <Button size="sm" onClick={saveIgnorePatterns} disabled={savePatternsMutation.isPending || !ignoreDirty}>
+                {savePatternsMutation.isPending ? 'Saving…' : 'Save'}
               </Button>
             </div>
           </CardContent>
