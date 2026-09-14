@@ -66,6 +66,48 @@ export async function GET(
   });
 }
 
+/** Longest title we will store; the UI truncates well before this. */
+const MAX_TITLE_LENGTH = 200;
+
+export async function PATCH(
+  request: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const auth = await requireApprovedUser();
+  if (!auth.ok) return auth.response;
+  const user = auth.user;
+
+  const { id } = await params;
+
+  // Owner-scoped deliberately, and unlike GET this does NOT widen for admins:
+  // an admin may read any conversation, but renaming someone else's is not a
+  // moderation action — it would silently rewrite what the owner sees.
+  const conversation = await prisma.conversation.findFirst({
+    where: { id, userId: user.id },
+  });
+
+  if (!conversation) {
+    return new Response('Not found', { status: 404 });
+  }
+
+  const body = await request.json().catch(() => null);
+  const rawTitle = (body as { title?: unknown } | null)?.title;
+
+  if (typeof rawTitle !== 'string' || rawTitle.trim().length === 0) {
+    return NextResponse.json({ error: 'A title is required' }, { status: 400 });
+  }
+
+  const title = rawTitle.trim().slice(0, MAX_TITLE_LENGTH);
+
+  const updated = await prisma.conversation.update({
+    where: { id },
+    data: { title },
+    select: { id: true, title: true, updatedAt: true },
+  });
+
+  return NextResponse.json(updated);
+}
+
 export async function DELETE(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
