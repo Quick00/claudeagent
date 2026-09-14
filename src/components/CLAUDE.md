@@ -28,6 +28,7 @@ All components are React client components (`'use client'`).
 ## Patterns
 
 - State lives in `ChatPage` and is passed down as props.
-- SSE events from `/api/chat` are parsed in `ChatPage.handleSend()`. Event types: `conversation_created`, `text`, `tool_use`, `done`, `error`.
+- SSE events from `/api/chat` are parsed in `ChatPage.handleSend()`. Event types: `conversation_created`, `text`, `text_break`, `tool_use`, `done`, `error`.
+- `text_break` closes the current assistant bubble and opens the next one. The server emits it before each `tool_use` that interrupts text, and persists the same split: an answer that ran a tool mid-way becomes **several** assistant `Message` rows, one per bubble, with `createdAt` a millisecond apart so the reload order is deterministic.
 - Session/auth via `useSession()` from `next-auth/react`.
 - Sidebar navigation shows admin links conditionally based on `session.user.role === 'admin'`.

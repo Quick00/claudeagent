@@ -35,6 +35,32 @@ function sseResponse(events: unknown[]) {
   };
 }
 
+/**
+ * The same bytes as `sseResponse`, but sliced into fixed-size chunks that cut
+ * frames in half — what a real network does, and what the reader's cross-chunk
+ * buffer exists to survive.
+ */
+function sseResponseChunked(events: unknown[], chunkSize: number) {
+  const encoder = new TextEncoder();
+  const all = encoder.encode(events.map((e) => `data: ${JSON.stringify(e)}\n\n`).join(''));
+  const chunks: Uint8Array[] = [];
+  for (let i = 0; i < all.length; i += chunkSize) chunks.push(all.slice(i, i + chunkSize));
+  let i = 0;
+  return {
+    ok: true,
+    status: 200,
+    body: {
+      getReader: () => ({
+        read: async () =>
+          i < chunks.length
+            ? { done: false, value: chunks[i++] }
+            : { done: true, value: undefined },
+        cancel: async () => {},
+      }),
+    },
+  };
+}
+
 const CONVERSATION = {
   id: 'conv-1',
   isOwner: true,
@@ -301,5 +327,164 @@ describe('ChatThread', () => {
     renderThread('conv-1');
 
     expect(await screen.findByText(/admin view/i)).toBeInTheDocument();
+  });
+
+  // ─────────────────── One bubble per text segment ───────────────────
+  // A tool call mid-answer ends the current bubble. Without this the two
+  // stretches of text run together — "…verify the existing knowledge.Good,
+  // this confirms…" — which is what `text_break` exists to prevent.
+
+  /** The assistant bubbles on screen, in DOM order. Only the assistant branch
+   *  of `MessageBubble` renders `MarkdownContent`, so this counts exactly. */
+  const assistantBubbles = () =>
+    screen.getAllByTestId('markdown').map((el) => el.textContent);
+
+  test('a tool call mid-answer starts a new bubble instead of appending', async () => {
+    routeFetch({
+      '/api/chat': () =>
+        sseResponse([
+          { type: 'text', content: 'Found it. Let me read the relevant files.' },
+          { type: 'text_break' },
+          { type: 'tool_use', tool: 'Read' },
+          { type: 'text', content: 'Good, this confirms the label text.' },
+        ]),
+    });
+    const { user } = renderThread('conv-1');
+    await screen.findByText('It uses OAuth.');
+
+    await user.type(screen.getByRole('textbox', { name: /message/i }), 'How?');
+    await user.click(screen.getByRole('button', { name: /^send$/i }));
+
+    await screen.findByText('Good, this confirms the label text.');
+    expect(assistantBubbles()).toEqual([
+      'It uses OAuth.',
+      'Found it. Let me read the relevant files.',
+      'Good, this confirms the label text.',
+    ]);
+    // The regression itself: never the two halves in one bubble.
+    expect(
+      screen.queryByText(/relevant files\.Good, this confirms/),
+    ).not.toBeInTheDocument();
+  });
+
+  test('a repeated text_break does not open an empty bubble', async () => {
+    routeFetch({
+      '/api/chat': () =>
+        sseResponse([
+          { type: 'text', content: 'First.' },
+          { type: 'text_break' },
+          { type: 'text_break' },
+          { type: 'text', content: 'Second.' },
+        ]),
+    });
+    const { user } = renderThread('conv-1');
+    await screen.findByText('It uses OAuth.');
+
+    await user.type(screen.getByRole('textbox', { name: /message/i }), 'How?');
+    await user.click(screen.getByRole('button', { name: /^send$/i }));
+
+    await screen.findByText('Second.');
+    expect(assistantBubbles()).toEqual(['It uses OAuth.', 'First.', 'Second.']);
+  });
+
+  test('a text_break before any text does not open a leading empty bubble', async () => {
+    routeFetch({
+      '/api/chat': () =>
+        sseResponse([
+          { type: 'text_break' },
+          { type: 'tool_use', tool: 'Grep' },
+          { type: 'text', content: 'Only bubble.' },
+        ]),
+    });
+    const { user } = renderThread('conv-1');
+    await screen.findByText('It uses OAuth.');
+
+    await user.type(screen.getByRole('textbox', { name: /message/i }), 'How?');
+    await user.click(screen.getByRole('button', { name: /^send$/i }));
+
+    await screen.findByText('Only bubble.');
+    expect(assistantBubbles()).toEqual(['It uses OAuth.', 'Only bubble.']);
+  });
+
+  // The label is transient by design: it marks work in progress under the
+  // finished bubble, and leaves no trace in the thread once text resumes.
+  test('the tool label sits under the finished bubble and clears on the next delta', async () => {
+    routeFetch({
+      '/api/chat': () =>
+        sseResponse([
+          { type: 'text', content: 'Looking into it.' },
+          { type: 'text_break' },
+          { type: 'tool_use', tool: 'Read' },
+        ]),
+    });
+    const { user } = renderThread('conv-1');
+    await screen.findByText('It uses OAuth.');
+
+    await user.type(screen.getByRole('textbox', { name: /message/i }), 'How?');
+    await user.click(screen.getByRole('button', { name: /^send$/i }));
+
+    expect(await screen.findByText('Reading files...')).toBeInTheDocument();
+    expect(screen.getByText('Looking into it.')).toBeInTheDocument();
+  });
+
+  // Live and reloaded must agree: the server writes one row per segment, and
+  // the post-`done` refetch must replace N bubbles with the same N, not merge.
+  test('the split survives the refetch that follows done', async () => {
+    routeFetch({
+      '/api/chat': () =>
+        sseResponse([
+          { type: 'text', content: 'Found it.' },
+          { type: 'text_break' },
+          { type: 'tool_use', tool: 'Read' },
+          { type: 'text', content: 'Confirmed.' },
+          { type: 'done', conversationId: 'conv-1' },
+        ]),
+      // What the server holds afterwards: two assistant rows, a millisecond
+      // apart, exactly as `onClose` writes them.
+      '/api/conversations/conv-1': () =>
+        jsonOk({
+          ...CONVERSATION,
+          messages: [
+            { id: 'm1', role: 'user', content: 'How?', createdAt: '2026-01-01T10:00:00.000Z' },
+            { id: 'm2', role: 'assistant', content: 'Found it.', createdAt: '2026-01-01T10:00:05.000Z' },
+            { id: 'm3', role: 'assistant', content: 'Confirmed.', createdAt: '2026-01-01T10:00:05.001Z' },
+          ],
+        }),
+    });
+    const { user } = renderThread('conv-1');
+    await screen.findByText('How?');
+
+    await user.type(screen.getByRole('textbox', { name: /message/i }), 'How?');
+    await user.click(screen.getByRole('button', { name: /^send$/i }));
+
+    await screen.findByText('Confirmed.');
+    await waitFor(() => expect(assistantBubbles()).toEqual(['Found it.', 'Confirmed.']));
+  });
+
+  // Regression: the reader decodes without `{ stream: true }` and without a
+  // buffer, so a frame cut in half by a chunk boundary fails to parse and is
+  // dropped. Losing a `text_break` silently merges two bubbles that the reload
+  // then shows apart — the exact disagreement this feature removes.
+  test('reassembles frames split across chunk boundaries', async () => {
+    routeFetch({
+      '/api/chat': () =>
+        sseResponseChunked(
+          [
+            { type: 'text', content: 'Found it.' },
+            { type: 'text_break' },
+            { type: 'tool_use', tool: 'Read' },
+            { type: 'text', content: 'Confirmed.' },
+          ],
+          7,
+        ),
+    });
+    const { user } = renderThread('conv-1');
+    await screen.findByText('It uses OAuth.');
+
+    await user.type(screen.getByRole('textbox', { name: /message/i }), 'How?');
+    await user.click(screen.getByRole('button', { name: /^send$/i }));
+
+    await screen.findByText('Confirmed.');
+    expect(assistantBubbles()).toEqual(['It uses OAuth.', 'Found it.', 'Confirmed.']);
   });
 });

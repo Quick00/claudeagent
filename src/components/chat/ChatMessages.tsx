@@ -12,7 +12,7 @@ import type { Flag, Message } from './useConversation';
 
 type ChatMessagesProps = {
   messages: Message[];
-  streamingContent: string;
+  streamingSegments: string[];
   toolStatus: string | null;
   isLoading: boolean;
   onSendSuggestion: (message: string) => void;
@@ -51,7 +51,7 @@ function buildTimeline(messages: Message[], flags: Flag[]): TimelineItem[] {
 
 export function ChatMessages({
   messages,
-  streamingContent,
+  streamingSegments,
   toolStatus,
   isLoading,
   onSendSuggestion,
@@ -61,9 +61,11 @@ export function ChatMessages({
   const bottomRef = useRef<HTMLDivElement>(null);
   const { conversations } = useConversations();
 
+  // `streamingSegments` is a new array on every delta, so this fires as the
+  // live answer grows — it is the reference that changes, not the contents.
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages, streamingContent, toolStatus, isLoading]);
+  }, [messages, streamingSegments, toolStatus, isLoading]);
 
   // Recent conversation titles make better starter chips than the canned list.
   const recentQuestions = useMemo(
@@ -77,7 +79,7 @@ export function ChatMessages({
 
   const timeline = useMemo(() => buildTimeline(messages, flags), [messages, flags]);
 
-  if (messages.length === 0 && !streamingContent && !toolStatus && !isLoading) {
+  if (messages.length === 0 && streamingSegments.length === 0 && !toolStatus && !isLoading) {
     const rest = [...new Set(recentQuestions.length > 0 ? recentQuestions : DEFAULT_SUGGESTIONS)]
       .filter((q) => !PINNED_SUGGESTIONS.includes(q))
       .slice(0, Math.max(0, 4 - PINNED_SUGGESTIONS.length));
@@ -120,7 +122,7 @@ export function ChatMessages({
     );
   }
 
-  const showThinking = isLoading && !streamingContent && !toolStatus;
+  const showThinking = isLoading && streamingSegments.length === 0 && !toolStatus;
 
   return (
     <div className="min-h-0 flex-1 overflow-y-auto p-6">
@@ -158,11 +160,14 @@ export function ChatMessages({
           );
         })}
 
-        {streamingContent && (
-          <div className="animate-message-in">
-            <MessageBubble role="assistant" content={streamingContent} />
+        {streamingSegments.map((content, i) => (
+          // An index key is right here and only here: this list is append-only
+          // while an answer streams, so a segment never moves or disappears.
+          // Stable keys also mean `animate-message-in` runs once per bubble.
+          <div key={`live-${i}`} className="animate-message-in">
+            <MessageBubble role="assistant" content={content} />
           </div>
-        )}
+        ))}
 
         {(showThinking || toolStatus) && (
           <div className="flex items-center gap-3 px-4 py-3">
