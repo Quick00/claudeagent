@@ -5,6 +5,7 @@ import { Paperclip, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupTextarea } from '@/components/ui/input-group';
+import { StarBorder } from '@/components/shared/StarBorder';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import type { Attachment } from './useConversation';
 
@@ -142,7 +143,13 @@ export function ChatComposer({ onSend, disabled }: ChatComposerProps) {
           </div>
         )}
         <div onDrop={handleDrop} onDragOver={(e) => e.preventDefault()}>
-          <InputGroup className="rounded-xl">
+          {/*
+            * The star border clips its children, so InputGroup's own focus
+            * ring would be cut off — it is suppressed there and raised to the
+            * wrapper, which sits outside the clip.
+            */}
+          <StarBorder className="focus-within:ring-3 focus-within:ring-ring/50">
+            <InputGroup className="rounded-xl border-transparent bg-background focus-within:border-transparent has-[[data-slot=input-group-control]:focus-visible]:border-transparent has-[[data-slot=input-group-control]:focus-visible]:ring-0">
             <InputGroupAddon align="inline-start">
               <Tooltip>
                 <TooltipTrigger asChild>
@@ -196,7 +203,8 @@ export function ChatComposer({ onSend, disabled }: ChatComposerProps) {
                 {uploading ? 'Uploading...' : 'Send'}
               </InputGroupButton>
             </InputGroupAddon>
-          </InputGroup>
+            </InputGroup>
+          </StarBorder>
         </div>
       </div>
     </div>
