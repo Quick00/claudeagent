@@ -6,6 +6,7 @@ import { AdminTableSkeleton } from '@/components/admin/AdminTableSkeleton';
 import { EmptyState } from '@/components/shared/EmptyState';
 import { PageContainer } from '@/components/shared/PageContainer';
 import { PageHeader } from '@/components/shared/PageHeader';
+import { RiseIn } from '@/components/shared/RiseIn';
 import { StatusBadge } from '@/components/shared/StatusBadge';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -220,12 +221,15 @@ export default function AdminKnowledgeAttention() {
 
   return (
     <PageContainer>
-      <PageHeader
-        title="Knowledge"
-        description="Stale, unverified, and pinned knowledge entries."
-        actions={<Button onClick={() => setCreating(true)}>New pinned rule</Button>}
-      />
+      <RiseIn delay={0}>
+        <PageHeader
+          title="Knowledge"
+          description="Stale, unverified, and pinned knowledge entries."
+          actions={<Button onClick={() => setCreating(true)}>New pinned rule</Button>}
+        />
+      </RiseIn>
 
+      <RiseIn delay={0.06}>
       <Tabs value={tab} onValueChange={(v) => setTab(v as Tab)}>
         <TabsList>
           {(['stale', 'unverified', 'pinned', 'reviews', 'syncs'] as Tab[]).map((t) => (
@@ -309,6 +313,7 @@ export default function AdminKnowledgeAttention() {
           )}
         </TabsContent>
       </Tabs>
+      </RiseIn>
 
       <Dialog
         open={editing !== null || creating}

@@ -7,6 +7,7 @@ import { X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
+import { ScrollArea } from '@/components/ui/scroll-area';
 import { MarkdownContent } from '@/components/shared/MarkdownContent';
 import { EmptyState } from '@/components/shared/EmptyState';
 import { formatDateTime } from '@/lib/format-date';
@@ -58,6 +59,27 @@ const CATEGORY_LABELS: Record<string, string> = {
   process: 'Processes',
   developer: 'Developer',
 };
+
+/** Pluralizes a count + noun pair, e.g. `pluralize(1, 'page')` → "1 page". */
+function pluralize(count: number, noun: string) {
+  return `${count} ${noun}${count === 1 ? '' : 's'}`;
+}
+
+/**
+ * A category label rendered as a Badge tinted with that category's
+ * data-driven colour, instead of raw uppercase coloured text.
+ */
+function CategoryBadge({ category, className }: { category: string; className?: string }) {
+  const color = CATEGORY_COLORS[category] || '#6b7280';
+  return (
+    <Badge
+      className={className}
+      style={{ backgroundColor: `${color}1a`, color }}
+    >
+      {CATEGORY_LABELS[category] || category.replace('_', ' ')}
+    </Badge>
+  );
+}
 
 /** Measures `ref`'s content box with a ResizeObserver, guarding a zero-size first paint. */
 function useElementSize<T extends HTMLElement>() {
@@ -217,7 +239,7 @@ export default function KnowledgeGraph() {
     <div className="relative h-full min-h-0">
       <div ref={containerRef} className="relative h-full min-h-0 bg-background">
         <div className="absolute left-4 top-4 z-10 flex items-center gap-2 rounded-lg bg-card px-3 py-2 text-sm text-muted-foreground shadow-xs ring-1 ring-border">
-          {entryCount} pages, {topicCount} topics
+          {pluralize(entryCount, 'page')}, {pluralize(topicCount, 'topic')}
         </div>
 
         {availableCategories.length > 0 && (
@@ -279,67 +301,73 @@ export default function KnowledgeGraph() {
       </div>
 
       {selectedNode && (
-        <div className="absolute right-0 top-0 z-20 h-full w-96 overflow-y-auto border-l border-border bg-card p-6 shadow-lg">
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            onClick={() => setSelectedNode(null)}
-            className="mb-4 -ml-2 text-muted-foreground"
-          >
-            <X /> Close
-          </Button>
+        <div className="absolute right-0 top-0 z-20 flex h-full w-96 flex-col border-l border-border bg-card shadow-lg">
+          <div className="flex shrink-0 items-center justify-between gap-2 border-b border-border px-4 py-3">
+            {selectedNode.type === 'topic' ? (
+              <Badge variant="outline">Topic</Badge>
+            ) : selectedEntry ? (
+              <CategoryBadge category={selectedEntry.category} />
+            ) : (
+              <span />
+            )}
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              onClick={() => setSelectedNode(null)}
+              aria-label="Close panel"
+            >
+              <X />
+            </Button>
+          </div>
 
-          {selectedNode.type === 'topic' ? (
-            <>
-              <div className="mb-1 text-xs font-medium uppercase text-primary">Topic</div>
-              <h2 className="mb-4 text-xl font-bold text-foreground">{selectedNode.label}</h2>
-              <div className="text-sm text-muted-foreground">
-                {connectedEntries.length} related entries
-              </div>
-              <div className="mt-4 space-y-3">
-                {connectedEntries.map((entry) => (
-                  <div key={entry.id} className="rounded-lg border border-border p-3">
-                    <div
-                      className="mb-1 text-xs font-medium uppercase"
-                      style={{ color: CATEGORY_COLORS[entry.category] || '#6b7280' }}
-                    >
-                      {entry.category.replace('_', ' ')}
-                    </div>
-                    {entry.subject && (
-                      <div className="mb-1 text-sm font-semibold text-foreground">{entry.subject}</div>
-                    )}
-                    <MarkdownContent content={entry.content} density="compact" />
+          <ScrollArea className="min-h-0 flex-1">
+            <div className="space-y-4 p-4">
+              {selectedNode.type === 'topic' ? (
+                <>
+                  <div>
+                    <h2 className="text-xl font-bold text-foreground">{selectedNode.label}</h2>
+                    <p className="mt-1 text-sm text-muted-foreground">
+                      {connectedEntries.length} related {connectedEntries.length === 1 ? 'entry' : 'entries'}
+                    </p>
                   </div>
-                ))}
-              </div>
-            </>
-          ) : selectedEntry ? (
-            <>
-              <div
-                className="mb-1 text-xs font-medium uppercase"
-                style={{ color: CATEGORY_COLORS[selectedEntry.category] || '#6b7280' }}
-              >
-                {selectedEntry.category.replace('_', ' ')}
-              </div>
-              {selectedEntry.subject && (
-                <h2 className="mb-2 text-lg font-bold text-foreground">{selectedEntry.subject}</h2>
-              )}
-              <MarkdownContent content={selectedEntry.content} density="compact" className="mb-4" />
-              {selectedEntry.tags && (
-                <div className="mb-4 flex flex-wrap gap-1.5">
-                  {selectedEntry.tags.split(',').map((tag: string) => (
-                    <Badge key={tag} variant="secondary">
-                      {tag.trim()}
-                    </Badge>
-                  ))}
-                </div>
-              )}
-              <div className="text-xs text-muted-foreground">
-                Updated {formatDateTime(selectedEntry.updatedAt)}
-              </div>
-            </>
-          ) : null}
+                  <div className="space-y-3">
+                    {connectedEntries.map((entry) => (
+                      <div key={entry.id} className="rounded-lg border border-border p-3">
+                        <CategoryBadge category={entry.category} className="mb-2" />
+                        {entry.subject && (
+                          <div className="mb-1 text-sm font-semibold text-foreground">{entry.subject}</div>
+                        )}
+                        <MarkdownContent content={entry.content} density="compact" />
+                      </div>
+                    ))}
+                  </div>
+                </>
+              ) : selectedEntry ? (
+                <>
+                  {selectedEntry.subject && (
+                    <h2 className="text-lg font-bold text-foreground">{selectedEntry.subject}</h2>
+                  )}
+                  <MarkdownContent content={selectedEntry.content} density="compact" />
+                  {selectedEntry.tags && (
+                    <div className="flex flex-wrap gap-1.5">
+                      {selectedEntry.tags.split(',').map((tag: string) => (
+                        <Badge key={tag} variant="secondary">
+                          {tag.trim()}
+                        </Badge>
+                      ))}
+                    </div>
+                  )}
+                </>
+              ) : null}
+            </div>
+          </ScrollArea>
+
+          {selectedNode.type === 'entry' && selectedEntry && (
+            <div className="shrink-0 border-t border-border px-4 py-3 text-xs text-muted-foreground">
+              Updated {formatDateTime(selectedEntry.updatedAt)}
+            </div>
+          )}
         </div>
       )}
     </div>

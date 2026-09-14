@@ -8,6 +8,7 @@ import { toast } from 'sonner';
 import { EmptyState } from '@/components/shared/EmptyState';
 import { PageContainer } from '@/components/shared/PageContainer';
 import { PageHeader } from '@/components/shared/PageHeader';
+import { RiseIn } from '@/components/shared/RiseIn';
 import { StatusBadge } from '@/components/shared/StatusBadge';
 import { Button } from '@/components/ui/button';
 import { Collapsible, CollapsibleContent } from '@/components/ui/collapsible';
@@ -89,8 +90,11 @@ export default function AdminFlagsPanel() {
 
   return (
     <PageContainer>
-      <PageHeader title="Flags" description="Conversations users have flagged for review." />
+      <RiseIn delay={0}>
+        <PageHeader title="Flags" description="Conversations users have flagged for review." />
+      </RiseIn>
 
+      <RiseIn delay={0.06}>
       <div className="flex justify-end">
         <ToggleGroup type="single" variant="outline" value={filter} onValueChange={(v) => v && setFilter(v as Filter)}>
           <ToggleGroupItem value="PENDING">
@@ -104,7 +108,9 @@ export default function AdminFlagsPanel() {
           </ToggleGroupItem>
         </ToggleGroup>
       </div>
+      </RiseIn>
 
+      <RiseIn delay={0.12}>
       {loading ? (
         <div className="space-y-4">
           {Array.from({ length: 3 }).map((_, i) => (
@@ -195,6 +201,7 @@ export default function AdminFlagsPanel() {
           })}
         </div>
       )}
+      </RiseIn>
     </PageContainer>
   );
 }

@@ -7,6 +7,7 @@ import { AdminTableSkeleton } from '@/components/admin/AdminTableSkeleton';
 import { EmptyState } from '@/components/shared/EmptyState';
 import { PageContainer } from '@/components/shared/PageContainer';
 import { PageHeader } from '@/components/shared/PageHeader';
+import { RiseIn } from '@/components/shared/RiseIn';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -185,8 +186,11 @@ export default function AdminRepos() {
 
   return (
     <PageContainer className="space-y-8">
-      <PageHeader title="Repositories" description="Repositories Claude can read from when answering questions." />
+      <RiseIn delay={0}>
+        <PageHeader title="Repositories" description="Repositories Claude can read from when answering questions." />
+      </RiseIn>
 
+      <RiseIn delay={0.06}>
       <div>
         {loadingRepos ? (
           <AdminTableSkeleton columns={6} container={false} />
@@ -297,8 +301,9 @@ export default function AdminRepos() {
           </Table>
         )}
       </div>
+      </RiseIn>
 
-      <div className="rounded-lg border border-border bg-card p-4">
+      <RiseIn delay={0.12} className="rounded-lg border border-border bg-card p-4">
         <h2 className="mb-3 text-lg font-semibold">
           Add from GitLab
           {!loadingProjects && availableProjects.length > 0 && (
@@ -342,7 +347,7 @@ export default function AdminRepos() {
             ))}
           </div>
         )}
-      </div>
+      </RiseIn>
 
       <Dialog open={modalProject !== null} onOpenChange={(open) => !open && setModalProject(null)}>
         <DialogContent>

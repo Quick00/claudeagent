@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { PageContainer } from '@/components/shared/PageContainer';
 import { PageHeader } from '@/components/shared/PageHeader';
+import { RiseIn } from '@/components/shared/RiseIn';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
@@ -94,54 +95,60 @@ export default function AdminSettings() {
 
   return (
     <PageContainer width="form">
-      <PageHeader title="Admin Settings" description="Account approval and knowledge provenance." />
+      <RiseIn delay={0}>
+        <PageHeader title="Admin Settings" description="Account approval and knowledge provenance." />
+      </RiseIn>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Account approval</CardTitle>
-          <CardDescription>New sign-ups wait for an admin before they can use the app.</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="flex items-center justify-between gap-3">
-            <Label htmlFor="require-approval" className="text-sm font-normal">
-              Require approval for new accounts
-            </Label>
-            <Switch
-              id="require-approval"
-              checked={data.requireUserApproval}
-              onCheckedChange={toggleRequireApproval}
-              disabled={savingApproval}
-              aria-label="Require approval for new accounts"
+      <RiseIn delay={0.06}>
+        <Card>
+          <CardHeader>
+            <CardTitle>Account approval</CardTitle>
+            <CardDescription>New sign-ups wait for an admin before they can use the app.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="flex items-center justify-between gap-3">
+              <Label htmlFor="require-approval" className="text-sm font-normal">
+                Require approval for new accounts
+              </Label>
+              <Switch
+                id="require-approval"
+                checked={data.requireUserApproval}
+                onCheckedChange={toggleRequireApproval}
+                disabled={savingApproval}
+                aria-label="Require approval for new accounts"
+              />
+            </div>
+          </CardContent>
+        </Card>
+      </RiseIn>
+
+      <RiseIn delay={0.12}>
+        <Card>
+          <CardHeader>
+            <CardTitle>Knowledge provenance</CardTitle>
+            <CardDescription>
+              Files ignored when attributing a knowledge entry to its source. One per line — end a
+              line with / for a directory name.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Textarea
+              value={ignoreText}
+              onChange={(e) => {
+                setIgnoreText(e.target.value);
+                setIgnoreDirty(true);
+              }}
+              rows={5}
+              className="font-mono text-xs"
             />
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Knowledge provenance</CardTitle>
-          <CardDescription>
-            Files ignored when attributing a knowledge entry to its source. One per line — end a
-            line with / for a directory name.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <Textarea
-            value={ignoreText}
-            onChange={(e) => {
-              setIgnoreText(e.target.value);
-              setIgnoreDirty(true);
-            }}
-            rows={5}
-            className="font-mono text-xs"
-          />
-          <div className="mt-2">
-            <Button size="sm" onClick={saveIgnorePatterns} disabled={ignoreSaving || !ignoreDirty}>
-              {ignoreSaving ? 'Saving…' : 'Save'}
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
+            <div className="mt-2">
+              <Button size="sm" onClick={saveIgnorePatterns} disabled={ignoreSaving || !ignoreDirty}>
+                {ignoreSaving ? 'Saving…' : 'Save'}
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      </RiseIn>
     </PageContainer>
   );
 }

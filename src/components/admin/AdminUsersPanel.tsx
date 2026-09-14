@@ -7,6 +7,7 @@ import { toast } from 'sonner';
 import { EmptyState } from '@/components/shared/EmptyState';
 import { PageContainer } from '@/components/shared/PageContainer';
 import { PageHeader } from '@/components/shared/PageHeader';
+import { RiseIn } from '@/components/shared/RiseIn';
 import { StatusBadge } from '@/components/shared/StatusBadge';
 import { AdminTableSkeleton } from '@/components/admin/AdminTableSkeleton';
 import AdminUserConversationsPanel from '@/components/admin/AdminUserConversationsPanel';
@@ -108,8 +109,11 @@ export default function AdminUsersPanel() {
 
   return (
     <PageContainer>
-      <PageHeader title="Users" description="Manage roles, approvals, and access." />
+      <RiseIn delay={0}>
+        <PageHeader title="Users" description="Manage roles, approvals, and access." />
+      </RiseIn>
 
+      <RiseIn delay={0.06}>
       {error ? (
         <p className="text-sm text-destructive">{error}</p>
       ) : users.length === 0 ? (
@@ -198,6 +202,7 @@ export default function AdminUsersPanel() {
           </TableBody>
         </Table>
       )}
+      </RiseIn>
 
       <Dialog open={viewingConvos !== null} onOpenChange={(open) => !open && setViewingConvos(null)}>
         <DialogContent className="sm:max-w-2xl">

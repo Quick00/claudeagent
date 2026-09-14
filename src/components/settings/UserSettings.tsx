@@ -25,6 +25,17 @@ export default function UserSettings() {
   const [claudeStatus, setClaudeStatus] = useState<ClaudeStatus | null>(null);
   const [unlinking, setUnlinking] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
+  // next-themes can't know the resolved theme on the server (it lives in
+  // localStorage), so the server always renders as if theme were unset. Until
+  // this effect fires on the client, don't assert a selection — otherwise the
+  // server's guess and the client's real value briefly disagree and React
+  // (and assistive tech reading aria-checked from the server HTML) sees a
+  // hydration mismatch.
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   const fetchStatus = () => {
     fetch('/api/auth/claude/status')
@@ -113,7 +124,7 @@ export default function UserSettings() {
           <ToggleGroup
             type="single"
             variant="outline"
-            value={theme ?? 'system'}
+            value={mounted ? (theme ?? 'system') : ''}
             onValueChange={(value) => {
               if (value) setTheme(value);
             }}

@@ -7,6 +7,7 @@ import { EmptyState } from '@/components/shared/EmptyState';
 import { MarkdownContent } from '@/components/shared/MarkdownContent';
 import { PageContainer } from '@/components/shared/PageContainer';
 import { PageHeader } from '@/components/shared/PageHeader';
+import { RiseIn } from '@/components/shared/RiseIn';
 import { StatusBadge } from '@/components/shared/StatusBadge';
 import { Button } from '@/components/ui/button';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
@@ -68,8 +69,11 @@ export default function AdminFeedbackPanel() {
 
   return (
     <PageContainer>
-      <PageHeader title="Feedback" description="Feature requests and bug reports from users." />
+      <RiseIn delay={0}>
+        <PageHeader title="Feedback" description="Feature requests and bug reports from users." />
+      </RiseIn>
 
+      <RiseIn delay={0.06}>
       <div className="flex justify-end">
         <ToggleGroup type="single" variant="outline" value={filter} onValueChange={(v) => v && setFilter(v as Filter)}>
           <ToggleGroupItem value="TODO">
@@ -83,7 +87,9 @@ export default function AdminFeedbackPanel() {
           </ToggleGroupItem>
         </ToggleGroup>
       </div>
+      </RiseIn>
 
+      <RiseIn delay={0.12}>
       {loading ? (
         <div className="space-y-4">
           {Array.from({ length: 3 }).map((_, i) => (
@@ -150,6 +156,7 @@ export default function AdminFeedbackPanel() {
           })}
         </div>
       )}
+      </RiseIn>
     </PageContainer>
   );
 }
