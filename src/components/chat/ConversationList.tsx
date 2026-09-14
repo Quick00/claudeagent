@@ -12,12 +12,20 @@ import {
   SidebarMenuAction,
   SidebarMenuButton,
   SidebarMenuItem,
-  SidebarMenuSkeleton,
 } from '@/components/ui/sidebar';
+import { Skeleton } from '@/components/ui/skeleton';
 import { EmptyState } from '@/components/shared/EmptyState';
 import { useConfirm } from '@/hooks/use-confirm';
 import { ROUTES, isActiveHref } from '@/lib/navigation';
 import { useConversations } from './ConversationsProvider';
+
+/**
+ * Placeholder row widths. Fixed rather than random: `SidebarMenuSkeleton`
+ * picks its own width with `Math.random()`, which makes the server HTML and
+ * the first client render disagree and logs a hydration error on every cold
+ * load. These keep the ragged look without the mismatch.
+ */
+const SKELETON_WIDTHS = ['72%', '54%', '84%', '61%', '77%'];
 
 /**
  * The conversation list as it appears inside the shell sidebar.
@@ -27,11 +35,16 @@ import { useConversations } from './ConversationsProvider';
  *
  * `notificationConvIds` comes from the shell's single notification poller —
  * this component never polls.
+ *
+ * `onNavigate` fires when a conversation is picked, so the mobile shell can
+ * close its offcanvas sheet.
  */
 export function ConversationList({
   notificationConvIds = [],
+  onNavigate,
 }: {
   notificationConvIds?: string[];
+  onNavigate?: () => void;
 }) {
   const { conversations, loading, remove } = useConversations();
   const confirm = useConfirm();
@@ -60,9 +73,11 @@ export function ConversationList({
       <SidebarGroup>
         <SidebarGroupContent>
           <SidebarMenu>
-            {[0, 1, 2, 3, 4].map((i) => (
-              <SidebarMenuItem key={i}>
-                <SidebarMenuSkeleton />
+            {SKELETON_WIDTHS.map((width) => (
+              <SidebarMenuItem key={width}>
+                <div className="flex h-8 items-center px-2">
+                  <Skeleton className="h-4" style={{ width }} />
+                </div>
               </SidebarMenuItem>
             ))}
           </SidebarMenu>
@@ -102,7 +117,7 @@ export function ConversationList({
                   isActive={isActiveHref(ROUTES.chat(conv.id), pathname)}
                   className="pr-8"
                 >
-                  <Link href={ROUTES.chat(conv.id)}>
+                  <Link href={ROUTES.chat(conv.id)} onClick={onNavigate}>
                     <span className="truncate">{conv.title}</span>
                     {unread.has(conv.id) && (
                       <>

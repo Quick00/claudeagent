@@ -16,7 +16,7 @@ const ROWS = [
   { id: 'b', title: 'Badge types', updatedAt: '2026-01-02' },
 ];
 
-function renderList(props: { notificationConvIds?: string[] } = {}) {
+function renderList(props: { notificationConvIds?: string[]; onNavigate?: () => void } = {}) {
   return renderWithProviders(
     <SidebarProvider>
       <ConversationsProvider>
@@ -82,6 +82,25 @@ describe('ConversationList', () => {
     await waitFor(() =>
       expect(screen.queryByRole('link', { name: /Badge types/ })).not.toBeInTheDocument(),
     );
+  });
+
+  test('calls onNavigate when a conversation is picked, so the mobile sheet can close', async () => {
+    const onNavigate = jest.fn();
+    const { user } = renderList({ onNavigate });
+    await screen.findByRole('link', { name: /Badge types/ });
+
+    await user.click(screen.getByRole('link', { name: /Badge types/ }));
+
+    expect(onNavigate).toHaveBeenCalledTimes(1);
+  });
+
+  test('does not require onNavigate', async () => {
+    const { user } = renderList();
+    await screen.findByRole('link', { name: /Badge types/ });
+
+    await user.click(screen.getByRole('link', { name: /Badge types/ }));
+
+    expect(screen.getByRole('link', { name: /Badge types/ })).toBeInTheDocument();
   });
 
   test('shows an unread dot for ids passed in notificationConvIds', async () => {

@@ -11,7 +11,14 @@ jest.mock('@/components/chat/ConversationsProvider', () => ({
   ConversationsProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
 }));
 jest.mock('@/components/chat/ConversationList', () => ({
-  ConversationList: () => <div data-testid="conversation-list" />,
+  // Stands in for Track 1's rows: the only part the shell cares about is that
+  // picking one calls `onNavigate`. A button keeps the lint rule about raw
+  // `<a>` page links out of a test that is not about navigation.
+  ConversationList: ({ onNavigate }: { onNavigate?: () => void }) => (
+    <button type="button" data-testid="conversation-list" onClick={onNavigate}>
+      a conversation
+    </button>
+  ),
 }));
 
 // See AppRail.test.tsx: `jest.mock` is not hoisted here, so require late —
@@ -59,6 +66,30 @@ describe('AppShell', () => {
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 
+  test('keeps a full-width sidebar on a section that has a panel', async () => {
+    await renderShell();
+
+    const frame = document.querySelector('[data-slot="shell-frame"]');
+    expect(frame).toHaveAttribute('data-panel', 'open');
+    // No override: the sidebar keeps the layout's own --sidebar-width.
+    expect(frame?.getAttribute('style') ?? '').not.toContain('--sidebar-width');
+    expect(screen.getByTestId('conversation-list')).toBeInTheDocument();
+  });
+
+  test('narrows the sidebar to the rail on a section with no panel', async () => {
+    (usePathname as jest.Mock).mockReturnValue('/settings');
+    await renderShell();
+
+    const frame = document.querySelector('[data-slot="shell-frame"]');
+    expect(frame).toHaveAttribute('data-panel', 'none');
+    expect(frame?.getAttribute('style')).toContain(
+      '--sidebar-width: calc(var(--sidebar-width-icon) + 1rem + 1px)',
+    );
+    // Nothing renders in the column, which is why it must not reserve space.
+    expect(screen.queryByTestId('conversation-list')).not.toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Settings' })).toBeInTheDocument();
+  });
+
   test('never lets the shell exceed the viewport height', async () => {
     await renderShell();
 
@@ -81,6 +112,18 @@ describe('AppShell', () => {
     expect(sheet).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Chat' })).toBeInTheDocument();
     expect(screen.getByTestId('conversation-list')).toBeInTheDocument();
+  });
+
+  test('closes the mobile sheet when a conversation is picked', async () => {
+    isMobile.mockReturnValue(true);
+    const { user: userEvent } = await renderShell();
+
+    await userEvent.click(screen.getByRole('button', { name: /toggle sidebar/i }));
+    await screen.findByRole('dialog');
+
+    await userEvent.click(screen.getByTestId('conversation-list'));
+
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 
   test('closes the mobile sheet when a section is followed', async () => {

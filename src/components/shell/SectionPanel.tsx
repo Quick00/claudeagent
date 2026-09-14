@@ -5,15 +5,16 @@ import { usePathname } from 'next/navigation';
 import { Plus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Sidebar, SidebarContent, SidebarHeader } from '@/components/ui/sidebar';
-import { ROUTES, SECTIONS, sectionIdForPathname } from '@/lib/navigation';
+import { ROUTES } from '@/lib/navigation';
 import { cn } from '@/lib/utils';
-import { SECTION_UI } from './sections';
+import { panelForPathname } from './sections';
 
 /**
  * The contextual second column. Which body it shows follows the URL, not a
  * click: deep-linking into `/admin/flags` opens the admin panel the same way
  * clicking the rail does. Sections with no panel (Settings) render nothing at
- * all, so the inset simply widens.
+ * all; `AppShell` narrows the sidebar to the rail on those routes so the space
+ * this would have taken goes to the page.
  */
 export function SectionPanel({
   onNavigate,
@@ -23,11 +24,10 @@ export function SectionPanel({
   className?: string;
 }) {
   const pathname = usePathname();
-  const sectionId = sectionIdForPathname(pathname);
-  const section = SECTIONS.find((candidate) => candidate.id === sectionId);
-  const Panel = sectionId ? SECTION_UI[sectionId].Panel : undefined;
+  const active = panelForPathname(pathname);
 
-  if (!section || !Panel) return null;
+  if (!active) return null;
+  const { section, Panel } = active;
 
   return (
     <Sidebar collapsible="none" className={cn('min-w-0', className)}>

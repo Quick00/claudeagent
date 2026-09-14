@@ -2,7 +2,7 @@
 
 import type { ComponentType } from 'react';
 import { MessageSquare, Network, Settings, ShieldCheck, type LucideIcon } from 'lucide-react';
-import type { Section, SectionId } from '@/lib/navigation';
+import { SECTIONS, sectionIdForPathname, type Section, type SectionId } from '@/lib/navigation';
 import { AdminPanel } from './panels/AdminPanel';
 import { ChatPanel } from './panels/ChatPanel';
 import { KnowledgePanel } from './panels/KnowledgePanel';
@@ -30,3 +30,26 @@ export const SECTION_UI: Record<SectionId, SectionUi> = {
   admin: { icon: ShieldCheck, Panel: AdminPanel },
   settings: { icon: Settings },
 };
+
+/**
+ * The single resolver for "does this URL have a second column, and what is
+ * in it". `SectionPanel` renders what this returns and `AppShell` sizes the
+ * sidebar from whether it returns anything — reading it twice from one place
+ * is what stops a section growing a panel that has no room to appear in.
+ */
+export function panelForPathname(
+  pathname: string,
+): { section: Section; Panel: ComponentType<PanelProps> } | null {
+  const sectionId = sectionIdForPathname(pathname);
+  if (!sectionId) return null;
+
+  const { Panel } = SECTION_UI[sectionId];
+  const section = SECTIONS.find((candidate) => candidate.id === sectionId);
+  if (!Panel || !section) return null;
+
+  return { section, Panel };
+}
+
+export function hasPanelFor(pathname: string): boolean {
+  return panelForPathname(pathname) !== null;
+}

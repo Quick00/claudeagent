@@ -1,6 +1,6 @@
 'use client';
 
-import type { MouseEvent, ReactNode } from 'react';
+import type { CSSProperties, ReactNode } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { ConversationsProvider } from '@/components/chat/ConversationsProvider';
@@ -17,9 +17,15 @@ import {
 import { SECTIONS, sectionIdForPathname, visibleSections } from '@/lib/navigation';
 import { AppRail } from './AppRail';
 import { NotificationsProvider } from './NotificationsProvider';
-import { SECTION_UI } from './sections';
+import { hasPanelFor, SECTION_UI } from './sections';
 import { SectionPanel } from './SectionPanel';
 import { UserMenu } from './UserMenu';
+
+/**
+ * What the sidebar is worth when the active section has no panel: the rail's
+ * own `calc(var(--sidebar-width-icon) + 1px)` plus the inset variant's `p-2`.
+ */
+const RAIL_ONLY_WIDTH = 'calc(var(--sidebar-width-icon) + 1rem + 1px)';
 
 /**
  * The signed-in user, handed down from the server layout. The role is a prop
@@ -53,6 +59,7 @@ function ShellFrame({ user, children }: { user: ShellUser; children: ReactNode }
   const pathname = usePathname();
   const sectionId = sectionIdForPathname(pathname);
   const title = SECTIONS.find((section) => section.id === sectionId)?.label ?? '';
+  const hasPanel = hasPanelFor(pathname);
 
   if (isMobile) {
     const close = () => setOpenMobile(false);
@@ -75,8 +82,25 @@ function ShellFrame({ user, children }: { user: ShellUser; children: ReactNode }
     );
   }
 
+  const hasPanel = hasPanelFor(pathname);
+
   return (
-    <>
+    /**
+     * The width override has to land here rather than on `<Sidebar>`. The
+     * primitive forwards `className` and `style` to its fixed container only;
+     * the element that actually reserves the column in the layout is the gap
+     * div beside it, and both read `--sidebar-width` by inheritance. Setting
+     * it on a shared ancestor is the one place that reaches both without
+     * editing the generated `ui/sidebar.tsx`. `Sidebar` and `SidebarInset`
+     * stay siblings inside it, so the inset's `peer-data-[variant=inset]`
+     * margins still match.
+     */
+    <div
+      data-slot="shell-frame"
+      data-panel={hasPanel ? 'open' : 'none'}
+      className="flex w-full"
+      style={hasPanel ? undefined : ({ '--sidebar-width': RAIL_ONLY_WIDTH } as CSSProperties)}
+    >
       {/* sidebar-09: one inset sidebar laid out as two columns — icon rail, then panel. */}
       <Sidebar
         variant="inset"
@@ -87,7 +111,7 @@ function ShellFrame({ user, children }: { user: ShellUser; children: ReactNode }
         <SectionPanel className="hidden flex-1 md:flex" />
       </Sidebar>
       <ShellInset title={title}>{children}</ShellInset>
-    </>
+    </div>
   );
 }
 
@@ -112,18 +136,8 @@ function SectionStrip({ user, onNavigate }: { user: ShellUser; onNavigate: () =>
   const pathname = usePathname();
   const activeId = sectionIdForPathname(pathname);
 
-  // Track 1's conversation rows are plain links with no `onNavigate` of their
-  // own, so the sheet also closes on any link click that bubbles out of a panel.
-  const closeOnLinkClick = (event: MouseEvent<HTMLElement>) => {
-    if ((event.target as HTMLElement).closest('a')) onNavigate();
-  };
-
   return (
-    <nav
-      aria-label="Sections"
-      className="no-scrollbar flex items-center gap-1 overflow-x-auto"
-      onClickCapture={closeOnLinkClick}
-    >
+    <nav aria-label="Sections" className="no-scrollbar flex items-center gap-1 overflow-x-auto">
       {visibleSections(user.role).map((section) => {
         const { icon: Icon } = SECTION_UI[section.id];
         return (
