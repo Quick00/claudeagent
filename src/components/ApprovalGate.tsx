@@ -4,14 +4,17 @@ import { useEffect } from 'react';
 import { useSession } from 'next-auth/react';
 import { usePathname, useRouter } from 'next/navigation';
 import { ReactNode } from 'react';
+import { ROUTES } from '@/lib/navigation';
 
 /** Routes that must stay reachable while an account is unapproved. */
-const EXEMPT_PATHS = ['/login', '/pending', '/maintenance'];
+const EXEMPT_PATHS = [ROUTES.login, ROUTES.pending, '/maintenance'];
 
 /**
- * Keeps unapproved accounts out of the app UI. The API guards are what actually
- * protect the data; this is so those users see the pending screen instead of a
- * broken page.
+ * `getShellUser()` already redirects an unapproved account to `/pending` on
+ * the server before anything renders, so this no longer guards the initial
+ * load. What it still has to catch is a status change mid-session — an
+ * admin revokes access while the tab is already open — which the server
+ * guard cannot see until the next navigation.
  */
 export default function ApprovalGate({ children }: { children: ReactNode }) {
   const { data: session, status } = useSession();
@@ -24,7 +27,7 @@ export default function ApprovalGate({ children }: { children: ReactNode }) {
   const shouldRedirect = blocked && !EXEMPT_PATHS.includes(pathname);
 
   useEffect(() => {
-    if (shouldRedirect) router.replace('/pending');
+    if (shouldRedirect) router.replace(ROUTES.pending);
   }, [shouldRedirect, router]);
 
   if (shouldRedirect) return null;

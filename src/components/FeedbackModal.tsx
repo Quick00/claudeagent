@@ -1,13 +1,39 @@
 'use client';
 
-import { useState, useRef, useEffect, useCallback } from 'react';
-import { createPortal } from 'react-dom';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useSession } from 'next-auth/react';
 import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
-import Link from '@tiptap/extension-link';
+import TiptapLink from '@tiptap/extension-link';
 import Placeholder from '@tiptap/extension-placeholder';
 import { Markdown } from 'tiptap-markdown';
+import {
+  ArrowLeft,
+  Bold,
+  Bug,
+  CircleCheck,
+  Image as ImageIcon,
+  Italic,
+  Lightbulb,
+  Link as LinkIcon,
+  List,
+  MessageSquarePlus,
+  X,
+} from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Toggle } from '@/components/ui/toggle';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { markdownProseClass } from '@/components/shared/MarkdownContent';
 
 type FeedbackType = 'FEATURE_REQUEST' | 'BUG';
 type Step = 'type' | 'form';
@@ -16,6 +42,13 @@ interface UploadedImage {
   id: string;
   filename: string;
   url: string;
+}
+
+interface FeedbackModalProps {
+  /** Standard shadcn Dialog control. Omit both to fall back to an internal
+   * trigger button (used when the modal manages its own visibility). */
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
 }
 
 async function safeResponseError(res: Response, fallback: string): Promise<string> {
@@ -28,9 +61,12 @@ async function safeResponseError(res: Response, fallback: string): Promise<strin
   return text || fallback;
 }
 
-export default function FeedbackModal() {
+export default function FeedbackModal({ open: openProp, onOpenChange: onOpenChangeProp }: FeedbackModalProps) {
   const { status } = useSession();
-  const [open, setOpen] = useState(false);
+  const [internalOpen, setInternalOpen] = useState(false);
+  const controlled = openProp !== undefined;
+  const open = controlled ? (openProp ?? false) : internalOpen;
+
   const [step, setStep] = useState<Step>('type');
   const [type, setType] = useState<FeedbackType | null>(null);
   const [title, setTitle] = useState('');
@@ -40,7 +76,8 @@ export default function FeedbackModal() {
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [visible, setVisible] = useState(false);
+  const [linkPopoverOpen, setLinkPopoverOpen] = useState(false);
+  const [linkUrl, setLinkUrl] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const onEditorUpdate = useCallback(({ editor: e }: { editor: ReturnType<typeof useEditor> }) => {
@@ -51,26 +88,20 @@ export default function FeedbackModal() {
   const editor = useEditor({
     extensions: [
       StarterKit.configure({ heading: false, codeBlock: false, code: false, blockquote: false, horizontalRule: false }),
-      Link.configure({ openOnClick: false }),
+      TiptapLink.configure({ openOnClick: false }),
       Placeholder.configure({ placeholder: 'Describe your request' }),
       Markdown,
     ],
     editorProps: {
       attributes: {
-        class: 'outline-none min-h-[5rem] max-h-40 overflow-y-auto text-sm px-3 py-2',
+        class: 'outline-none min-h-[5rem] max-h-40 overflow-y-auto px-3 py-2',
       },
     },
     onUpdate: onEditorUpdate,
     immediatelyRender: false,
   });
 
-  useEffect(() => {
-    if (open) {
-      requestAnimationFrame(() => setVisible(true));
-    }
-  }, [open]);
-
-  const reset = () => {
+  const reset = useCallback(() => {
     setStep('type');
     setType(null);
     setTitle('');
@@ -80,17 +111,22 @@ export default function FeedbackModal() {
     setSubmitting(false);
     setSubmitted(false);
     setError(null);
-  };
+  }, []);
 
-  const handleOpen = () => {
-    reset();
-    editor?.commands.clearContent();
-    setOpen(true);
-  };
+  // The Dialog can be opened either by our own trigger or, when controlled,
+  // by a parent (the shell's user menu) — either way the form must start
+  // clean, so this reacts to `open` rather than to a click handler.
+  useEffect(() => {
+    if (open) {
+      reset();
+      editor?.commands.clearContent();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
 
-  const handleClose = () => {
-    setVisible(false);
-    setTimeout(() => setOpen(false), 150);
+  const setOpen = (next: boolean) => {
+    onOpenChangeProp?.(next);
+    if (!controlled) setInternalOpen(next);
   };
 
   const handleSelectType = (t: FeedbackType) => {
@@ -172,128 +208,188 @@ export default function FeedbackModal() {
     }
   };
 
+  const openLink = () => {
+    setLinkUrl(editor?.getAttributes('link').href ?? '');
+    setLinkPopoverOpen(true);
+  };
+
+  const applyLink = () => {
+    const url = linkUrl.trim();
+    if (url) {
+      editor?.chain().focus().extendMarkRange('link').setLink({ href: url }).run();
+    } else {
+      editor?.chain().focus().extendMarkRange('link').unsetLink().run();
+    }
+    setLinkPopoverOpen(false);
+  };
+
   return (
-    <>
-      <button
-        onClick={handleOpen}
-        className="flex w-full cursor-pointer items-center justify-center gap-2 rounded-lg bg-gray-100 px-3 py-2 text-sm text-gray-600 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
-      >
-        <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5.882V19.24a1.76 1.76 0 01-3.417.592l-2.147-6.15M18 13a3 3 0 100-6M5.436 13.683A4.001 4.001 0 017 6h1.832c4.1 0 7.625-1.234 9.168-3v14c-1.543-1.766-5.067-3-9.168-3H7a3.988 3.988 0 01-1.564-.317z" />
-        </svg>
-        Feedback
-      </button>
-      {open && createPortal(<><div
-        className={`fixed inset-0 z-50 flex items-center justify-center transition-colors duration-150 ${visible ? 'bg-black/50' : 'bg-black/0'}`}
-        onClick={handleClose}
-      >
-        <div
-          className={`w-full max-w-md rounded-lg bg-white p-6 shadow-xl transition-all duration-150 dark:bg-gray-900 ${visible ? 'scale-100 opacity-100' : 'scale-95 opacity-0'}`}
-          onClick={(e) => e.stopPropagation()}
-        >
-          <div key={submitted ? 'submitted' : step} className="animate-fadeIn">
+    <Dialog open={open} onOpenChange={setOpen}>
+      {!controlled && (
+        <DialogTrigger asChild>
+          <Button variant="secondary" className="w-full justify-center gap-2">
+            <MessageSquarePlus className="size-4" />
+            Feedback
+          </Button>
+        </DialogTrigger>
+      )}
+      <DialogContent className="sm:max-w-md">
+        <div key={submitted ? 'submitted' : step} className="animate-in fade-in-0">
           {submitted ? (
             <div className="text-center">
-              <div className="mb-3 text-3xl">{'\u2713'}</div>
-              <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Thank you!</h2>
-              <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">Your feedback has been submitted.</p>
-              <button
-                onClick={handleClose}
-                className="mt-4 rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
-              >
+              <CircleCheck className="mx-auto mb-3 size-10 text-success" />
+              <DialogTitle>Thank you!</DialogTitle>
+              <DialogDescription className="mt-1">
+                Your feedback has been submitted.
+              </DialogDescription>
+              <Button className="mt-4" onClick={() => setOpen(false)}>
                 Close
-              </button>
+              </Button>
             </div>
           ) : step === 'type' ? (
             <>
-              <div className="mb-4 flex items-center justify-between">
-                <div>
-                  <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Give us feedback</h2>
-                  <p className="text-sm text-gray-500 dark:text-gray-400">Tell us how we could make the product more useful for you.</p>
-                </div>
-                <button onClick={handleClose} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">&times;</button>
-              </div>
-              <div className="space-y-2">
-                <button
+              <DialogHeader>
+                <DialogTitle>Give us feedback</DialogTitle>
+                <DialogDescription>
+                  Tell us how we could make the product more useful for you.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="mt-4 space-y-2">
+                <Button
+                  variant="outline"
+                  className="h-auto w-full justify-start gap-3 py-3 text-left"
                   onClick={() => handleSelectType('FEATURE_REQUEST')}
-                  className="flex w-full items-center gap-3 rounded-lg border border-gray-200 p-3 text-left hover:bg-gray-50 dark:border-gray-700 dark:hover:bg-gray-800"
                 >
-                  <span className="text-xl">{'\u{1F4A1}'}</span>
-                  <span className="text-sm font-medium text-gray-900 dark:text-gray-100">Feature Request</span>
-                </button>
-                <button
+                  <Lightbulb className="size-5" />
+                  <span className="text-sm font-medium">Feature Request</span>
+                </Button>
+                <Button
+                  variant="outline"
+                  className="h-auto w-full justify-start gap-3 py-3 text-left"
                   onClick={() => handleSelectType('BUG')}
-                  className="flex w-full items-center gap-3 rounded-lg border border-gray-200 p-3 text-left hover:bg-gray-50 dark:border-gray-700 dark:hover:bg-gray-800"
                 >
-                  <span className="text-xl">{'\u{1F41B}'}</span>
-                  <span className="text-sm font-medium text-gray-900 dark:text-gray-100">Bug</span>
-                </button>
+                  <Bug className="size-5" />
+                  <span className="text-sm font-medium">Bug</span>
+                </Button>
               </div>
             </>
           ) : (
             <>
-              <div className="mb-4 flex items-center justify-between">
-                <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
-                  {type === 'FEATURE_REQUEST' ? '\u{1F4A1} Feature Request' : '\u{1F41B} Bug'}
-                </h2>
-                <button onClick={handleClose} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">&times;</button>
-              </div>
+              <DialogHeader>
+                <DialogTitle className="flex items-center gap-2">
+                  {type === 'FEATURE_REQUEST' ? (
+                    <Lightbulb className="size-4" />
+                  ) : (
+                    <Bug className="size-4" />
+                  )}
+                  {type === 'FEATURE_REQUEST' ? 'Feature Request' : 'Bug'}
+                </DialogTitle>
+                <DialogDescription className="sr-only">
+                  Describe your {type === 'FEATURE_REQUEST' ? 'feature request' : 'bug report'}
+                </DialogDescription>
+              </DialogHeader>
 
-              <input
+              <Input
                 type="text"
                 placeholder="Have something to say?"
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
                 maxLength={200}
-                className="mb-3 w-full rounded-md border border-gray-200 px-3 py-2 text-sm focus:border-blue-300 focus:outline-none dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100"
+                className="mt-4 mb-3"
               />
 
-              <div className="mb-3 rounded-md border border-gray-200 dark:border-gray-700 dark:bg-gray-800">
-                <div className="flex items-center gap-0.5 border-b border-gray-200 px-2 py-1 dark:border-gray-700">
-                  <button
-                    type="button"
-                    onClick={() => editor?.chain().focus().toggleBold().run()}
-                    className={`rounded p-1.5 ${editor?.isActive('bold') ? 'bg-gray-200 text-gray-800 dark:bg-gray-600 dark:text-gray-100' : 'text-gray-400 hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-gray-700 dark:hover:text-gray-300'}`}
-                    title="Bold"
-                  >
-                    <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 4h8a4 4 0 014 4 4 4 0 01-4 4H6z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 12h9a4 4 0 014 4 4 4 0 01-4 4H6z" /></svg>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => editor?.chain().focus().toggleItalic().run()}
-                    className={`rounded p-1.5 ${editor?.isActive('italic') ? 'bg-gray-200 text-gray-800 dark:bg-gray-600 dark:text-gray-100' : 'text-gray-400 hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-gray-700 dark:hover:text-gray-300'}`}
-                    title="Italic"
-                  >
-                    <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 4h4m-2 0v16m-4 0h8" /></svg>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => editor?.chain().focus().toggleBulletList().run()}
-                    className={`rounded p-1.5 ${editor?.isActive('bulletList') ? 'bg-gray-200 text-gray-800 dark:bg-gray-600 dark:text-gray-100' : 'text-gray-400 hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-gray-700 dark:hover:text-gray-300'}`}
-                    title="List"
-                  >
-                    <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" /></svg>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const url = window.prompt('URL');
-                      if (url) editor?.chain().focus().setLink({ href: url }).run();
-                    }}
-                    className={`rounded p-1.5 ${editor?.isActive('link') ? 'bg-gray-200 text-gray-800 dark:bg-gray-600 dark:text-gray-100' : 'text-gray-400 hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-gray-700 dark:hover:text-gray-300'}`}
-                    title="Link"
-                  >
-                    <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" /></svg>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => fileInputRef.current?.click()}
-                    disabled={uploading || status !== 'authenticated'}
-                    className="rounded p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-gray-700 dark:hover:text-gray-300 disabled:opacity-50"
-                    title="Upload image"
-                  >
-                    <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
-                  </button>
+              <div className="mb-3 rounded-md border border-input focus-within:border-ring focus-within:ring-3 focus-within:ring-ring/50">
+                <div className="flex items-center gap-0.5 border-b border-border px-2 py-1">
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Toggle
+                        size="sm"
+                        aria-label="Bold"
+                        pressed={editor?.isActive('bold') ?? false}
+                        onPressedChange={() => editor?.chain().focus().toggleBold().run()}
+                      >
+                        <Bold />
+                      </Toggle>
+                    </TooltipTrigger>
+                    <TooltipContent>Bold</TooltipContent>
+                  </Tooltip>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Toggle
+                        size="sm"
+                        aria-label="Italic"
+                        pressed={editor?.isActive('italic') ?? false}
+                        onPressedChange={() => editor?.chain().focus().toggleItalic().run()}
+                      >
+                        <Italic />
+                      </Toggle>
+                    </TooltipTrigger>
+                    <TooltipContent>Italic</TooltipContent>
+                  </Tooltip>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Toggle
+                        size="sm"
+                        aria-label="Bullet list"
+                        pressed={editor?.isActive('bulletList') ?? false}
+                        onPressedChange={() => editor?.chain().focus().toggleBulletList().run()}
+                      >
+                        <List />
+                      </Toggle>
+                    </TooltipTrigger>
+                    <TooltipContent>List</TooltipContent>
+                  </Tooltip>
+                  <Popover open={linkPopoverOpen} onOpenChange={setLinkPopoverOpen}>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <PopoverTrigger asChild>
+                          <Toggle
+                            size="sm"
+                            aria-label="Link"
+                            pressed={editor?.isActive('link') ?? false}
+                            onPressedChange={openLink}
+                          >
+                            <LinkIcon />
+                          </Toggle>
+                        </PopoverTrigger>
+                      </TooltipTrigger>
+                      <TooltipContent>Link</TooltipContent>
+                    </Tooltip>
+                    <PopoverContent className="w-64">
+                      <div className="flex items-center gap-2">
+                        <Input
+                          autoFocus
+                          value={linkUrl}
+                          placeholder="https://example.com"
+                          onChange={(e) => setLinkUrl(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              e.preventDefault();
+                              applyLink();
+                            }
+                          }}
+                        />
+                        <Button size="sm" onClick={applyLink}>
+                          Apply
+                        </Button>
+                      </div>
+                    </PopoverContent>
+                  </Popover>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon-sm"
+                        aria-label="Upload image"
+                        disabled={uploading || status !== 'authenticated'}
+                        onClick={() => fileInputRef.current?.click()}
+                      >
+                        <ImageIcon />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>Upload image</TooltipContent>
+                  </Tooltip>
                   <input
                     ref={fileInputRef}
                     type="file"
@@ -302,55 +398,53 @@ export default function FeedbackModal() {
                     className="hidden"
                   />
                 </div>
-                <EditorContent editor={editor} className="prose prose-sm dark:prose-invert max-w-none text-gray-900 dark:text-gray-100" />
+                <EditorContent editor={editor} className={markdownProseClass('compact')} />
               </div>
 
               {image && (
-                <div className="mb-3 flex items-center gap-2 rounded-md border border-gray-200 px-3 py-2 text-sm dark:border-gray-700">
-                  <span className="truncate text-gray-600 dark:text-gray-400">{image.filename}</span>
-                  <button
+                <div className="mb-3 flex items-center gap-2 rounded-md border border-border px-3 py-2 text-sm">
+                  <span className="truncate text-muted-foreground">{image.filename}</span>
+                  <Button
+                    variant="ghost"
+                    size="icon-xs"
+                    aria-label="Remove image"
                     onClick={() => setImage(null)}
-                    className="text-gray-400 hover:text-red-500"
                   >
-                    &times;
-                  </button>
+                    <X />
+                  </Button>
                 </div>
               )}
 
-              {error && (
-                <p className="mb-3 text-sm text-red-500">{error}</p>
-              )}
+              {error && <p className="mb-3 text-sm text-destructive">{error}</p>}
 
               <div className="flex items-center justify-between">
-                <button
-                  onClick={() => { setStep('type'); setType(null); }}
-                  className="text-sm text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
-                >
-                  &larr;
-                </button>
-                <button
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
+                      aria-label="Back"
+                      onClick={() => {
+                        setStep('type');
+                        setType(null);
+                      }}
+                    >
+                      <ArrowLeft />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>Back</TooltipContent>
+                </Tooltip>
+                <Button
                   onClick={handleSubmit}
                   disabled={!title.trim() || !description.trim() || submitting || uploading}
-                  className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
                 >
                   {submitting ? 'Submitting...' : 'Create A New Post'}
-                </button>
+                </Button>
               </div>
             </>
           )}
-          </div>
         </div>
-      </div>
-      <style dangerouslySetInnerHTML={{ __html: `
-        @keyframes feedbackFadeIn {
-          from { opacity: 0; transform: translateY(4px); }
-          to { opacity: 1; transform: translateY(0); }
-        }
-        .animate-fadeIn {
-          animation: feedbackFadeIn 150ms ease-out;
-        }
-      `}} />
-      </>, document.body)}
-    </>
+      </DialogContent>
+    </Dialog>
   );
 }

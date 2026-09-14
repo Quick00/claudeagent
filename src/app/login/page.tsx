@@ -2,6 +2,11 @@
 
 import { signIn } from 'next-auth/react';
 import { useState } from 'react';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Field, FieldLabel } from '@/components/ui/field';
+import { Input } from '@/components/ui/input';
+import { ROUTES } from '@/lib/navigation';
 
 export default function LoginPage() {
   const [name, setName] = useState('Test User');
@@ -9,61 +14,45 @@ export default function LoginPage() {
   const isTestMode = process.env.NEXT_PUBLIC_AUTH_TEST_MODE === 'true';
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-gray-50 dark:bg-gray-950">
-      <div className="w-full max-w-sm rounded-lg bg-white p-8 shadow-md dark:bg-gray-900 dark:shadow-gray-900">
-        <h1 className="mb-2 text-center text-2xl font-bold text-gray-900 dark:text-gray-100">
-          Codebase Q&A
-        </h1>
-        <p className="mb-8 text-center text-sm text-gray-500 dark:text-gray-400">
-          Ask questions about how the product works
-        </p>
-
+    <Card className="w-full max-w-sm">
+      <CardHeader className="text-center">
+        <CardTitle className="text-2xl">Codebase Q&amp;A</CardTitle>
+        <CardDescription>Ask questions about how the product works</CardDescription>
+      </CardHeader>
+      <CardContent>
         {isTestMode ? (
           <form
             onSubmit={(e) => {
               e.preventDefault();
-              signIn('credentials', { name, email, callbackUrl: '/' });
+              signIn('credentials', { name, email, callbackUrl: ROUTES.chat() });
             }}
             className="space-y-4"
           >
-            <div>
-              <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">
-                Name
-              </label>
-              <input
-                type="text"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 dark:focus:border-blue-400"
-              />
-            </div>
-            <div>
-              <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">
-                Email
-              </label>
-              <input
+            <Field>
+              <FieldLabel htmlFor="login-name">Name</FieldLabel>
+              <Input id="login-name" value={name} onChange={(e) => setName(e.target.value)} />
+            </Field>
+            <Field>
+              <FieldLabel htmlFor="login-email">Email</FieldLabel>
+              <Input
+                id="login-email"
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 dark:focus:border-blue-400"
               />
-            </div>
-            <button
-              type="submit"
-              className="w-full rounded-lg bg-blue-600 px-4 py-3 text-sm font-medium text-white hover:bg-blue-700"
-            >
+            </Field>
+            <Button type="submit" className="w-full">
               Sign in (Test Mode)
-            </button>
-            <p className="text-center text-xs text-amber-600">
-              Test mode — no Google OAuth required
-            </p>
+            </Button>
+            <p className="text-center text-xs text-warning">Test mode — no Google OAuth required</p>
           </form>
         ) : (
-          <button
-            onClick={() => signIn('google', { callbackUrl: '/' })}
-            className="flex w-full items-center justify-center gap-3 rounded-lg border border-gray-300 bg-white px-4 py-3 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-900 dark:text-gray-300 dark:hover:bg-gray-800"
+          <Button
+            variant="outline"
+            className="w-full gap-3"
+            onClick={() => signIn('google', { callbackUrl: ROUTES.chat() })}
           >
-            <svg className="h-5 w-5" viewBox="0 0 24 24">
+            <svg className="size-5" viewBox="0 0 24 24">
               <path
                 fill="#4285F4"
                 d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z"
@@ -82,9 +71,9 @@ export default function LoginPage() {
               />
             </svg>
             Sign in with Google
-          </button>
+          </Button>
         )}
-      </div>
-    </div>
+      </CardContent>
+    </Card>
   );
 }
