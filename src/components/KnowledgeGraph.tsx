@@ -5,7 +5,7 @@ import Link from 'next/link';
 import ForceGraph2D, { type ForceGraphMethods } from 'react-force-graph-2d';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { useTheme } from '@/components/ThemeProvider';
+import { useTheme } from 'next-themes';
 import { formatDateTime } from '@/lib/format-date';
 
 interface GraphNode {
@@ -58,7 +58,7 @@ export default function KnowledgeGraph() {
   const [entries, setEntries] = useState<KnowledgeEntry[]>([]);
   const [hiddenCategories, setHiddenCategories] = useState<Set<string>>(new Set());
   const [availableCategories, setAvailableCategories] = useState<string[]>([]);
-  const { theme } = useTheme();
+  const { resolvedTheme: theme } = useTheme();
   const graphRef = useRef<ForceGraphMethods<GraphNode> | undefined>(undefined);
 
   useEffect(() => {

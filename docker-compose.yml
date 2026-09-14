@@ -20,12 +20,15 @@ services:
     ports:
       - "3000:3000"
     env_file:
-      - .env.local
+      - .env
     volumes:
       - repos:/app/repos
       - claude-sessions:/app/claude-sessions
       - ./uploads:/app/uploads
     environment:
+      # Override .env's remote host: talk to the postgres service on this network.
+      - DATABASE_URL=postgresql://claude_agent:claude_agent@postgres:5432/claude_agent
+      - NEXTAUTH_URL=http://localhost:3000
       - SESSIONS_DIR=/app/claude-sessions
       - UPLOAD_PATH=/app/uploads
       - REPOS_DIR=/app/repos

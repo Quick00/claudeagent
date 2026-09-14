@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { useSession } from 'next-auth/react';
 import Link from 'next/link';
 import LinkClaudeModal from '@/components/LinkClaudeModal';
-import { useTheme } from '@/components/ThemeProvider';
+import { useTheme } from 'next-themes';
 
 export default function SettingsPanel() {
   const { data: session } = useSession();
@@ -17,7 +17,7 @@ export default function SettingsPanel() {
   const [ignoreText, setIgnoreText] = useState<string | null>(null);
   const [ignoreSaving, setIgnoreSaving] = useState(false);
   const [ignoreSaved, setIgnoreSaved] = useState(false);
-  const { preference, setPreference } = useTheme();
+  const { theme, setTheme } = useTheme();
 
   const fetchStatus = () => {
     fetch('/api/auth/claude/status')
@@ -152,9 +152,9 @@ export default function SettingsPanel() {
             ]).map(({ value, label, icon }) => (
               <button
                 key={value}
-                onClick={() => setPreference(value)}
+                onClick={() => setTheme(value)}
                 className={`flex flex-1 flex-col items-center gap-1.5 rounded-lg border px-3 py-3 text-xs font-medium transition-colors ${
-                  preference === value
+                  (theme ?? 'system') === value
                     ? 'border-blue-500 bg-blue-50 text-blue-700 dark:bg-blue-950 dark:text-blue-300'
                     : 'border-gray-200 text-gray-500 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-400 dark:hover:bg-gray-800'
                 }`}

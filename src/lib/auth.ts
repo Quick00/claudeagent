@@ -68,9 +68,9 @@ export const authOptions: NextAuthOptions = {
           where: { email: session.user.email },
         });
         if (dbUser) {
-          (session.user as Record<string, unknown>).id = dbUser.id;
-          (session.user as Record<string, unknown>).role = dbUser.role;
-          (session.user as Record<string, unknown>).status = dbUser.status;
+          session.user.id = dbUser.id;
+          session.user.role = dbUser.role;
+          session.user.status = dbUser.status;
         }
       }
       return session;
