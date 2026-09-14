@@ -12,7 +12,7 @@ All components are React client components (`'use client'`).
 
 ## Other Components
 
-- `KnowledgeGraph.tsx` — Force-directed graph visualization of knowledge entries using react-force-graph-2d.
+- `knowledge/KnowledgeGraph.tsx` — Force-directed knowledge map using react-force-graph-2d. Rendering rules live in `knowledge/graph-view.ts` (pure, unit-tested): single-use topics are folded away behind a toggle, labels appear by zoom level (top 40 topics zoomed out, 3+ pages at mid zoom, everything when zoomed in), pages draw as small dots, and selecting a node highlights its neighbourhood and fades the rest.
 - `FeedbackModal.tsx` — Multi-step feedback form (type → title → description → optional screenshot). Posts to `/api/feedback`.
 - `LinkClaudeModal.tsx` — Step-by-step modal for linking a Claude account via setup token. OS-aware (macOS terminal flow vs Windows installer download).
 - `SettingsPanel.tsx` — User settings panel (Claude account linking, appearance). Admins also get the "Require approval for new accounts" toggle, backed by `/api/admin/settings`.

@@ -15,25 +15,17 @@ import { MarkdownContent } from '@/components/shared/MarkdownContent';
 import { EmptyState } from '@/components/shared/EmptyState';
 import { formatDateTime } from '@/lib/format-date';
 import { cn } from '@/lib/utils';
-
-interface GraphNode {
-  id: string;
-  label: string;
-  category: string;
-  type: 'entry' | 'topic';
-  x?: number;
-  y?: number;
-}
-
-interface GraphLink {
-  source: string | GraphNode;
-  target: string | GraphNode;
-}
-
-interface GraphData {
-  nodes: GraphNode[];
-  links: GraphLink[];
-}
+import {
+  computeDegrees,
+  endpointId,
+  foldSingleUseTopics,
+  neighbourhoodOf,
+  OVERVIEW_LABEL_COUNT,
+  shouldLabelNode,
+  topicDegreeCutoff,
+  type GraphData,
+  type GraphNode,
+} from './graph-view';
 
 interface KnowledgeEntry {
   id: string;
@@ -107,6 +99,7 @@ function useElementSize<T extends HTMLElement>() {
 export default function KnowledgeGraph() {
   const [selectedNode, setSelectedNode] = useState<GraphNode | null>(null);
   const [hiddenCategories, setHiddenCategories] = useState<Set<string>>(new Set());
+  const [showSingleUse, setShowSingleUse] = useState(false);
   const { resolvedTheme: theme } = useTheme();
   const graphRef = useRef<ForceGraphMethods<GraphNode> | undefined>(undefined);
   const { ref: containerRef, size } = useElementSize<HTMLDivElement>();
@@ -135,7 +128,7 @@ export default function KnowledgeGraph() {
     [entries],
   );
 
-  const graphData = useMemo(() => {
+  const categoryFilteredData = useMemo(() => {
     if (hiddenCategories.size === 0) {
       return allGraphData;
     }
@@ -157,29 +150,35 @@ export default function KnowledgeGraph() {
     return { nodes: filteredNodes, links: filteredLinks };
   }, [hiddenCategories, allGraphData]);
 
+  // Topics used by a single page are the bulk of the node count at scale and
+  // carry no structure, so they are folded away unless asked for.
+  const { data: graphData, hiddenCount: singleUseCount } = useMemo(
+    () => (showSingleUse ? { data: categoryFilteredData, hiddenCount: 0 } : foldSingleUseTopics(categoryFilteredData)),
+    [showSingleUse, categoryFilteredData],
+  );
+
   useEffect(() => {
     if (!graphRef.current) return;
-    graphRef.current.d3Force('charge')?.strength(-120);
-    graphRef.current.d3Force('link')?.distance(80);
+    graphRef.current.d3Force('charge')?.strength(-60);
+    graphRef.current.d3Force('link')?.distance(40);
     graphRef.current.d3ReheatSimulation();
   }, [graphData]);
 
-  const nodeDegrees = useMemo(() => {
-    const degrees = new Map<string, number>();
-    for (const link of graphData.links) {
-      const sourceId = typeof link.source === 'string' ? link.source : link.source.id;
-      const targetId = typeof link.target === 'string' ? link.target : link.target.id;
-      degrees.set(sourceId, (degrees.get(sourceId) ?? 0) + 1);
-      degrees.set(targetId, (degrees.get(targetId) ?? 0) + 1);
-    }
-    return degrees;
-  }, [graphData]);
+  const nodeDegrees = useMemo(() => computeDegrees(graphData.links), [graphData]);
+  const labelCutoff = useMemo(
+    () => topicDegreeCutoff(graphData.nodes, nodeDegrees, OVERVIEW_LABEL_COUNT),
+    [graphData, nodeDegrees],
+  );
+  const highlighted = useMemo(
+    () => neighbourhoodOf(selectedNode?.id ?? null, graphData.links),
+    [selectedNode, graphData],
+  );
 
   const getRadius = useCallback(
     (node: GraphNode) => {
+      if (node.type === 'entry') return 2.5;
       const degree = nodeDegrees.get(node.id) ?? 0;
-      const base = node.type === 'topic' ? 6 : 4;
-      return base + Math.sqrt(degree) * 1.6;
+      return 4 + Math.sqrt(degree) * 1.4;
     },
     [nodeDegrees]
   );
@@ -203,29 +202,51 @@ export default function KnowledgeGraph() {
 
   const nodeCanvasObject = useCallback(
     (node: GraphNode & { x?: number; y?: number }, ctx: CanvasRenderingContext2D, globalScale: number) => {
-      const n = node;
-      const fontSize = n.type === 'topic' ? 14 / globalScale : 11 / globalScale;
-      const radius = getRadius(n);
-      const color = CATEGORY_COLORS[n.type === 'topic' ? 'topic' : n.category] || '#6b7280';
+      const radius = getRadius(node);
+      const color = CATEGORY_COLORS[node.type === 'topic' ? 'topic' : node.category] || '#6b7280';
+      const isHighlighted = highlighted.has(node.id);
+      const dimmed = highlighted.size > 0 && !isHighlighted;
 
+      ctx.globalAlpha = dimmed ? 0.25 : node.type === 'entry' ? 0.75 : 1;
       ctx.beginPath();
       ctx.arc(node.x!, node.y!, radius, 0, 2 * Math.PI);
       ctx.fillStyle = color;
       ctx.fill();
 
-      if (selectedNode?.id === n.id) {
+      if (selectedNode?.id === node.id) {
         ctx.strokeStyle = theme === 'dark' ? '#fff' : '#000';
         ctx.lineWidth = 2 / globalScale;
         ctx.stroke();
       }
 
-      ctx.font = `${n.type === 'topic' ? 'bold ' : ''}${fontSize}px Sans-Serif`;
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'top';
-      ctx.fillStyle = theme === 'dark' ? '#d1d5db' : '#374151';
-      ctx.fillText(n.label, node.x!, node.y! + radius + 2);
+      const degree = nodeDegrees.get(node.id) ?? 0;
+      if (shouldLabelNode(node, { degree, scale: globalScale, cutoff: labelCutoff, highlighted: isHighlighted })) {
+        const emphasised = node.type === 'topic' && degree >= labelCutoff;
+        const fontSize = (node.type === 'topic' ? 12 : 10) / globalScale;
+        ctx.font = `${emphasised ? '600 ' : ''}${fontSize}px Sans-Serif`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'top';
+        ctx.fillStyle = theme === 'dark' ? '#d1d5db' : '#374151';
+        ctx.fillText(node.label, node.x!, node.y! + radius + 2 / globalScale);
+      }
+      ctx.globalAlpha = 1;
     },
-    [selectedNode, theme, getRadius]
+    [selectedNode, theme, getRadius, nodeDegrees, labelCutoff, highlighted]
+  );
+
+  const linkColor = useCallback(
+    (link: { source: string | GraphNode; target: string | GraphNode }) => {
+      const active =
+        highlighted.size > 0 &&
+        highlighted.has(endpointId(link.source)) &&
+        highlighted.has(endpointId(link.target));
+      if (active) return theme === 'dark' ? 'rgba(209, 213, 219, 0.9)' : 'rgba(55, 65, 81, 0.9)';
+      const faded = highlighted.size > 0;
+      return theme === 'dark'
+        ? `rgba(156, 163, 175, ${faded ? 0.04 : 0.12})`
+        : `rgba(107, 114, 128, ${faded ? 0.05 : 0.18})`;
+    },
+    [highlighted, theme]
   );
 
   const selectedEntry =
@@ -251,7 +272,21 @@ export default function KnowledgeGraph() {
     <div className="relative h-full min-h-0">
       <div ref={containerRef} className="relative h-full min-h-0 bg-background">
         <div className="absolute left-4 top-4 z-10 flex items-center gap-2 rounded-lg bg-card px-3 py-2 text-sm text-muted-foreground shadow-xs ring-1 ring-border">
-          {pluralize(entryCount, 'page')}, {pluralize(topicCount, 'topic')}
+          <span>
+            {pluralize(entryCount, 'page')}, {pluralize(topicCount, 'topic')}
+          </span>
+          {(singleUseCount > 0 || showSingleUse) && (
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              aria-pressed={showSingleUse}
+              onClick={() => setShowSingleUse((v) => !v)}
+              className="-my-1 h-7 px-2 text-xs"
+            >
+              {showSingleUse ? 'Hide single-use topics' : `${singleUseCount} single-use hidden`}
+            </Button>
+          )}
         </div>
 
         {availableCategories.length > 0 && (
@@ -294,17 +329,18 @@ export default function KnowledgeGraph() {
               graphData={graphData}
               nodeCanvasObject={nodeCanvasObject}
               onNodeClick={handleNodeClick}
-              linkColor={() => (theme === 'dark' ? '#4b5563' : '#d1d5db')}
-              linkWidth={1.5}
+              linkColor={linkColor}
+              linkWidth={0.6}
               nodePointerAreaPaint={(node: GraphNode & { x?: number; y?: number }, color: string, ctx: CanvasRenderingContext2D) => {
                 ctx.beginPath();
                 ctx.arc(node.x!, node.y!, Math.max(getRadius(node), 10), 0, 2 * Math.PI);
                 ctx.fillStyle = color;
                 ctx.fill();
               }}
-              cooldownTicks={100}
-              d3AlphaDecay={0.02}
-              d3VelocityDecay={0.3}
+              warmupTicks={60}
+              cooldownTicks={80}
+              d3AlphaDecay={0.04}
+              d3VelocityDecay={0.35}
             />
           ) : (
             <Skeleton className="size-full rounded-none" aria-hidden />
