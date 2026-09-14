@@ -14,7 +14,10 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: 'Codebase Q&A',
+  title: {
+    default: 'Codebase Q&A',
+    template: '%s · Codebase Q&A',
+  },
   description: 'Ask questions about the platform',
 };
 
@@ -29,7 +32,7 @@ export default function RootLayout({
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
       suppressHydrationWarning
     >
-      <body className="min-h-full flex flex-col">
+      <body className="min-h-full">
         <Providers>{children}</Providers>
       </body>
     </html>
