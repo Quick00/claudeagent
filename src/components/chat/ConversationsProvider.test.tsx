@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, jest, test } from '@jest/globals';
 import { screen, waitFor } from '@testing-library/react';
+import { toast } from 'sonner';
 import { renderWithProviders } from '@/test/render';
 import { mockRouter, usePathname } from '@/test/mocks/next-navigation';
 import { Button } from '@/components/ui/button';
@@ -10,12 +11,41 @@ global.fetch = mockFetch as unknown as typeof fetch;
 
 const jsonOk = (data: unknown) => ({ ok: true, status: 200, json: async () => data });
 
+type Row = { id: string; title: string; updatedAt: string };
+
+/**
+ * A server that actually forgets a deleted conversation. `remove()` drops the
+ * row from the cache and then invalidates, so the refetch has to agree —
+ * a mock that kept answering with the deleted row would let a broken
+ * invalidation pass.
+ */
+function serveRows(initial: Row[]) {
+  let rows = [...initial];
+  mockFetch.mockImplementation(async (input: string, init?: RequestInit) => {
+    if (init?.method === 'DELETE') {
+      rows = rows.filter((r) => r.id !== input.replace('/api/conversations/', ''));
+      return jsonOk({});
+    }
+    return jsonOk(rows);
+  });
+  return () => rows;
+}
+
 function Harness() {
-  const { conversations, loading, refresh, remove, setTitle, pendingConversationId, beginNavigation } =
-    useConversations();
+  const {
+    conversations,
+    loading,
+    loadFailed,
+    refresh,
+    remove,
+    setTitle,
+    pendingConversationId,
+    beginNavigation,
+  } = useConversations();
   return (
     <div>
       {loading && <p>Loading conversations</p>}
+      <p>{`loadFailed:${loadFailed ? 'yes' : 'no'}`}</p>
       <p>{`pending:${pendingConversationId ?? 'none'}`}</p>
       <Button onClick={() => beginNavigation('b')}>open b</Button>
       <ul>
@@ -75,16 +105,13 @@ describe('ConversationsProvider', () => {
   });
 
   test('remove() DELETEs the conversation and drops the row', async () => {
-    mockFetch.mockResolvedValueOnce(
-      jsonOk([
-        { id: 'a', title: 'First', updatedAt: '2026-01-01' },
-        { id: 'b', title: 'Second', updatedAt: '2026-01-02' },
-      ]),
-    );
+    serveRows([
+      { id: 'a', title: 'First', updatedAt: '2026-01-01' },
+      { id: 'b', title: 'Second', updatedAt: '2026-01-02' },
+    ]);
     const { user } = renderProvider();
     await screen.findByText('Second');
 
-    mockFetch.mockResolvedValueOnce(jsonOk({}));
     await user.click(screen.getByRole('button', { name: 'delete b' }));
 
     await waitFor(() => expect(screen.queryByText('Second')).not.toBeInTheDocument());
@@ -98,14 +125,36 @@ describe('ConversationsProvider', () => {
 
   test('removing the conversation that is currently open navigates to /chat', async () => {
     usePathname.mockReturnValue('/chat/b');
-    mockFetch.mockResolvedValueOnce(jsonOk([{ id: 'b', title: 'Second', updatedAt: '2026-01-02' }]));
+    serveRows([{ id: 'b', title: 'Second', updatedAt: '2026-01-02' }]);
     const { user } = renderProvider();
     await screen.findByText('Second');
 
-    mockFetch.mockResolvedValueOnce(jsonOk({}));
     await user.click(screen.getByRole('button', { name: 'delete b' }));
 
     await waitFor(() => expect(mockRouter.push).toHaveBeenCalledWith('/chat'));
+  });
+
+  test('a failed delete toasts and leaves the row in place', async () => {
+    serveRows([{ id: 'b', title: 'Second', updatedAt: '2026-01-02' }]);
+    const { user } = renderProvider();
+    await screen.findByText('Second');
+
+    const toastError = jest.spyOn(toast, 'error').mockReturnValue('');
+    mockFetch.mockResolvedValueOnce({ ok: false, status: 500, text: async () => '' });
+    await user.click(screen.getByRole('button', { name: 'delete b' }));
+
+    await waitFor(() => expect(toastError).toHaveBeenCalled());
+    toastError.mockRestore();
+    expect(screen.getByText('Second')).toBeInTheDocument();
+    expect(mockRouter.push).not.toHaveBeenCalled();
+  });
+
+  test('exposes loadFailed when the list cannot be read', async () => {
+    mockFetch.mockResolvedValue({ ok: false, status: 500, text: async () => '' });
+
+    renderProvider();
+
+    expect(await screen.findByText('loadFailed:yes')).toBeInTheDocument();
   });
 
   test('beginNavigation() marks a conversation pending until the route changes', async () => {
@@ -125,6 +174,36 @@ describe('ConversationsProvider', () => {
         <Harness />
       </ConversationsProvider>,
     );
+
+    expect(screen.getByText('pending:none')).toBeInTheDocument();
+  });
+
+  // Regression: the pending record used to be compared against the pathname
+  // it started from, so navigating /chat -> /chat/b -> New chat put the
+  // pathname back to /chat, matched the old record again, and left the
+  // new-chat pane rendering ChatThreadSkeleton forever.
+  test('a resolved navigation does not come back when the route returns to where it started', async () => {
+    serveRows([{ id: 'b', title: 'Second', updatedAt: '2026-01-02' }]);
+    const { user, rerender } = renderProvider();
+    await screen.findByText('Second');
+
+    await user.click(screen.getByRole('button', { name: 'open b' }));
+    expect(screen.getByText('pending:b')).toBeInTheDocument();
+
+    const remount = () =>
+      rerender(
+        <ConversationsProvider>
+          <Harness />
+        </ConversationsProvider>,
+      );
+
+    usePathname.mockReturnValue('/chat/b');
+    remount();
+    expect(screen.getByText('pending:none')).toBeInTheDocument();
+
+    // "New chat" takes the user back to the pathname the navigation began on.
+    usePathname.mockReturnValue('/chat');
+    remount();
 
     expect(screen.getByText('pending:none')).toBeInTheDocument();
   });

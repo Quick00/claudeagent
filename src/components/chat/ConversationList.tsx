@@ -3,7 +3,7 @@
 import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { MessageSquare, X } from 'lucide-react';
+import { MessageSquare, TriangleAlert, X } from 'lucide-react';
 import {
   SidebarGroup,
   SidebarGroupContent,
@@ -46,7 +46,7 @@ export function ConversationList({
   notificationConvIds?: string[];
   onNavigate?: () => void;
 }) {
-  const { conversations, loading, remove, beginNavigation } = useConversations();
+  const { conversations, loading, loadFailed, remove, beginNavigation } = useConversations();
   const confirm = useConfirm();
   const pathname = usePathname();
   const [filter, setFilter] = useState('');
@@ -83,6 +83,17 @@ export function ConversationList({
           </SidebarMenu>
         </SidebarGroupContent>
       </SidebarGroup>
+    );
+  }
+
+  // A failed list load must not read as "you have no conversations".
+  if (loadFailed && conversations.length === 0) {
+    return (
+      <EmptyState
+        icon={TriangleAlert}
+        title="Could not load conversations"
+        description="Something went wrong reaching the server. Try again in a moment."
+      />
     );
   }
 

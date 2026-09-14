@@ -1,8 +1,12 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import confetti from 'canvas-confetti';
 import { useSession } from 'next-auth/react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { toast } from 'sonner';
+import { apiFetch, jsonBody } from '@/lib/api';
+import { qk } from '@/lib/query-keys';
 import { ROUTES } from '@/lib/navigation';
 import { useConversations } from './ConversationsProvider';
 
@@ -74,6 +78,39 @@ const TOOL_LABELS: Record<string, string> = {
 /** Conversation counts worth celebrating. Above 100 every hundredth. */
 const MILESTONES = [1, 10, 25, 50];
 
+/**
+ * How often to re-read a thread whose last message is still the user's — the
+ * answer is being generated somewhere else (another tab, or a reload mid-run).
+ */
+const ANSWER_POLL_MS = 500;
+
+/**
+ * How long a thread whose last message is the user's is treated as "an answer
+ * is on its way". Past this, the run is assumed dead (a crashed CLI session, a
+ * closed tab) — otherwise such a thread would poll every half second forever
+ * and keep its composer disabled, with no way for the user to try again.
+ */
+const ANSWER_WAIT_WINDOW_MS = 5 * 60_000;
+
+/**
+ * True while the answer to the last message is expected to arrive on its own —
+ * it is being generated in another tab, or by a run that outlived a reload.
+ *
+ * Never for an admin reading someone else's thread: an admin's own send does
+ * not stream a `done`, so the last message stays theirs and this would never
+ * clear.
+ */
+function isAwaitingAnswer(data: ApiConversation | undefined): boolean {
+  if (!data || data.isOwner === false) return false;
+  const last = data.messages[data.messages.length - 1];
+  if (!last || last.role !== 'user') return false;
+  const sentAt = last.createdAt ? new Date(last.createdAt).getTime() : NaN;
+  return !Number.isNaN(sentAt) && Date.now() - sentAt < ANSWER_WAIT_WINDOW_MS;
+}
+
+const NO_MESSAGES: Message[] = [];
+const NO_FLAGS: Flag[] = [];
+
 /** Confetti is decoration; a canvas it cannot draw on must never break a send. */
 function fireConfetti(options: confetti.Options) {
   try {
@@ -97,159 +134,234 @@ const toMessage = (m: ApiMessage): Message => ({
  * Everything one chat thread needs: its messages, who owns it, its flags, the
  * Claude-link state, and the two actions (`send`, `flag`).
  *
+ * The thread itself is Query's, under `qk.conversations.detail(id)` — which is
+ * what makes coming back to a conversation you just read render instantly from
+ * cache instead of flashing a skeleton. The cache is also the *only* store for
+ * messages: an optimistic bubble and a finished answer are written into it
+ * with `setQueryData`, never into a parallel `useState`, so the invalidation
+ * after a stream completes cannot produce duplicates.
+ *
+ * The one exception is a brand-new chat, which has no id and therefore no key
+ * until the server sends one. Those messages live in `draft` until the
+ * `conversation_created` frame, which seeds the real key with them.
+ *
  * Page-scoped on purpose — the conversation list is shell-scoped and lives in
- * `ConversationsProvider`. This hook only asks it to `refresh()`.
+ * `ConversationsProvider`.
  */
 export function useConversation(initialConversationId: string | null) {
   const { data: session } = useSession();
   const { refresh: refreshConversations } = useConversations();
+  const queryClient = useQueryClient();
 
   const [conversationId, setConversationId] = useState<string | null>(initialConversationId);
-  const [messages, setMessages] = useState<Message[]>([]);
   const [streamingContent, setStreamingContent] = useState('');
   const [toolStatus, setToolStatus] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
-  const [initialLoading, setInitialLoading] = useState(initialConversationId !== null);
-  const [claudeLinked, setClaudeLinked] = useState<boolean | null>(null);
-  const [ownership, setOwnership] = useState<Ownership | null>(null);
-  const [flags, setFlags] = useState<Flag[]>([]);
-  const [flagSubmitting, setFlagSubmitting] = useState(false);
+  const [isStreaming, setIsStreaming] = useState(false);
 
   const knowledgeConfettiFired = useRef(false);
-  const abortRef = useRef<AbortController | null>(null);
 
   /**
-   * The abort signal for everything this hook has in flight, resolved at the
-   * point of use rather than during render.
+   * The only `AbortController` left. Query cancels its own requests through
+   * the `signal` every `queryFn` below forwards to `apiFetch`; this one exists
+   * solely for the raw `/api/chat` stream, which Query must never own.
    *
-   * That distinction matters: StrictMode re-runs effects *without* an
-   * intervening render, so a controller the previous cleanup aborted is still
-   * in the ref when the effects run again. Replacing it during render is too
-   * late — every refetch inherits the aborted signal and rejects immediately.
+   * It is created per send rather than per effect, so the StrictMode hazard
+   * that used to break this hook — effects re-running with no intervening
+   * render and reusing an already-aborted controller — cannot recur. The
+   * cleanup reads the ref at unmount time, so whichever controller is current
+   * is the one aborted.
    */
-  const nextSignal = useCallback(() => {
-    if (!abortRef.current || abortRef.current.signal.aborted) {
-      abortRef.current = new AbortController();
-    }
-    return abortRef.current.signal;
+  const streamAbortRef = useRef<AbortController | null>(null);
+  useEffect(() => () => streamAbortRef.current?.abort(), []);
+
+  // Optimistic messages for a chat that has no id yet, mirrored into a ref so
+  // the async send loop can seed the cache with them without a stale closure.
+  const draftRef = useRef<Message[]>(NO_MESSAGES);
+  const [draft, setDraft] = useState<Message[]>(NO_MESSAGES);
+  const updateDraft = useCallback((fn: (prev: Message[]) => Message[]) => {
+    draftRef.current = fn(draftRef.current);
+    setDraft(draftRef.current);
   }, []);
 
-  // Read the ref at cleanup time, not setup time, so a controller created
-  // after this effect ran is still the one that gets aborted on unmount.
-  useEffect(() => () => abortRef.current?.abort(), []);
+  // ───────────────────────────── Claude link ─────────────────────────────
 
-  const refreshClaudeStatus = useCallback(async () => {
-    const signal = nextSignal();
-    try {
-      const res = await fetch('/api/auth/claude/status', { signal });
-      const data = await res.json();
-      setClaudeLinked(!!data.linked);
-    } catch {
-      if (!signal.aborted) setClaudeLinked(false);
-    }
-  }, [nextSignal]);
+  const claudeQuery = useQuery({
+    queryKey: qk.claude.status(),
+    queryFn: ({ signal }) =>
+      apiFetch<{ linked?: boolean }>('/api/auth/claude/status', { signal }),
+  });
 
+  // Tri-state on purpose: null means "not known yet", and `ChatThread` must
+  // not offer the link screen until the probe has actually answered.
+  const claudeLinked: boolean | null = claudeQuery.data
+    ? !!claudeQuery.data.linked
+    : claudeQuery.isError
+      ? false
+      : null;
+
+  const refreshClaudeStatus = useCallback(() => {
+    void queryClient.invalidateQueries({ queryKey: qk.claude.status() });
+  }, [queryClient]);
+
+  const setClaudeUnlinked = useCallback(() => {
+    queryClient.setQueryData(qk.claude.status(), { linked: false });
+  }, [queryClient]);
+
+  // ────────────────────────────── The thread ──────────────────────────────
+
+  const convQuery = useQuery({
+    queryKey: qk.conversations.detail(conversationId ?? ''),
+    queryFn: ({ signal }) =>
+      apiFetch<ApiConversation>(`/api/conversations/${conversationId}`, { signal }),
+    // Disabled while streaming: a refetch landing mid-answer would replace the
+    // optimistic bubble with a half-written server copy. The `done` frame
+    // invalidates, and the refetch runs the moment this flips back on.
+    enabled: !!conversationId && !isStreaming,
+    // Replaces the old `visibilitychange` listener. Overridden per query
+    // because the app-wide default is off.
+    refetchOnWindowFocus: true,
+    // Replaces the old 500ms `setTimeout` chain. Query pauses this while the
+    // tab is hidden, which the hand-rolled version could not do.
+    refetchInterval: (query) => (isAwaitingAnswer(query.state.data) ? ANSWER_POLL_MS : false),
+  });
+
+  // `apiFetch` throws now, so a failed load is real information rather than a
+  // silently empty thread. Surfaced once per failure, not once per render.
+  const loadError = convQuery.error;
+  const reportedErrorRef = useRef<unknown>(null);
   useEffect(() => {
-    refreshClaudeStatus();
-  }, [refreshClaudeStatus]);
+    if (!loadError || reportedErrorRef.current === loadError) return;
+    reportedErrorRef.current = loadError;
+    toast.error('Could not load this conversation.');
+  }, [loadError]);
 
-  /** Mark responded flags seen, so the sidebar dot clears. */
-  const processFlags = useCallback((incoming: Flag[]) => {
-    setFlags(incoming);
-    for (const flag of incoming) {
-      if (flag.status === 'RESPONDED' && !flag.seenByUser) {
-        fetch(`/api/flags/${flag.id}/seen`, { method: 'PATCH' }).catch(() => {});
-      }
-    }
-  }, []);
+  const serverData = convQuery.data;
 
-  const applyConversation = useCallback(
-    (data: ApiConversation) => {
-      const msgs = data.messages.map(toMessage);
-      setMessages(msgs);
-      setOwnership({
-        isOwner: !!data.isOwner,
-        isAdmin: !!data.isAdmin,
-        ownerHasClaudeToken: !!data.ownerHasClaudeToken,
-        ownerName: data.user?.name ?? 'user',
-        hasSession: !!data.claudeSessionId,
-      });
-      if (data.flags) processFlags(data.flags);
-      return msgs;
-    },
-    [processFlags],
+  const messages = useMemo<Message[]>(
+    () => (serverData ? serverData.messages.map(toMessage) : draft),
+    [serverData, draft],
   );
 
-  // Load the thread named by the route. `ChatThread` is keyed on the id, so
-  // this runs once per conversation rather than swapping state in place.
+  const ownership = useMemo<Ownership | null>(
+    () =>
+      serverData
+        ? {
+            isOwner: !!serverData.isOwner,
+            isAdmin: !!serverData.isAdmin,
+            ownerHasClaudeToken: !!serverData.ownerHasClaudeToken,
+            ownerName: serverData.user?.name ?? 'user',
+            hasSession: !!serverData.claudeSessionId,
+          }
+        : null,
+    [serverData],
+  );
+
+  const flags = serverData?.flags ?? NO_FLAGS;
+  const hasPendingFlag = flags.some((f) => f.status === 'PENDING');
+
+  // A conversation the route named, whose first read has not answered yet.
+  // Never deferred: the fallback while loading is the destination's own
+  // skeleton, and delaying it would put the new-chat empty state on screen.
+  const initialLoading = !!initialConversationId && convQuery.isPending;
+
+  // The thinking indicator, and what disables the composer. Derived rather
+  // than stored: the old hook set a flag from inside its poll callback, which
+  // is the same information arrived at twice.
+  const isLoading = isStreaming || isAwaitingAnswer(serverData);
+
+  // ───────────────────────── Cache-backed message edits ─────────────────────
+
+  // The live conversation id for the async send loop, which cannot see a
+  // `setConversationId` it performed itself.
+  const convIdRef = useRef<string | null>(initialConversationId);
+
+  const appendMessage = useCallback(
+    (message: Message) => {
+      const id = convIdRef.current;
+      const key = id ? qk.conversations.detail(id) : null;
+      if (key && queryClient.getQueryData<ApiConversation>(key)) {
+        queryClient.setQueryData<ApiConversation>(key, (old) =>
+          old ? { ...old, messages: [...old.messages, message] } : old,
+        );
+        return;
+      }
+      // No server payload to append to (new chat, or a load that failed):
+      // the draft is what `messages` reads in that case.
+      updateDraft((prev) => [...prev, message]);
+    },
+    [queryClient, updateDraft],
+  );
+
+  const dropMessage = useCallback(
+    (messageId: string) => {
+      const id = convIdRef.current;
+      const key = id ? qk.conversations.detail(id) : null;
+      if (key && queryClient.getQueryData<ApiConversation>(key)) {
+        queryClient.setQueryData<ApiConversation>(key, (old) =>
+          old ? { ...old, messages: old.messages.filter((m) => m.id !== messageId) } : old,
+        );
+        return;
+      }
+      updateDraft((prev) => prev.filter((m) => m.id !== messageId));
+    },
+    [queryClient, updateDraft],
+  );
+
+  // ─────────────────────────────── Flags ───────────────────────────────
+
+  const { mutate: markFlagSeen } = useMutation({
+    mutationFn: (flagId: string) =>
+      apiFetch<void>(`/api/flags/${flagId}/seen`, jsonBody('PATCH')),
+    onSuccess: () => {
+      // The shell's unread dot reads the same endpoint; clearing it here means
+      // the badge goes away on read rather than on the next 30s tick.
+      void queryClient.invalidateQueries({ queryKey: qk.flags.notifications() });
+    },
+  });
+
+  // One PATCH per flag per mount: the thread is refetched on focus and on a
+  // poll, and re-marking an already-seen flag on every one of those is waste.
+  const markedSeenRef = useRef<Set<string>>(new Set());
   useEffect(() => {
-    // `initialLoading` already starts false for a brand-new thread.
-    if (!initialConversationId) return;
-    let cancelled = false;
-    const signal = nextSignal();
-    (async () => {
+    for (const f of flags) {
+      if (f.status === 'RESPONDED' && !f.seenByUser && !markedSeenRef.current.has(f.id)) {
+        markedSeenRef.current.add(f.id);
+        markFlagSeen(f.id);
+      }
+    }
+  }, [flags, markFlagSeen]);
+
+  const { mutateAsync: createFlag, isPending: flagSubmitting } = useMutation({
+    mutationFn: (vars: { conversationId: string; reason: string }) =>
+      apiFetch<Flag>(
+        '/api/flags',
+        jsonBody('POST', { conversationId: vars.conversationId, reason: vars.reason }),
+      ),
+    onSuccess: (created, vars) => {
+      const key = qk.conversations.detail(vars.conversationId);
+      queryClient.setQueryData<ApiConversation>(key, (old) =>
+        old ? { ...old, flags: [...(old.flags ?? []), created] } : old,
+      );
+      void queryClient.invalidateQueries({ queryKey: key });
+      void queryClient.invalidateQueries({ queryKey: qk.flags.all });
+    },
+  });
+
+  const flag = useCallback(
+    async (reason: string) => {
+      if (!conversationId || flagSubmitting || hasPendingFlag) return false;
       try {
-        const res = await fetch(`/api/conversations/${initialConversationId}`, { signal });
-        if (!res.ok || cancelled) return;
-        const data = (await res.json()) as ApiConversation;
-        if (cancelled) return;
-        applyConversation(data);
+        await createFlag({ conversationId, reason });
+        return true;
       } catch {
-        // Leave the thread empty; the visibility poll retries on focus.
-      } finally {
-        // An aborted load has not finished, it was thrown away. Clearing the
-        // flag here would drop the skeleton and show the "no messages yet"
-        // empty state on a conversation that does have messages.
-        if (!cancelled && !signal.aborted) setInitialLoading(false);
+        // `FlagPopover` raises the toast for a false return.
+        return false;
       }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [initialConversationId, applyConversation, nextSignal]);
+    },
+    [conversationId, createFlag, flagSubmitting, hasPendingFlag],
+  );
 
-  // Coming back to the tab: re-read the thread. If the last message is still
-  // the user's, the answer is being generated elsewhere — poll until it lands.
-  useEffect(() => {
-    let pollTimer: ReturnType<typeof setTimeout> | null = null;
-    let cancelled = false;
-
-    const poll = async (convId: string) => {
-      if (cancelled) return;
-      try {
-        const res = await fetch(`/api/conversations/${convId}`, { signal: nextSignal() });
-        if (!res.ok || cancelled) return;
-        const data = (await res.json()) as ApiConversation;
-        if (cancelled) return;
-        const msgs = applyConversation(data);
-        const last = msgs[msgs.length - 1];
-        if (last && last.role === 'user') {
-          setIsLoading(true);
-          pollTimer = setTimeout(() => poll(convId), 500);
-        } else {
-          setIsLoading(false);
-        }
-      } catch {
-        // Network blip; the next visibility change tries again.
-      }
-    };
-
-    const onVisibilityChange = () => {
-      if (document.visibilityState === 'visible' && conversationId && !isLoading) {
-        poll(conversationId);
-      }
-    };
-    document.addEventListener('visibilitychange', onVisibilityChange);
-    return () => {
-      cancelled = true;
-      if (pollTimer) clearTimeout(pollTimer);
-      document.removeEventListener('visibilitychange', onVisibilityChange);
-    };
-  }, [conversationId, isLoading, applyConversation, nextSignal]);
-
-  const appendMessage = useCallback((message: Message) => {
-    setMessages((prev) => [...prev, message]);
-  }, []);
+  // ──────────────────────────────── Send ────────────────────────────────
 
   const send = useCallback(
     async (message: string, attachments: Attachment[] = []) => {
@@ -276,7 +388,7 @@ export function useConversation(initialConversationId: string | null) {
         createdAt: new Date().toISOString(),
         sentByAdmin: adminAttribution,
       });
-      setIsLoading(true);
+      setIsStreaming(true);
       setStreamingContent('');
       setToolStatus(null);
 
@@ -285,7 +397,13 @@ export function useConversation(initialConversationId: string | null) {
       // protocol against `/api/chat`. `feature/resumable-chat-streams` replaces
       // this block wholesale with `useConversationStream`; nothing outside the
       // markers knows how the bytes arrive, so that rebase is local.
-      const signal = nextSignal();
+      //
+      // This is deliberately a raw `fetch`, not `apiFetch` and not a Query
+      // mutation: the body is an SSE `ReadableStream` read frame by frame, and
+      // Query has no place in the middle of that.
+      const controller = new AbortController();
+      streamAbortRef.current = controller;
+      const signal = controller.signal;
       try {
         const res = isAdminSend
           ? await fetch(`/api/admin/conversations/${conversationId}/messages`, {
@@ -308,8 +426,8 @@ export function useConversation(initialConversationId: string | null) {
         if (res.status === 403) {
           const data = await res.json();
           if (data.error === 'claude_account_not_linked' || data.error === 'claude_token_expired') {
-            setClaudeLinked(false);
-            setMessages((prev) => prev.filter((m) => m.id !== tempId));
+            setClaudeUnlinked();
+            dropMessage(tempId);
             return;
           }
         }
@@ -342,11 +460,29 @@ export function useConversation(initialConversationId: string | null) {
             }
 
             if (event.type === 'conversation_created' && event.conversationId) {
+              const newId = event.conversationId;
+              // Seed the cache for the new id from the draft, so switching to
+              // the real key finds data already there: no refetch of what we
+              // have, and no empty frame between the two keys.
+              queryClient.setQueryData<ApiConversation>(
+                qk.conversations.detail(newId),
+                (old) =>
+                  old ?? {
+                    messages: draftRef.current,
+                    isOwner: true,
+                    isAdmin: false,
+                    ownerHasClaudeToken: true,
+                    claudeSessionId: null,
+                    user: { name: session?.user?.name ?? 'user' },
+                    flags: [],
+                  },
+              );
+              convIdRef.current = newId;
               // Swap the URL in place. `router.push` would remount the thread
               // and throw away the optimistic bubble mid-answer.
-              setConversationId(event.conversationId);
-              window.history.replaceState(null, '', ROUTES.chat(event.conversationId));
-              refreshConversations();
+              setConversationId(newId);
+              window.history.replaceState(null, '', ROUTES.chat(newId));
+              void refreshConversations();
             }
 
             if (event.type === 'text') {
@@ -380,6 +516,16 @@ export function useConversation(initialConversationId: string | null) {
                 createdAt: new Date().toISOString(),
               });
               setStreamingContent('');
+              // The cache, not this hook, is the record of what was said. The
+              // bubble above keeps the answer on screen; this replaces it with
+              // the server's copy (real ids, real timestamps) as soon as the
+              // query is re-enabled in the `finally` below.
+              const settledId = convIdRef.current;
+              if (settledId) {
+                void queryClient.invalidateQueries({
+                  queryKey: qk.conversations.detail(settledId),
+                });
+              }
               const rows = await refreshConversations();
               const count = rows.length;
               if (MILESTONES.includes(count) || (count >= 100 && count % 100 === 0)) {
@@ -391,9 +537,9 @@ export function useConversation(initialConversationId: string | null) {
               setStreamingContent('');
               setToolStatus(null);
               if (event.errorType === 'claude_token_expired') {
-                setClaudeLinked(false);
-                setIsLoading(false);
-                setMessages((prev) => prev.filter((m) => m.id !== tempId));
+                setClaudeUnlinked();
+                setIsStreaming(false);
+                dropMessage(tempId);
                 return;
               }
               appendMessage({
@@ -415,37 +561,20 @@ export function useConversation(initialConversationId: string | null) {
         });
         setStreamingContent('');
       } finally {
-        if (!signal.aborted) setIsLoading(false);
+        if (!signal.aborted) setIsStreaming(false);
       }
       // ─────────────────────── end SSE streaming block ───────────────────────
     },
-    [appendMessage, conversationId, nextSignal, ownership, refreshConversations, session],
-  );
-
-  const hasPendingFlag = flags.some((f) => f.status === 'PENDING');
-
-  const flag = useCallback(
-    async (reason: string) => {
-      if (!conversationId || flagSubmitting || hasPendingFlag) return false;
-      setFlagSubmitting(true);
-      try {
-        const res = await fetch('/api/flags', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ conversationId, reason }),
-          signal: nextSignal(),
-        });
-        if (!res.ok) return false;
-        const created = (await res.json()) as Flag;
-        setFlags((prev) => [...prev, created]);
-        return true;
-      } catch {
-        return false;
-      } finally {
-        setFlagSubmitting(false);
-      }
-    },
-    [conversationId, flagSubmitting, hasPendingFlag, nextSignal],
+    [
+      appendMessage,
+      conversationId,
+      dropMessage,
+      ownership,
+      queryClient,
+      refreshConversations,
+      session,
+      setClaudeUnlinked,
+    ],
   );
 
   return {

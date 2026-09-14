@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, jest, test } from '@jest/globals';
-import { screen, waitFor } from '@testing-library/react';
+import { act, screen, waitFor } from '@testing-library/react';
 import { renderWithProviders } from '@/test/render';
 import { NotificationsProvider, useNotifications } from './NotificationsProvider';
 
@@ -78,6 +78,26 @@ describe('NotificationsProvider', () => {
     unmount();
     expect(clearSpy).toHaveBeenCalled();
     clearSpy.mockRestore();
+  });
+
+  test('keeps polling on the 30s interval', async () => {
+    jest.useFakeTimers();
+    const { unmount } = renderWithProviders(
+      <NotificationsProvider isAdmin={false}>
+        <Probe />
+      </NotificationsProvider>,
+    );
+    await waitFor(() => expect(screen.getByTestId('ids')).toHaveTextContent('c1,c2'));
+    expect(calledUrls()).toHaveLength(1);
+
+    await act(async () => {
+      jest.advanceTimersByTime(30_000);
+    });
+
+    await waitFor(() => expect(calledUrls().length).toBeGreaterThanOrEqual(2));
+    expect(calledUrls().every((u) => u === '/api/flags/notifications')).toBe(true);
+    unmount();
+    jest.useRealTimers();
   });
 
   test('reads as all-quiet outside a provider', () => {

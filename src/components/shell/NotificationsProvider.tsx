@@ -1,6 +1,9 @@
 'use client';
 
-import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
+import { createContext, useContext, useMemo, type ReactNode } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { apiFetch } from '@/lib/api';
+import { qk } from '@/lib/query-keys';
 
 /**
  * The one poller for everything the shell badges. It replaces the three
@@ -19,8 +22,10 @@ export type Notifications = {
 
 const POLL_INTERVAL_MS = 30_000;
 
+const NO_IDS: string[] = [];
+
 const ALL_QUIET: Notifications = {
-  notificationConvIds: [],
+  notificationConvIds: NO_IDS,
   pendingFlags: 0,
   pendingFeedback: 0,
 };
@@ -35,12 +40,6 @@ export function useNotifications(): Notifications {
   return useContext(NotificationsContext);
 }
 
-async function getJson(url: string): Promise<unknown> {
-  const res = await fetch(url);
-  if (!res.ok) return null;
-  return res.json();
-}
-
 export function NotificationsProvider({
   isAdmin,
   children,
@@ -48,52 +47,48 @@ export function NotificationsProvider({
   isAdmin: boolean;
   children: ReactNode;
 }) {
-  const [value, setValue] = useState<Notifications>(ALL_QUIET);
+  // Three queries rather than one hand-rolled tick. `refetchInterval` is the
+  // 30s poll; Query pauses it while the tab is hidden, which the old
+  // `setInterval` never did. A failed poll keeps the last counts and the next
+  // tick retries — the same "not worth a toast" rule as before, except the
+  // failure is now visible in the cache rather than swallowed by a `catch`.
+  const notificationsQuery = useQuery({
+    queryKey: qk.flags.notifications(),
+    queryFn: ({ signal }) =>
+      apiFetch<{ conversationIds?: string[] }>('/api/flags/notifications', { signal }),
+    refetchInterval: POLL_INTERVAL_MS,
+  });
 
-  useEffect(() => {
-    let cancelled = false;
+  // `enabled` is what keeps a plain user off the admin endpoints: they are
+  // never requested at all, not requested and discarded.
+  const adminFlagsQuery = useQuery({
+    queryKey: qk.flags.adminNotifications(),
+    queryFn: ({ signal }) =>
+      apiFetch<{ count?: number }>('/api/flags/admin-notifications', { signal }),
+    enabled: isAdmin,
+    refetchInterval: POLL_INTERVAL_MS,
+  });
 
-    const poll = async () => {
-      const next: Notifications = { ...ALL_QUIET };
+  const feedbackQuery = useQuery({
+    queryKey: qk.feedback.adminList('TODO'),
+    queryFn: ({ signal }) =>
+      apiFetch<{ id: string }[]>('/api/admin/feedback?status=TODO', { signal }),
+    enabled: isAdmin,
+    refetchInterval: POLL_INTERVAL_MS,
+  });
 
-      try {
-        const data = (await getJson('/api/flags/notifications')) as {
-          conversationIds?: string[];
-        } | null;
-        if (Array.isArray(data?.conversationIds)) next.notificationConvIds = data.conversationIds;
-      } catch {
-        // A failed poll is not worth a toast: the next tick retries.
-      }
+  const conversationIds = notificationsQuery.data?.conversationIds;
+  const pendingFlagsCount = adminFlagsQuery.data?.count;
+  const feedbackRows = feedbackQuery.data;
 
-      // A plain user has no access to either admin endpoint, so never ask.
-      if (isAdmin) {
-        try {
-          const data = (await getJson('/api/flags/admin-notifications')) as {
-            count?: number;
-          } | null;
-          next.pendingFlags = data?.count ?? 0;
-        } catch {
-          // ignored, see above
-        }
-
-        try {
-          const data = await getJson('/api/admin/feedback?status=TODO');
-          if (Array.isArray(data)) next.pendingFeedback = data.length;
-        } catch {
-          // ignored, see above
-        }
-      }
-
-      if (!cancelled) setValue(next);
-    };
-
-    void poll();
-    const interval = setInterval(() => void poll(), POLL_INTERVAL_MS);
-    return () => {
-      cancelled = true;
-      clearInterval(interval);
-    };
-  }, [isAdmin]);
+  const value = useMemo<Notifications>(
+    () => ({
+      notificationConvIds: Array.isArray(conversationIds) ? conversationIds : NO_IDS,
+      pendingFlags: isAdmin ? (pendingFlagsCount ?? 0) : 0,
+      pendingFeedback: isAdmin && Array.isArray(feedbackRows) ? feedbackRows.length : 0,
+    }),
+    [conversationIds, pendingFlagsCount, feedbackRows, isAdmin],
+  );
 
   return <NotificationsContext.Provider value={value}>{children}</NotificationsContext.Provider>;
 }

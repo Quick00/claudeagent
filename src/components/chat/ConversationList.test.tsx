@@ -11,10 +11,29 @@ global.fetch = mockFetch as unknown as typeof fetch;
 
 const jsonOk = (data: unknown) => ({ ok: true, status: 200, json: async () => data });
 
-const ROWS = [
+type Row = { id: string; title: string; updatedAt: string };
+
+const ROWS: Row[] = [
   { id: 'a', title: 'How does login work?', updatedAt: '2026-01-01' },
   { id: 'b', title: 'Badge types', updatedAt: '2026-01-02' },
 ];
+
+/**
+ * A server that actually forgets a deleted conversation. The list is Query's
+ * now, so a delete invalidates and refetches; a mock that kept answering with
+ * the deleted row would be asserting against a server that never deletes.
+ */
+function serveRows(initial: Row[] = ROWS) {
+  let rows = [...initial];
+  mockFetch.mockImplementation(async (input: string, init?: RequestInit) => {
+    if (init?.method === 'DELETE') {
+      const id = input.replace('/api/conversations/', '');
+      rows = rows.filter((r) => r.id !== id);
+      return jsonOk({});
+    }
+    return jsonOk(rows);
+  });
+}
 
 function renderList(props: { notificationConvIds?: string[]; onNavigate?: () => void } = {}) {
   return renderWithProviders(
@@ -30,7 +49,7 @@ describe('ConversationList', () => {
   beforeEach(() => {
     usePathname.mockReturnValue('/chat');
     mockFetch.mockReset();
-    mockFetch.mockResolvedValue(jsonOk(ROWS));
+    serveRows();
   });
 
   test('renders a link per conversation pointing at /chat/<id>', async () => {
@@ -70,7 +89,6 @@ describe('ConversationList', () => {
 
     await user.click(screen.getByRole('button', { name: /Delete .*Badge types/ }));
     const reopened = await screen.findByRole('alertdialog');
-    mockFetch.mockResolvedValueOnce(jsonOk({}));
     await user.click(within(reopened).getByRole('button', { name: /^delete$/i }));
 
     await waitFor(() =>
@@ -125,9 +143,21 @@ describe('ConversationList', () => {
 
   test('shows an empty state when there are no conversations', async () => {
     mockFetch.mockReset();
-    mockFetch.mockResolvedValue(jsonOk([]));
+    serveRows([]);
     renderList();
 
     expect(await screen.findByText('No conversations yet')).toBeInTheDocument();
+  });
+
+  // A 500 used to be swallowed and render as "No conversations yet", which is
+  // a different and much more alarming statement than "we could not reach the
+  // server". `apiFetch` throws now, so the two are distinguishable.
+  test('shows a failure state rather than "no conversations" when the list errors', async () => {
+    mockFetch.mockReset();
+    mockFetch.mockResolvedValue({ ok: false, status: 500, text: async () => '' });
+    renderList();
+
+    expect(await screen.findByText('Could not load conversations')).toBeInTheDocument();
+    expect(screen.queryByText('No conversations yet')).not.toBeInTheDocument();
   });
 });
