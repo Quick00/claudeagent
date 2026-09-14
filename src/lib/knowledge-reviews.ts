@@ -56,7 +56,8 @@ async function applyAccept(review: ReviewLike, content: string | undefined): Pro
  * - pinned_conflict: the pinned entry's content becomes `payload.proposedContent`.
  * - supersedes: the review's own entry (the stale page) is retired.
  * - proposed_update: the entry's content becomes `payload.suggestedContent`
- *   and its sources are refreshed to HEAD.
+ *   and its sources are refreshed to HEAD — refused if the entry has been
+ *   pinned since the review was queued.
  * Dismiss just closes the review — no entry is touched.
  *
  * Race-safety: the "open" -> "resolved" transition is a conditional
@@ -76,6 +77,19 @@ export async function resolveReview(reviewId: string, action: ReviewAction, admi
   if (review.status !== 'open') throw new Error('Review already resolved');
 
   const toApply = action === 'accept' ? validateForAccept(review) : {};
+
+  // A proposed_update carries model-authored text. The entry may have been
+  // pinned after the review was queued, and a pinned entry is human-owned:
+  // accepting would write Claude's words into a rule Claude may never touch.
+  // (pinned_conflict is the opposite case — overwriting the pinned rule with
+  // the admin-approved text is its whole purpose — so it stays allowed.)
+  if (action === 'accept' && review.type === 'proposed_update') {
+    const entry = await prisma.knowledgeEntry.findUnique({ where: { id: review.entryId }, select: { kind: true } });
+    if (!entry) throw new Error('Entry not found');
+    if (entry.kind === 'pinned') {
+      throw new Error('This entry is pinned; a proposed update cannot be applied to a human-owned rule. Edit it directly or unpin it first.');
+    }
+  }
 
   const claimed = await prisma.knowledgeReview.updateMany({
     where: { id: reviewId, status: 'open' },

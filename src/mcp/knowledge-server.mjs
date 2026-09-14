@@ -13,6 +13,14 @@ const SEARCH_URL = process.env.KNOWLEDGE_SEARCH_URL || 'http://localhost:3000/ap
 const VERIFY_URL = process.env.KNOWLEDGE_VERIFY_URL || 'http://localhost:3000/api/knowledge/verify-result';
 const API_SECRET = process.env.KNOWLEDGE_API_SECRET || '';
 const PROVENANCE_KEY = process.env.PROVENANCE_KEY || '';
+/**
+ * Set only by startTier2() for a tier 2 verification run. When it is empty
+ * this server is serving an ordinary chat session: resolve_verification is not
+ * offered and not callable, so no chat session can resolve a pending run. When
+ * it is set, the run is a verification and save_knowledge is withheld instead
+ * — a verifier reports through resolve_verification, it does not write pages.
+ */
+const VERIFICATION_RUN_ID = process.env.VERIFICATION_RUN_ID || '';
 
 const rl = createInterface({ input: process.stdin });
 
@@ -58,91 +66,96 @@ rl.on('line', async (line) => {
   }
 
   if (method === 'tools/list') {
+    const tools = [
+      {
+        name: 'save_knowledge',
+        description:
+          'Save or update a knowledge page. The system automatically finds the right page and integrates your knowledge, or creates a new one if the subject is genuinely new. You do not need to worry about duplicates — the system handles deduplication and merging. Prefer describing where a feature lives and its key concepts over long behavioural descriptions; keep behavioural claims short and tied to files you actually read.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            category: {
+              type: 'string',
+              enum: ['terminology', 'product_insight', 'process', 'developer'],
+              description:
+                'terminology = what product terms mean, product_insight = how features work, process = business workflows, developer = technical architecture, code patterns, and implementation details',
+            },
+            content: {
+              type: 'string',
+              description:
+                'The knowledge to save. Write it as a general principle or rule, not a specific one-time observation. ALWAYS write in English, even if the conversation is in another language.',
+            },
+            subject: {
+              type: 'string',
+              description:
+                'Suggested page title for this knowledge (e.g. "Badge Printing", "HubSpot Contact Sync"). The system may adjust this.',
+            },
+            tags: {
+              type: 'string',
+              description:
+                'Comma-separated topic tags (lowercase, 1-2 words each). E.g. "badges,printing" or "registration,hubspot".',
+            },
+            based_on: {
+              type: 'array',
+              items: { type: 'string' },
+              description:
+                'Optional. Repository file paths this knowledge is based on, if you know them (relative or absolute). Used to narrow provenance to the files that matter; you cannot add files you did not read.',
+            },
+          },
+          required: ['category', 'content', 'tags'],
+        },
+      },
+      {
+        name: 'search_knowledge',
+        description:
+          'Search the knowledge base for entries relevant to a question or topic. Use this when the user asks what you know, or when you want to check if knowledge exists about a specific topic before answering.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            query: {
+              type: 'string',
+              description: 'The search query — a question or topic to find relevant knowledge about.',
+            },
+            limit: {
+              type: 'number',
+              description: 'Maximum number of results to return (default: 10).',
+            },
+          },
+          required: ['query'],
+        },
+      },
+      {
+        name: 'resolve_verification',
+        description:
+          'Report the result of a knowledge verification run. Only call this when your message asked you to verify a specific page and gave you a run id. A "changed" result is queued for an admin to accept, not applied to the page.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            run_id: { type: 'string', description: 'The verification run id from your instructions.' },
+            entry_id: { type: 'string', description: 'The knowledge entry id from your instructions.' },
+            outcome: {
+              type: 'string',
+              enum: ['confirmed', 'changed', 'retired'],
+              description:
+                'confirmed = still accurate; changed = needs the corrected text in content; retired = the feature/rule no longer exists.',
+            },
+            content: { type: 'string', description: 'Full corrected page text. Required when outcome is "changed"; an admin reviews it before it replaces the page.' },
+          },
+          required: ['run_id', 'entry_id', 'outcome'],
+        },
+      },
+    ];
     send({
       jsonrpc: '2.0',
       id,
       result: {
-        tools: [
-          {
-            name: 'save_knowledge',
-            description:
-              'Save or update a knowledge page. The system automatically finds the right page and integrates your knowledge, or creates a new one if the subject is genuinely new. You do not need to worry about duplicates — the system handles deduplication and merging. Prefer describing where a feature lives and its key concepts over long behavioural descriptions; keep behavioural claims short and tied to files you actually read.',
-            inputSchema: {
-              type: 'object',
-              properties: {
-                category: {
-                  type: 'string',
-                  enum: ['terminology', 'product_insight', 'process', 'developer'],
-                  description:
-                    'terminology = what product terms mean, product_insight = how features work, process = business workflows, developer = technical architecture, code patterns, and implementation details',
-                },
-                content: {
-                  type: 'string',
-                  description:
-                    'The knowledge to save. Write it as a general principle or rule, not a specific one-time observation. ALWAYS write in English, even if the conversation is in another language.',
-                },
-                subject: {
-                  type: 'string',
-                  description:
-                    'Suggested page title for this knowledge (e.g. "Badge Printing", "HubSpot Contact Sync"). The system may adjust this.',
-                },
-                tags: {
-                  type: 'string',
-                  description:
-                    'Comma-separated topic tags (lowercase, 1-2 words each). E.g. "badges,printing" or "registration,hubspot".',
-                },
-                based_on: {
-                  type: 'array',
-                  items: { type: 'string' },
-                  description:
-                    'Optional. Repository file paths this knowledge is based on, if you know them (relative or absolute). Used to narrow provenance to the files that matter; you cannot add files you did not read.',
-                },
-              },
-              required: ['category', 'content', 'tags'],
-            },
-          },
-          {
-            name: 'search_knowledge',
-            description:
-              'Search the knowledge base for entries relevant to a question or topic. Use this when the user asks what you know, or when you want to check if knowledge exists about a specific topic before answering.',
-            inputSchema: {
-              type: 'object',
-              properties: {
-                query: {
-                  type: 'string',
-                  description: 'The search query — a question or topic to find relevant knowledge about.',
-                },
-                limit: {
-                  type: 'number',
-                  description: 'Maximum number of results to return (default: 10).',
-                },
-              },
-              required: ['query'],
-            },
-          },
-          {
-            name: 'resolve_verification',
-            description:
-              'Report the result of a knowledge verification run. Only call this when your message asked you to verify a specific page and gave you a run id.',
-            inputSchema: {
-              type: 'object',
-              properties: {
-                run_id: { type: 'string', description: 'The verification run id from your instructions.' },
-                entry_id: { type: 'string', description: 'The knowledge entry id from your instructions.' },
-                outcome: {
-                  type: 'string',
-                  enum: ['confirmed', 'changed', 'retired'],
-                  description:
-                    'confirmed = still accurate; changed = needs the corrected text in content; retired = the feature/rule no longer exists.',
-                },
-                content: { type: 'string', description: 'Full corrected page text. Required when outcome is "changed".' },
-                subject: { type: 'string', description: 'Optional improved page title.' },
-                tags: { type: 'string', description: 'Optional comma-separated tags.' },
-              },
-              required: ['run_id', 'entry_id', 'outcome'],
-            },
-          },
-        ],
+        // resolve_verification exists only for a verification run; save_knowledge
+        // exists only outside one.
+        tools: tools.filter((t) =>
+          t.name === 'resolve_verification'
+            ? Boolean(VERIFICATION_RUN_ID)
+            : !(VERIFICATION_RUN_ID && t.name === 'save_knowledge'),
+        ),
       },
     });
     return;
@@ -206,6 +219,17 @@ rl.on('line', async (line) => {
     }
 
     if (name === 'save_knowledge') {
+      if (VERIFICATION_RUN_ID) {
+        send({
+          jsonrpc: '2.0',
+          id,
+          result: {
+            content: [{ type: 'text', text: 'save_knowledge is not available during a verification run; report the result with resolve_verification.' }],
+            isError: true,
+          },
+        });
+        return;
+      }
       try {
         const res = await fetch(API_URL, {
           method: 'POST',
@@ -255,6 +279,19 @@ rl.on('line', async (line) => {
     }
 
     if (name === 'resolve_verification') {
+      // The run id comes from the environment this process was spawned with,
+      // never from the model: a tool call naming any other run is refused.
+      if (!VERIFICATION_RUN_ID || args.run_id !== VERIFICATION_RUN_ID) {
+        send({
+          jsonrpc: '2.0',
+          id,
+          result: {
+            content: [{ type: 'text', text: 'resolve_verification is only available to the verification run it was started for.' }],
+            isError: true,
+          },
+        });
+        return;
+      }
       try {
         const res = await fetch(VERIFY_URL, {
           method: 'POST',
@@ -263,12 +300,10 @@ rl.on('line', async (line) => {
             Authorization: `Bearer ${API_SECRET}`,
           },
           body: JSON.stringify({
-            runId: args.run_id,
+            runId: VERIFICATION_RUN_ID,
             entryId: args.entry_id,
             outcome: args.outcome,
             content: args.content,
-            subject: args.subject,
-            tags: args.tags,
           }),
         });
 

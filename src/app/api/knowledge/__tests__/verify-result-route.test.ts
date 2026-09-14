@@ -64,12 +64,12 @@ describe('POST /api/knowledge/verify-result', () => {
     const res = await POST(req({ runId: 'r', entryId: 'e', outcome: 'changed', content: 'c' }));
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ ok: true });
-    expect(mockApply).toHaveBeenCalledWith({ runId: 'r', entryId: 'e', outcome: 'changed', content: 'c', subject: undefined, tags: undefined });
+    expect(mockApply).toHaveBeenCalledWith({ runId: 'r', entryId: 'e', outcome: 'changed', content: 'c' });
   });
 
-  it('drops non-string optional fields rather than passing them through', async () => {
-    await POST(req({ runId: 'r', entryId: 'e', outcome: 'confirmed', subject: { evil: true }, tags: 7 }));
-    expect(mockApply).toHaveBeenCalledWith({ runId: 'r', entryId: 'e', outcome: 'confirmed', content: undefined, subject: undefined, tags: undefined });
+  it('drops a non-string content rather than passing it through, and ignores fields the tool no longer has', async () => {
+    await POST(req({ runId: 'r', entryId: 'e', outcome: 'confirmed', content: { evil: true }, subject: 'S', tags: 7 }));
+    expect(mockApply).toHaveBeenCalledWith({ runId: 'r', entryId: 'e', outcome: 'confirmed', content: undefined });
   });
 
   it('409 when apply rejects the result', async () => {

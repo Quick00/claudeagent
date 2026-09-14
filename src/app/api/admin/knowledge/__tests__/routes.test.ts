@@ -6,14 +6,14 @@ import { requireAdminUser } from '@/lib/api-auth';
 import { buildAttention } from '@/lib/knowledge-attention';
 import { updateEntry, createPinnedEntry } from '@/lib/knowledge-admin';
 import { runTier1 } from '@/lib/knowledge-verifier';
-import { startTier2 } from '@/lib/knowledge-verify-run';
+import { startTier2, reconcileStrandedRuns } from '@/lib/knowledge-verify-run';
 import { resolveReview } from '@/lib/knowledge-reviews';
 
 jest.mock('@/lib/api-auth', () => ({ requireAdminUser: jest.fn() }));
 jest.mock('@/lib/knowledge-attention', () => ({ buildAttention: jest.fn() }));
 jest.mock('@/lib/knowledge-admin', () => ({ updateEntry: jest.fn(), createPinnedEntry: jest.fn() }));
 jest.mock('@/lib/knowledge-verifier', () => ({ runTier1: jest.fn() }));
-jest.mock('@/lib/knowledge-verify-run', () => ({ startTier2: jest.fn() }));
+jest.mock('@/lib/knowledge-verify-run', () => ({ startTier2: jest.fn(), reconcileStrandedRuns: jest.fn().mockResolvedValue(0) }));
 jest.mock('@/lib/knowledge-reviews', () => ({ resolveReview: jest.fn() }));
 jest.mock('@/lib/crypto', () => ({ decrypt: (s: string) => `dec:${s}` }));
 
@@ -30,7 +30,7 @@ beforeEach(() => {
 
 describe('admin knowledge routes', () => {
   it('GET returns attention and refuses non-admins', async () => {
-    (buildAttention as jest.Mock).mockResolvedValue({ stale: [], unverified: [], reviews: [], syncs: [] });
+    (buildAttention as jest.Mock).mockResolvedValue({ stale: [], unverified: [], pinned: [], reviews: [], syncs: [] });
     expect((await GET()).status).toBe(200);
     mockAuth.mockResolvedValue({ ok: false, response: new Response('Forbidden', { status: 403 }) });
     expect((await GET()).status).toBe(403);
@@ -57,6 +57,19 @@ describe('admin knowledge routes', () => {
     const res = await VERIFY(json({ tier: 1 }), params('e1'));
     expect(res.status).toBe(200);
     expect(runTier1).toHaveBeenCalledWith('e1', 'a1');
+  });
+
+  it('verify tier 1 answers 409 rather than an unhandled 500 when the run cannot even be recorded', async () => {
+    (runTier1 as jest.Mock).mockRejectedValue(new Error('db down'));
+    const res = await VERIFY(json({ tier: 1 }), params('e1'));
+    expect(res.status).toBe(409);
+    expect(await res.json()).toEqual({ error: 'db down' });
+  });
+
+  it('GET reconciles stranded verification runs before building the panel', async () => {
+    (buildAttention as jest.Mock).mockResolvedValue({ stale: [], unverified: [], pinned: [], reviews: [], syncs: [] });
+    await GET();
+    expect(reconcileStrandedRuns).toHaveBeenCalled();
   });
 
   it('verify tier 2 needs a linked Claude token and passes the decrypted token', async () => {

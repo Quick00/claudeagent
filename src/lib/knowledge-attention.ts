@@ -41,20 +41,60 @@ export interface AttentionSync {
 export interface Attention {
   stale: AttentionItem[];
   unverified: AttentionItem[];
+  pinned: AttentionItem[];
   reviews: AttentionReview[];
   syncs: AttentionSync[];
+}
+
+interface EntryWithSources {
+  id: string;
+  subject: string;
+  category: string;
+  content: string;
+  tags: string;
+  kind: string;
+  hitCount: number;
+  lastRetrievedAt: Date | null;
+  correctionCount: number;
+  updatedAt: Date;
+  sources: Array<{ verifiedAt: Date }>;
+}
+
+function toItem(e: EntryWithSources, changedPaths: string[]): AttentionItem {
+  return {
+    id: e.id,
+    subject: e.subject,
+    category: e.category,
+    content: e.content,
+    tags: e.tags,
+    kind: e.kind,
+    hitCount: e.hitCount,
+    lastRetrievedAt: e.lastRetrievedAt,
+    correctionCount: e.correctionCount,
+    updatedAt: e.updatedAt,
+    sourceCount: e.sources.length,
+    lastVerifiedAt: e.sources.reduce<Date | null>(
+      (max: Date | null, s: { verifiedAt: Date }) => (!max || s.verifiedAt > max ? s.verifiedAt : max),
+      null,
+    ),
+    changedPaths,
+  };
 }
 
 /**
  * Everything an admin might need to act on. Stale/unverified are computed
  * live from KnowledgeSource blob hashes against the current HEAD trees on
  * every call — nothing about freshness is stored. Pinned entries are always
- * fresh (see computeFreshness) so they never appear here.
+ * fresh (see computeFreshness) so they never appear in those two lists; they
+ * get their own list instead, because spec §10.2 makes unpin an admin action
+ * and a pinned entry that appeared in no tab could never be unpinned, edited
+ * or retired from the panel again.
  */
 export async function buildAttention(): Promise<Attention> {
-  const [headTrees, entries, reviews, syncs] = await Promise.all([
+  const [headTrees, entries, pinnedEntries, reviews, syncs] = await Promise.all([
     loadActiveHeadTrees(),
     prisma.knowledgeEntry.findMany({ where: { status: 'active', kind: 'derived' }, include: { sources: true } }),
+    prisma.knowledgeEntry.findMany({ where: { status: 'active', kind: 'pinned' }, include: { sources: true }, orderBy: { updatedAt: 'desc' } }),
     prisma.knowledgeReview.findMany({
       where: { status: 'open' },
       orderBy: { createdAt: 'desc' },
@@ -69,24 +109,7 @@ export async function buildAttention(): Promise<Attention> {
   for (const e of entries) {
     const freshness = computeFreshness(e, e.sources, headTrees);
     if (freshness.state === 'fresh') continue;
-    const item: AttentionItem = {
-      id: e.id,
-      subject: e.subject,
-      category: e.category,
-      content: e.content,
-      tags: e.tags,
-      kind: e.kind,
-      hitCount: e.hitCount,
-      lastRetrievedAt: e.lastRetrievedAt,
-      correctionCount: e.correctionCount,
-      updatedAt: e.updatedAt,
-      sourceCount: e.sources.length,
-      lastVerifiedAt: e.sources.reduce<Date | null>(
-        (max: Date | null, s: { verifiedAt: Date }) => (!max || s.verifiedAt > max ? s.verifiedAt : max),
-        null,
-      ),
-      changedPaths: freshness.state === 'stale' ? freshness.changedPaths : [],
-    };
+    const item = toItem(e, freshness.state === 'stale' ? freshness.changedPaths : []);
     (freshness.state === 'stale' ? stale : unverified).push(item);
   }
 
@@ -97,6 +120,7 @@ export async function buildAttention(): Promise<Attention> {
   return {
     stale,
     unverified,
+    pinned: pinnedEntries.map((e) => toItem(e, [])),
     reviews: reviews.map((r) => ({ id: r.id, type: r.type, payload: r.payload, createdAt: r.createdAt, entry: r.entry })),
     syncs: syncs.map((s) => ({
       id: s.id,

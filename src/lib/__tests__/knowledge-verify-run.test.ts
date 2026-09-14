@@ -1,6 +1,6 @@
 import { EventEmitter } from 'events';
 import { PassThrough } from 'stream';
-import { applyVerificationResult, provenanceKeyForRun, startTier2 } from '@/lib/knowledge-verify-run';
+import { applyVerificationResult, provenanceKeyForRun, reconcileStrandedRuns, startTier2 } from '@/lib/knowledge-verify-run';
 import { prisma } from '@/lib/prisma';
 import { refreshSourcesToHead, updateEntry } from '@/lib/knowledge-admin';
 import { provenanceCollector } from '@/lib/provenance-collector';
@@ -9,8 +9,9 @@ import { sessionManager } from '@/lib/session-manager';
 
 jest.mock('@/lib/prisma', () => ({
   prisma: {
-    verificationRun: { findUnique: jest.fn(), create: jest.fn(), update: jest.fn(), updateMany: jest.fn() },
+    verificationRun: { findUnique: jest.fn(), findFirst: jest.fn(), create: jest.fn(), update: jest.fn(), updateMany: jest.fn() },
     knowledgeEntry: { findUnique: jest.fn() },
+    knowledgeReview: { findFirst: jest.fn(), create: jest.fn(), update: jest.fn() },
     knowledgeSource: { upsert: jest.fn() },
     repository: { findMany: jest.fn() },
   },
@@ -32,6 +33,9 @@ jest.mock('@/lib/config', () => ({
 }));
 
 const mockFindRun = prisma.verificationRun.findUnique as jest.Mock;
+const mockFindFirstRun = prisma.verificationRun.findFirst as jest.Mock;
+const mockFindReview = prisma.knowledgeReview.findFirst as jest.Mock;
+const mockCreateReview = prisma.knowledgeReview.create as jest.Mock;
 const mockCreateRun = prisma.verificationRun.create as jest.Mock;
 const mockUpdateRun = prisma.verificationRun.update as jest.Mock;
 const mockUpdateManyRun = prisma.verificationRun.updateMany as jest.Mock;
@@ -57,11 +61,26 @@ const tick = () => new Promise((r) => setImmediate(r));
 
 // Failure paths log by design; keep the suite output clean.
 const consoleError = jest.spyOn(console, 'error').mockImplementation(() => {});
-afterAll(() => consoleError.mockRestore());
+const consoleLog = jest.spyOn(console, 'log').mockImplementation(() => {});
+afterAll(() => {
+  consoleError.mockRestore();
+  consoleLog.mockRestore();
+});
+
+/**
+ * `verificationRun.updateMany` serves two callers — the stranded-run sweep and
+ * the run's own conditional claim. Only the second names a run id.
+ */
+function claimCalls() {
+  return mockUpdateManyRun.mock.calls.filter((c) => typeof c[0]?.where?.id === 'string');
+}
 
 beforeEach(() => {
   jest.clearAllMocks();
   mockFindRun.mockResolvedValue({ id: 'run-1', entryId: 'e1', tier: 2, outcome: 'pending', reason: '' });
+  mockFindFirstRun.mockResolvedValue(null);
+  mockFindReview.mockResolvedValue(null);
+  mockCreateReview.mockResolvedValue({ id: 'rev-1' });
   mockFindEntry.mockResolvedValue({ id: 'e1', kind: 'derived', subject: 'S', category: 'process', content: 'C', tags: 't', sources: [] });
   mockUpdateManyRun.mockResolvedValue({ count: 1 });
   mockCreateRun.mockResolvedValue({ id: 'run-1' });
@@ -127,10 +146,26 @@ describe('applyVerificationResult', () => {
     expect(updateEntry).not.toHaveBeenCalled();
   });
 
-  it('changed: updates content (and subject/tags when given) then refreshes sources', async () => {
-    await applyVerificationResult({ runId: 'run-1', entryId: 'e1', outcome: 'changed', content: 'new', subject: 'S' });
-    expect(updateEntry).toHaveBeenCalledWith('e1', { content: 'new', subject: 'S' });
-    expect(refreshSourcesToHead).toHaveBeenCalledWith('e1');
+  it('changed: queues a proposed_update review instead of writing the verifier\'s text into the entry', async () => {
+    // The corrected text is model output shaped by repo file contents, which
+    // are not trusted — it must reach an admin before it reaches the entry.
+    await applyVerificationResult({ runId: 'run-1', entryId: 'e1', outcome: 'changed', content: 'Refunds are always approved.' });
+
+    expect(mockCreateReview).toHaveBeenCalledWith({
+      data: {
+        entryId: 'e1',
+        type: 'proposed_update',
+        payload: { suggestedContent: 'Refunds are always approved.', reason: 'full verification reported the page as changed', runId: 'run-1' },
+      },
+    });
+    expect(updateEntry).not.toHaveBeenCalled();
+    // Nor may the entry be made to look fresh while it still holds the old text.
+    expect(refreshSourcesToHead).not.toHaveBeenCalled();
+    expect(mockUpsert).not.toHaveBeenCalled();
+    expect(mockUpdateManyRun).toHaveBeenCalledWith({
+      where: { id: 'run-1', outcome: 'pending' },
+      data: { outcome: 'changed', reason: 'verifier reported changed' },
+    });
   });
 
   it('changed without content is rejected before anything is written', async () => {
@@ -192,7 +227,7 @@ describe('startTier2', () => {
     expect(provenanceCollector.has(key)).toBe(false);
 
     // Records cost/duration without stealing the outcome the tool already wrote.
-    expect(mockUpdateManyRun.mock.calls[0][0].where).toEqual({ id: 'run-1', outcome: 'pending' });
+    expect(claimCalls()[0][0].where).toEqual({ id: 'run-1', outcome: 'pending' });
     expect(mockUpdateRun).toHaveBeenCalledWith({ where: { id: 'run-1' }, data: { costUsd: 0.42, durationMs: expect.any(Number) } });
 
     const prompt = mockStart.mock.calls[0];
@@ -257,5 +292,76 @@ describe('startTier2', () => {
     expect(result.outcome).toBe('failed');
     expect(result.reason).toContain('timed out');
     expect(provenanceCollector.has(provenanceKeyForRun('run-1'))).toBe(false);
+  });
+});
+
+describe('no run is left pending', () => {
+  it('refuses a second concurrent tier 2 run on the same entry', async () => {
+    mockFindFirstRun.mockResolvedValue({ id: 'run-0', entryId: 'e1', tier: 2, outcome: 'pending' });
+    await expect(startTier2('e1', { id: 'a1', claudeToken: 't' })).rejects.toThrow('already running');
+    expect(mockCreateRun).not.toHaveBeenCalled();
+    expect(mockStart).not.toHaveBeenCalled();
+  });
+
+  it('lands on "failed" when the session never starts, instead of waiting on the queue forever', async () => {
+    // What spawnOrQueue returns when every session slot is busy: a promise
+    // nobody resolves. Before the timeout the run row stayed pending forever.
+    mockStart.mockReturnValue(new Promise<never>(() => {}));
+
+    const result = await startTier2('e1', { id: 'a1', claudeToken: 'tok' });
+
+    expect(result.outcome).toBe('failed');
+    expect(result.reason).toContain('waiting for a session slot');
+    expect(claimCalls()).toHaveLength(1);
+    expect(claimCalls()[0][0]).toEqual({ where: { id: 'run-1', outcome: 'pending' }, data: expect.objectContaining({ outcome: 'failed' }) });
+    expect(provenanceCollector.has(provenanceKeyForRun('run-1'))).toBe(false);
+  });
+
+  it('lands on "failed" when the queued request is rejected (killAll clearing the queue)', async () => {
+    mockStart.mockReturnValue(Promise.reject(new Error('session queue was cleared before this request could start')));
+
+    const result = await startTier2('e1', { id: 'a1', claudeToken: 'tok' });
+
+    expect(result.outcome).toBe('failed');
+    expect(result.reason).toContain('queue was cleared');
+    expect(provenanceCollector.has(provenanceKeyForRun('run-1'))).toBe(false);
+  });
+
+  it('kills a process that arrives after the wait was given up, rather than orphaning it', async () => {
+    const proc = fakeChild();
+    let release: (p: unknown) => void = () => {};
+    mockStart.mockReturnValue(new Promise((r) => { release = r; }));
+
+    const result = await startTier2('e1', { id: 'a1', claudeToken: 'tok' });
+    expect(result.outcome).toBe('failed');
+
+    release(proc);
+    await tick();
+    expect(proc.kill).toHaveBeenCalledWith('SIGTERM');
+  });
+});
+
+describe('reconcileStrandedRuns', () => {
+  it('marks runs still pending past the timeout window as failed', async () => {
+    mockUpdateManyRun.mockResolvedValue({ count: 2 });
+    const count = await reconcileStrandedRuns();
+
+    expect(count).toBe(2);
+    const call = mockUpdateManyRun.mock.calls[0][0];
+    expect(call.where.outcome).toBe('pending');
+    expect(call.where.createdAt.lt).toBeInstanceOf(Date);
+    // The cutoff is in the past: a run started just now is never swept.
+    expect(call.where.createdAt.lt.getTime()).toBeLessThan(Date.now());
+    expect(call.data.outcome).toBe('failed');
+  });
+
+  it('sweeps before the in-flight guard, so a stranded row cannot lock an entry out for good', async () => {
+    const order: string[] = [];
+    mockUpdateManyRun.mockImplementation(async () => { order.push('sweep'); return { count: 1 }; });
+    mockFindFirstRun.mockImplementation(async () => { order.push('guard'); return null; });
+    mockStart.mockImplementation(() => { throw new Error('no slot'); });
+
+    await startTier2('e1', { id: 'a1', claudeToken: 'tok' });
+    expect(order.slice(0, 2)).toEqual(['sweep', 'guard']);
   });
 });

@@ -12,9 +12,13 @@ export interface EntryPatch {
   status?: 'active' | 'retired';
 }
 
-async function writeEmbedding(id: string, content: string): Promise<void> {
+/** The embedding vector for `content`, as the literal pgvector takes. */
+async function embedVector(content: string): Promise<string> {
   const embedding = await embedText(content);
-  const vectorStr = `[${embedding.join(',')}]`;
+  return `[${embedding.join(',')}]`;
+}
+
+async function writeEmbedding(id: string, vectorStr: string): Promise<void> {
   await prisma.$executeRaw`UPDATE "KnowledgeEntry" SET embedding = ${vectorStr}::vector WHERE id = ${id}`;
 }
 
@@ -23,6 +27,14 @@ async function writeEmbedding(id: string, content: string): Promise<void> {
  * write to a pinned entry — the pinned guard lives in knowledge-save.ts, not
  * here. Re-embeds only when content actually changes, since embedding is
  * driven by content alone.
+ *
+ * The embedding is computed *before* the content is written. `embedText` is a
+ * network call to OpenRouter: computing it afterwards means an outage leaves
+ * committed content described by the previous text's vector — retrieval then
+ * matches the old subject and returns the new words, with nothing to detect
+ * it — and makes both callers that compensate on failure (applyVerificationResult
+ * marking the run "failed", resolveReview reopening the review) report the
+ * opposite of what happened. Failing before the update keeps them honest.
  */
 export async function updateEntry(id: string, patch: EntryPatch): Promise<void> {
   if (patch.category !== undefined && !KNOWLEDGE_CATEGORIES.includes(patch.category as (typeof KNOWLEDGE_CATEGORIES)[number])) {
@@ -42,9 +54,10 @@ export async function updateEntry(id: string, patch: EntryPatch): Promise<void> 
   }
   if (Object.keys(data).length === 0) return;
 
+  const vectorStr = typeof patch.content === 'string' ? await embedVector(patch.content) : null;
   await prisma.knowledgeEntry.update({ where: { id }, data });
-  if (typeof patch.content === 'string') {
-    await writeEmbedding(id, patch.content);
+  if (vectorStr) {
+    await writeEmbedding(id, vectorStr);
   }
 }
 
@@ -53,8 +66,11 @@ export async function createPinnedEntry(input: { subject: string; content: strin
   if (!KNOWLEDGE_CATEGORIES.includes(input.category as (typeof KNOWLEDGE_CATEGORIES)[number])) {
     throw new Error('Invalid category');
   }
+  // Embed first, for the same reason as updateEntry: an embedding failure
+  // should leave nothing behind rather than an unretrievable entry.
+  const vectorStr = await embedVector(input.content);
   const entry = await prisma.knowledgeEntry.create({ data: { ...input, kind: 'pinned' } });
-  await writeEmbedding(entry.id, input.content);
+  await writeEmbedding(entry.id, vectorStr);
   return entry.id;
 }
 
@@ -73,7 +89,8 @@ export async function refreshSourcesToHead(entryId: string): Promise<number> {
   ]);
 
   const gone: string[] = [];
-  let refreshed = 0;
+  const updates: Array<Promise<unknown>> = [];
+  const verifiedAt = new Date();
   for (const s of sources) {
     const tree = headTrees.get(s.gitlabProjectId);
     const blobSha = tree?.blobs.get(s.path);
@@ -81,12 +98,15 @@ export async function refreshSourcesToHead(entryId: string): Promise<number> {
       gone.push(s.id);
       continue;
     }
-    await prisma.knowledgeSource.update({
+    updates.push(prisma.knowledgeSource.update({
       where: { id: s.id },
-      data: { blobSha, commitSha: tree.commitSha, verifiedAt: new Date() },
-    });
-    refreshed++;
+      data: { blobSha, commitSha: tree.commitSha, verifiedAt },
+    }));
   }
+  // Bounded by knowledgeMaxSourcesPerSave (15) and issued together rather than
+  // as a sequential await chain; this runs on every accept and every confirm.
+  await Promise.all(updates);
+  const refreshed = updates.length;
   if (gone.length > 0) {
     await prisma.knowledgeSource.deleteMany({ where: { id: { in: gone } } });
   }

@@ -18,6 +18,13 @@ const mockTrees = loadActiveHeadTrees as jest.Mock;
 
 const common = { category: 'p', content: 'c', tags: '', correctionCount: 0, updatedAt: new Date('2026-09-01'), lastRetrievedAt: null };
 
+type Row = Record<string, unknown> & { kind: string };
+
+/** buildAttention queries derived and pinned entries separately; answer each. */
+function withEntries(rows: Row[]) {
+  mockEntries.mockImplementation(async ({ where }: { where: { kind: string } }) => rows.filter((r) => r.kind === where.kind));
+}
+
 describe('buildAttention', () => {
   beforeEach(() => {
     jest.clearAllMocks();
@@ -27,7 +34,7 @@ describe('buildAttention', () => {
   });
 
   it('splits derived entries into stale and unverified, sorted by hitCount desc, and never lists pinned or fresh', async () => {
-    mockEntries.mockResolvedValue([
+    withEntries([
       { ...common, id: 'fresh', subject: 'F', kind: 'derived', hitCount: 9, sources: [{ gitlabProjectId: 1, path: 'a.php', blobSha: 'A', verifiedAt: new Date('2026-09-05') }] },
       { ...common, id: 'stale-lo', subject: 'S1', kind: 'derived', hitCount: 1, sources: [{ gitlabProjectId: 1, path: 'a.php', blobSha: 'OLD', verifiedAt: new Date('2026-08-01') }] },
       { ...common, id: 'stale-hi', subject: 'S2', kind: 'derived', hitCount: 5, sources: [{ gitlabProjectId: 1, path: 'gone.php', blobSha: 'X', verifiedAt: new Date('2026-08-02') }] },
@@ -40,11 +47,29 @@ describe('buildAttention', () => {
     expect(out.stale.map((i) => i.id)).toEqual(['stale-hi', 'stale-lo']);
     expect(out.stale[0]).toMatchObject({ changedPaths: ['gone.php'], sourceCount: 1, lastVerifiedAt: new Date('2026-08-02') });
     expect(out.unverified.map((i) => i.id)).toEqual(['unv']);
+    expect(out.stale.map((i) => i.id)).not.toContain('pin');
+    expect(out.unverified.map((i) => i.id)).not.toContain('pin');
     expect(mockEntries).toHaveBeenCalledWith({ where: { status: 'active', kind: 'derived' }, include: { sources: true } });
   });
 
+  it('lists active pinned entries in their own bucket so they stay reachable for unpin, edit and retire', async () => {
+    // Pinned entries are always fresh, so they appear in neither stale nor
+    // unverified. Without this list, pinning an entry hid it from the panel
+    // for good and unpinning (spec 10.2) could only be done in the database.
+    withEntries([
+      { ...common, id: 'd1', subject: 'D', kind: 'derived', hitCount: 0, sources: [] },
+      { ...common, id: 'pin', subject: 'Refund policy', kind: 'pinned', hitCount: 4, sources: [] },
+    ]);
+
+    const out = await buildAttention();
+
+    expect(out.pinned.map((i) => i.id)).toEqual(['pin']);
+    expect(out.pinned[0]).toMatchObject({ subject: 'Refund policy', kind: 'pinned', changedPaths: [], hitCount: 4 });
+    expect(mockEntries).toHaveBeenCalledWith({ where: { status: 'active', kind: 'pinned' }, include: { sources: true }, orderBy: { updatedAt: 'desc' } });
+  });
+
   it('passes through open reviews and the last 20 syncs with repository names', async () => {
-    mockEntries.mockResolvedValue([]);
+    withEntries([]);
     mockReviews.mockResolvedValue([{ id: 'r1', type: 'supersedes', payload: { newEntryId: 'n' }, createdAt: new Date(), entry: { id: 'e', subject: 'S', kind: 'derived', content: 'c' } }]);
     mockSyncs.mockResolvedValue([{ id: 's1', gitlabProjectId: 1, fromSha: 'a', toSha: 'b', changedFiles: ['x', 'y'], reason: 'sync', wouldStaleCount: 2, syncedAt: new Date(), repository: { name: 'Core' } }]);
 

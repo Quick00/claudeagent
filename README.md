@@ -314,10 +314,10 @@ Knowledge retrieval and provenance are tuned via environment variables (all opti
 
 Knowledge entries can be marked **pinned** — human-owned business rules that Claude can never overwrite and that always render as fresh. Everything else is **derived**: freshness is never stored, only computed on the fly from whether its source files still match the code at HEAD.
 
-Admins review stale, unverified, conflicting, and duplicate knowledge at **Settings → Knowledge Attention** (`/admin/knowledge`). From there an entry can be edited, pinned or unpinned, retired, or re-verified against the code:
+Admins review stale, unverified, pinned, conflicting, and duplicate knowledge at **Settings → Knowledge Attention** (`/admin/knowledge`). The tabs are Stale, Unverified, Pinned, Reviews and Syncs; from any entry row it can be edited, pinned or unpinned, retired, or (unless it is pinned) re-verified against the code:
 
-- **Quick check** (tier 1) sends the entry and its recorded source files to Haiku via OpenRouter, and either confirms it, proposes a correction for an admin to accept, or gives up as unsure.
-- **Full verification** (tier 2) runs Claude Code against the entry, free to explore the whole repository — on the admin's own linked Claude account, since this phase has no separate service account for it.
+- **Quick check** (tier 1) sends the entry and its recorded source files to Haiku via OpenRouter, and either confirms it, proposes a correction for an admin to accept, or gives up as unsure. It refuses pinned entries.
+- **Full verification** (tier 2) runs Claude Code against the entry, free to explore the whole repository — on the admin's own linked Claude account, since this phase has no separate service account for it. A "confirmed" result refreshes the entry's provenance and "retired" retires it, but a **correction is never applied directly**: the verifier's text is shaped by repository file contents, which are not trusted input, so it is queued as a review for an admin to accept or dismiss. Only one full verification per entry can run at a time, and the request stays open for as long as the run does — if it times out at your proxy, reload the panel rather than starting another (paid) run.
 
 ## Customizing for your team
 

@@ -16,7 +16,7 @@ jest.mock('@/lib/prisma', () => {
     prisma: {
       knowledgeEntry: { create: jest.fn(), findUnique: jest.fn() },
       knowledgeSource: { findMany: jest.fn().mockResolvedValue([]) },
-      knowledgeReview: { create: jest.fn() },
+      knowledgeReview: { findFirst: jest.fn(), create: jest.fn(), update: jest.fn() },
       $executeRaw: jest.fn(),
       $transaction: jest.fn(async (fn: (t: typeof tx) => Promise<void>) => fn(tx)),
       __tx: tx,
@@ -264,6 +264,23 @@ describe('saveKnowledge', () => {
 
     expect(prisma.knowledgeReview.create).toHaveBeenCalledWith({
       data: { entryId: 'old', type: 'supersedes', payload: { newEntryId: 'new-id', newSubject: 'Badge Printing v2', similarity: 0.85 } },
+    });
+  });
+
+  it('updates the open review instead of queueing a near-identical second one', async () => {
+    // A recurring chat topic contradicts the same pinned rule over and over;
+    // one row per (entry, type) keeps the Reviews tab actionable.
+    (prisma.knowledgeReview.findFirst as jest.Mock).mockResolvedValue({ id: 'rev-open' });
+    mockSimilar.mockResolvedValue([{ id: 'pin1', subject: 'Refund Policy', content: '14 days', category: 'process', tags: '', kind: 'pinned', similarity: 0.95 }]);
+    mockLibrarian.mockResolvedValue({ action: 'conflict', pageId: 'pin1', reason: 'code says 30 days' });
+
+    const result = await saveKnowledge({ category: 'process', content: 'Refunds within 30 days.' });
+
+    expect(result).toMatchObject({ action: 'conflict', reviewId: 'rev-open' });
+    expect(prisma.knowledgeReview.create).not.toHaveBeenCalled();
+    expect(prisma.knowledgeReview.update).toHaveBeenCalledWith({
+      where: { id: 'rev-open' },
+      data: { payload: { proposedContent: 'Refunds within 30 days.', category: 'process', reason: 'code says 30 days', basedOnPaths: [] } },
     });
   });
 });

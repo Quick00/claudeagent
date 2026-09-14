@@ -10,7 +10,7 @@ jest.mock('@/lib/prisma', () => ({
     knowledgeEntry: { findUnique: jest.fn() },
     repository: { findMany: jest.fn() },
     verificationRun: { create: jest.fn().mockResolvedValue({ id: 'run-1' }), update: jest.fn() },
-    knowledgeReview: { create: jest.fn() },
+    knowledgeReview: { findFirst: jest.fn(), create: jest.fn(), update: jest.fn() },
   },
 }));
 
@@ -20,12 +20,14 @@ const mockRunUpdate = prisma.verificationRun.update as jest.Mock;
 const mockRead = fs.readFileSync as jest.Mock;
 
 const entry = {
-  id: 'e1', subject: 'Badge Printing', category: 'product_insight', content: 'Badges print per attendee.',
+  id: 'e1', subject: 'Badge Printing', category: 'product_insight', content: 'Badges print per attendee.', kind: 'derived',
   sources: [{ gitlabProjectId: 1, path: 'app/Badge.php', blobSha: 'x' }],
 };
 
 beforeEach(() => {
   jest.clearAllMocks();
+  (prisma.knowledgeReview.findFirst as jest.Mock).mockResolvedValue(null);
+  (prisma.knowledgeReview.create as jest.Mock).mockResolvedValue({ id: 'rev-1' });
   process.env.OPENROUTER_API_KEY = 'k';
   mockEntry.mockResolvedValue(entry);
   mockRepos.mockResolvedValue([{ gitlabProjectId: 1, localPath: '/repos/1' }]);
@@ -85,6 +87,34 @@ describe('runTier1', () => {
     global.fetch = jest.fn().mockResolvedValue({ ok: false, status: 500, text: async () => 'boom' }) as unknown as typeof fetch;
     const out = await runTier1('e1', 'admin-1');
     expect(out.outcome).toBe('failed');
+  });
+
+  it('refuses a pinned entry: no model call, no review, terminal outcome', async () => {
+    // Pinned entries are human-owned and always fresh. A "changed" verdict
+    // here would queue Haiku's text against a rule Claude may never write to.
+    mockEntry.mockResolvedValue({ ...entry, kind: 'pinned' });
+    global.fetch = jest.fn() as unknown as typeof fetch;
+
+    const out = await runTier1('e1', 'admin-1');
+
+    expect(out.outcome).toBe('failed');
+    expect(out.reason).toContain('pinned');
+    expect(global.fetch).not.toHaveBeenCalled();
+    expect(prisma.knowledgeReview.create).not.toHaveBeenCalled();
+    expect(refreshSourcesToHead).not.toHaveBeenCalled();
+  });
+
+  it('reuses the open proposed_update review instead of queueing a second one', async () => {
+    (prisma.knowledgeReview.findFirst as jest.Mock).mockResolvedValue({ id: 'rev-existing' });
+    global.fetch = jest.fn().mockResolvedValue({ ok: true, json: async () => ({ choices: [{ message: { content: '{"verdict":"changed","reason":"r2","suggestedContent":"newer"}' } }] }) }) as unknown as typeof fetch;
+
+    await runTier1('e1', 'admin-1');
+
+    expect(prisma.knowledgeReview.create).not.toHaveBeenCalled();
+    expect(prisma.knowledgeReview.update).toHaveBeenCalledWith({
+      where: { id: 'rev-existing' },
+      data: { payload: { suggestedContent: 'newer', reason: 'r2', runId: 'run-1' } },
+    });
   });
 
   it('unsure when the entry has no sources', async () => {

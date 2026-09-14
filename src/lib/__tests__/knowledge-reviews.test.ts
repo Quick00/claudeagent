@@ -5,6 +5,7 @@ import { updateEntry, refreshSourcesToHead } from '@/lib/knowledge-admin';
 jest.mock('@/lib/prisma', () => ({
   prisma: {
     knowledgeReview: { findUnique: jest.fn(), updateMany: jest.fn(), update: jest.fn() },
+    knowledgeEntry: { findUnique: jest.fn() },
   },
 }));
 jest.mock('@/lib/knowledge-admin', () => ({ updateEntry: jest.fn(), refreshSourcesToHead: jest.fn() }));
@@ -12,12 +13,14 @@ jest.mock('@/lib/knowledge-admin', () => ({ updateEntry: jest.fn(), refreshSourc
 const mockFind = prisma.knowledgeReview.findUnique as jest.Mock;
 const mockUpdateMany = prisma.knowledgeReview.updateMany as jest.Mock;
 const mockUpdate = prisma.knowledgeReview.update as jest.Mock;
+const mockFindEntry = prisma.knowledgeEntry.findUnique as jest.Mock;
 const mockUpdateEntry = updateEntry as jest.Mock;
 const mockRefreshSources = refreshSourcesToHead as jest.Mock;
 
 beforeEach(() => {
   jest.clearAllMocks();
   mockUpdateMany.mockResolvedValue({ count: 1 });
+  mockFindEntry.mockResolvedValue({ kind: 'derived' });
 });
 
 function review(type: string, payload: unknown, status = 'open') {
@@ -94,6 +97,35 @@ describe('resolveReview', () => {
     mockFind.mockResolvedValue(review('something_else', {}));
     await expect(resolveReview('r1', 'accept', 'a1')).rejects.toThrow(/unknown review type/i);
     expect(mockUpdateMany).not.toHaveBeenCalled();
+  });
+
+  it('refuses a proposed_update accept on an entry pinned since the review was queued', async () => {
+    // Pinning is how a human takes ownership of a page. Accepting a queued
+    // model suggestion afterwards would write Claude's text into that rule.
+    mockFind.mockResolvedValue(review('proposed_update', { suggestedContent: 'model text' }));
+    mockFindEntry.mockResolvedValue({ kind: 'pinned' });
+
+    await expect(resolveReview('r1', 'accept', 'a1')).rejects.toThrow(/pinned/i);
+    expect(mockUpdateMany).not.toHaveBeenCalled();
+    expect(mockUpdateEntry).not.toHaveBeenCalled();
+    expect(mockRefreshSources).not.toHaveBeenCalled();
+  });
+
+  it('still allows a pinned_conflict accept on a pinned entry — overwriting the rule is its purpose', async () => {
+    mockFind.mockResolvedValue(review('pinned_conflict', { proposedContent: 'admin-approved text' }));
+    mockFindEntry.mockResolvedValue({ kind: 'pinned' });
+
+    await resolveReview('r1', 'accept', 'a1');
+    expect(mockUpdateEntry).toHaveBeenCalledWith('e1', { content: 'admin-approved text' });
+  });
+
+  it('dismissing a proposed_update on a pinned entry is always allowed', async () => {
+    mockFind.mockResolvedValue(review('proposed_update', { suggestedContent: 'model text' }));
+    mockFindEntry.mockResolvedValue({ kind: 'pinned' });
+
+    await resolveReview('r1', 'dismiss', 'a1');
+    expect(mockUpdateEntry).not.toHaveBeenCalled();
+    expect(mockUpdateMany).toHaveBeenCalled();
   });
 
   it('is race-safe: a lost claim (updateMany matches zero rows) throws instead of applying the mutation', async () => {

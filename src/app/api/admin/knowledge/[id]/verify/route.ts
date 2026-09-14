@@ -13,10 +13,22 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   const { tier } = (await request.json()) as { tier?: unknown };
 
   if (tier === 1) {
-    return NextResponse.json(await runTier1(id, admin.id));
+    try {
+      return NextResponse.json(await runTier1(id, admin.id));
+    } catch (err) {
+      // runTier1 records a terminal outcome for anything that happens during
+      // the run; only a failure to even record the run reaches here. Answer
+      // like the tier 2 path rather than with an unhandled 500.
+      return NextResponse.json({ error: (err as Error).message }, { status: 409 });
+    }
   }
 
   if (tier === 2) {
+    // This response is held for as long as the verifier runs (up to
+    // config.verificationTimeoutMs), so a reverse proxy may well close the
+    // connection before it returns. That is why startTier2 refuses a second
+    // concurrent run on the same entry: an admin who sees the request fail
+    // and presses the button again gets a 409, not a second paid run.
     if (!admin.claudeToken) {
       return NextResponse.json({ error: 'Link your Claude account in Settings to run a full verification' }, { status: 409 });
     }

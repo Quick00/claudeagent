@@ -2,6 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import { prisma } from '@/lib/prisma';
 import { refreshSourcesToHead } from '@/lib/knowledge-admin';
+import { createOpenReview } from '@/lib/knowledge-review-create';
 
 const OPENROUTER_API_URL = 'https://openrouter.ai/api/v1/chat/completions';
 const VERIFIER_MODEL = 'anthropic/claude-haiku-4.5';
@@ -89,8 +90,9 @@ async function finish(runId: string, outcome: string, reason: string, startedAt:
  * source files, via Haiku. Confirms (refreshing provenance to HEAD),
  * proposes a `proposed_update` review for a human to accept or dismiss, or
  * gives up with "unsure" (over budget, no readable sources, or an
- * inconclusive model verdict) so tier 2 (Task 7) can take over. Every exit
- * path — including a thrown error — records a terminal outcome on the
+ * inconclusive model verdict) so tier 2 can take over. A pinned entry is
+ * refused outright: it is human-owned, always fresh, and never a target for
+ * model-authored text. Every exit path — including a thrown error — records a terminal outcome on the
  * VerificationRun; none is ever left at "pending". Claude never writes to
  * the entry directly here — a "changed" verdict only queues a review.
  */
@@ -101,6 +103,10 @@ export async function runTier1(entryId: string, adminId: string): Promise<{ runI
   try {
     const entry = await prisma.knowledgeEntry.findUnique({ where: { id: entryId }, include: { sources: true } });
     if (!entry) return finish(run.id, 'failed', 'entry not found', startedAt);
+    // A pinned entry is human-owned and always renders fresh: there is nothing
+    // to verify, and a "changed" verdict would queue model-authored text
+    // against a rule Claude may never write to.
+    if (entry.kind === 'pinned') return finish(run.id, 'failed', 'pinned entries are not verified against code', startedAt);
     if (entry.sources.length === 0) return finish(run.id, 'unsure', 'no sources to verify against; run a full verification', startedAt);
 
     const repos = await prisma.repository.findMany({ where: { active: true }, select: { gitlabProjectId: true, localPath: true } });
@@ -136,8 +142,10 @@ export async function runTier1(entryId: string, adminId: string): Promise<{ runI
       return finish(run.id, 'confirmed', result.reason, startedAt);
     }
     if (result.verdict === 'changed') {
-      await prisma.knowledgeReview.create({
-        data: { entryId, type: 'proposed_update', payload: { suggestedContent: result.suggestedContent ?? '', reason: result.reason, runId: run.id } },
+      await createOpenReview(entryId, 'proposed_update', {
+        suggestedContent: result.suggestedContent ?? '',
+        reason: result.reason,
+        runId: run.id,
       });
       return finish(run.id, 'changed', result.reason, startedAt);
     }

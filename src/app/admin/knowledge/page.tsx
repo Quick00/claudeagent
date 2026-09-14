@@ -13,9 +13,9 @@ interface Item {
 }
 interface Review { id: string; type: string; payload: Record<string, unknown>; createdAt: string; entry: { id: string; subject: string; kind: string; content: string } }
 interface Sync { id: string; repositoryName: string | null; gitlabProjectId: number; fromSha: string; toSha: string; changedFileCount: number; reason: string; wouldStaleCount: number; syncedAt: string }
-interface Attention { stale: Item[]; unverified: Item[]; reviews: Review[]; syncs: Sync[] }
+interface Attention { stale: Item[]; unverified: Item[]; pinned: Item[]; reviews: Review[]; syncs: Sync[] }
 
-type Tab = 'stale' | 'unverified' | 'reviews' | 'syncs';
+type Tab = 'stale' | 'unverified' | 'pinned' | 'reviews' | 'syncs';
 const CATEGORIES = ['terminology', 'product_insight', 'process', 'developer'];
 
 export default function AdminKnowledgePage() {
@@ -48,6 +48,15 @@ export default function AdminKnowledgePage() {
       const body = await res.json().catch(() => ({}));
       setNotice(res.ok ? (okMessage ? okMessage(body) : 'Done') : `Error: ${body.error || res.status}`);
       await load();
+    } catch (err) {
+      // A full verification holds the connection for as long as the verifier
+      // runs, so a proxy timeout or a dropped connection lands here. Without
+      // this the button just re-enabled with no message and the admin had
+      // every reason to start a second (paid) run.
+      setNotice(
+        `The request did not complete: ${err instanceof Error ? err.message : String(err)}. ` +
+        'A full verification may still be running — reload this page in a few minutes before starting another one.',
+      );
     } finally {
       setBusy(null);
     }
@@ -64,10 +73,14 @@ export default function AdminKnowledgePage() {
     return <div className="p-8 dark:text-gray-300">Loading…</div>;
   }
 
-  const counts: Record<Tab, number> = { stale: data.stale.length, unverified: data.unverified.length, reviews: data.reviews.length, syncs: data.syncs.length };
+  const counts: Record<Tab, number> = { stale: data.stale.length, unverified: data.unverified.length, pinned: data.pinned.length, reviews: data.reviews.length, syncs: data.syncs.length };
 
-  function renderItems(items: Item[], stale: boolean) {
-    if (items.length === 0) return <p className="p-4 text-sm text-gray-500">Nothing here.</p>;
+  function renderItems(items: Item[], variant: 'stale' | 'unverified' | 'pinned') {
+    const stale = variant === 'stale';
+    const pinned = variant === 'pinned';
+    if (items.length === 0) {
+      return <p className="p-4 text-sm text-gray-500">{pinned ? 'No pinned rules yet.' : 'Nothing here.'}</p>;
+    }
     return (
       <table className="w-full text-left text-sm">
         <thead>
@@ -99,11 +112,18 @@ export default function AdminKnowledgePage() {
                       {busy === it.id ? 'Working…' : 'Quick check'}
                     </button>
                   )}
-                  <button disabled={busy !== null} onClick={() => act(it.id, () => verify(it.id, 2), (b) => `Full verification: ${b.outcome} — ${b.reason}${b.costUsd ? ` ($${Number(b.costUsd).toFixed(2)})` : ''}`)} className="text-blue-500 disabled:opacity-50">
-                    Full verification
-                  </button>
+                  {/* A pinned entry is human-owned and always fresh: there is nothing to verify. */}
+                  {!pinned && (
+                    <button disabled={busy !== null} onClick={() => act(it.id, () => verify(it.id, 2), (b) => `Full verification: ${b.outcome} — ${b.reason}${b.costUsd ? ` ($${Number(b.costUsd).toFixed(2)})` : ''}`)} className="text-blue-500 disabled:opacity-50">
+                      Full verification
+                    </button>
+                  )}
                   <button disabled={busy !== null} onClick={() => setEditing(it)} className="text-gray-500">Edit</button>
-                  <button disabled={busy !== null} onClick={() => act(it.id, () => patch(it.id, { kind: 'pinned' }), () => 'Pinned')} className="text-amber-600">Pin</button>
+                  {pinned ? (
+                    <button disabled={busy !== null} onClick={() => act(it.id, () => patch(it.id, { kind: 'derived' }), () => 'Unpinned — its provenance is back in use')} className="text-amber-600">Unpin</button>
+                  ) : (
+                    <button disabled={busy !== null} onClick={() => act(it.id, () => patch(it.id, { kind: 'pinned' }), () => 'Pinned — find it in the Pinned tab')} className="text-amber-600">Pin</button>
+                  )}
                   <button disabled={busy !== null} onClick={() => { if (confirm(`Retire "${it.subject}"?`)) act(it.id, () => patch(it.id, { status: 'retired' }), () => 'Retired'); }} className="text-red-500">Retire</button>
                 </div>
               </td>
@@ -134,7 +154,7 @@ export default function AdminKnowledgePage() {
       {notice && <div className="mb-4 rounded border border-gray-200 bg-gray-50 px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200">{notice}</div>}
 
       <div className="mb-4 flex gap-2">
-        {(['stale', 'unverified', 'reviews', 'syncs'] as Tab[]).map((t) => (
+        {(['stale', 'unverified', 'pinned', 'reviews', 'syncs'] as Tab[]).map((t) => (
           <button key={t} onClick={() => setTab(t)} className={`rounded px-3 py-1 text-sm ${tab === t ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300'}`}>
             {t[0].toUpperCase() + t.slice(1)} ({counts[t]})
           </button>
@@ -142,14 +162,20 @@ export default function AdminKnowledgePage() {
       </div>
 
       <div className="overflow-x-auto rounded-lg bg-white shadow dark:bg-gray-800">
-        {tab === 'stale' && renderItems(data.stale, true)}
-        {tab === 'unverified' && renderItems(data.unverified, false)}
+        {tab === 'stale' && renderItems(data.stale, 'stale')}
+        {tab === 'unverified' && renderItems(data.unverified, 'unverified')}
+        {tab === 'pinned' && renderItems(data.pinned, 'pinned')}
         {tab === 'reviews' && (
           data.reviews.length === 0 ? <p className="p-4 text-sm text-gray-500">No open reviews.</p> : (
             <ul>
               {data.reviews.map((r) => (
                 <li key={r.id} className="border-b p-4 text-sm dark:border-gray-700">
-                  <div className="font-medium dark:text-white">{r.entry.subject} <span className="ml-2 rounded bg-gray-100 px-2 py-0.5 text-xs dark:bg-gray-700">{r.type}</span></div>
+                  <div className="font-medium dark:text-white">
+                    {r.entry.subject}
+                    <span className="ml-2 rounded bg-gray-100 px-2 py-0.5 text-xs dark:bg-gray-700">{r.type}</span>
+                    {/* Without this the admin cannot see that accepting would rewrite a human-owned rule. */}
+                    {r.entry.kind === 'pinned' && <span className="ml-2 rounded bg-amber-100 px-2 py-0.5 text-xs text-amber-800 dark:bg-amber-900 dark:text-amber-200">pinned rule</span>}
+                  </div>
                   <div className="mt-1 text-xs text-gray-500 dark:text-gray-400">Current: {r.entry.content}</div>
                   <div className="mt-1 text-gray-700 dark:text-gray-300">{describeReview(r)}</div>
                   <div className="mt-2 flex gap-3 text-xs">
@@ -161,7 +187,7 @@ export default function AdminKnowledgePage() {
             </ul>
           )
         )}
-        {tab === 'syncs' && (
+        {tab === 'syncs' && (data.syncs.length === 0 ? <p className="p-4 text-sm text-gray-500">No repository syncs recorded yet.</p> : (
           <table className="w-full text-left text-sm">
             <thead>
               <tr className="border-b dark:border-gray-700">
@@ -186,7 +212,7 @@ export default function AdminKnowledgePage() {
               ))}
             </tbody>
           </table>
-        )}
+        ))}
       </div>
 
       {(editing || creating) && (
@@ -201,6 +227,8 @@ export default function AdminKnowledgePage() {
                   await act('create', () => fetch('/api/admin/knowledge', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(values) }), () => 'Pinned rule created');
                   setForm({ subject: '', content: '', category: 'process', tags: '' });
                   setCreating(false);
+                  // Show the admin what they just wrote instead of losing it.
+                  setTab('pinned');
                 } else if (editing) {
                   await act(editing.id, () => patch(editing.id, values), () => 'Saved');
                   setEditing(null);

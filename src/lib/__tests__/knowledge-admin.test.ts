@@ -33,6 +33,19 @@ describe('updateEntry', () => {
     expect(prisma.$executeRaw).toHaveBeenCalled();
   });
 
+  it('does not write the content when the embedding call fails', async () => {
+    // Embedding is a network call. Writing content first would leave the entry
+    // described by the previous text's vector, with nothing to detect it — and
+    // would make the callers that compensate on failure (the verification run
+    // marking itself "failed", the review reopening) report the opposite of
+    // what happened.
+    (embedText as jest.Mock).mockRejectedValueOnce(new Error('openrouter down'));
+
+    await expect(updateEntry('e1', { content: 'new text' })).rejects.toThrow('openrouter down');
+    expect(mockUpdate).not.toHaveBeenCalled();
+    expect(prisma.$executeRaw).not.toHaveBeenCalled();
+  });
+
   it('rejects an invalid category or kind', async () => {
     await expect(updateEntry('e1', { category: 'nope' })).rejects.toThrow('Invalid category');
     await expect(updateEntry('e1', { kind: 'other' as never })).rejects.toThrow('Invalid kind');
@@ -40,6 +53,12 @@ describe('updateEntry', () => {
 });
 
 describe('createPinnedEntry', () => {
+  it('creates nothing when the embedding call fails', async () => {
+    (embedText as jest.Mock).mockRejectedValueOnce(new Error('openrouter down'));
+    await expect(createPinnedEntry({ subject: 'S', content: 'C', category: 'process', tags: '' })).rejects.toThrow('openrouter down');
+    expect(mockCreate).not.toHaveBeenCalled();
+  });
+
   it('creates with kind pinned and embeds', async () => {
     mockCreate.mockResolvedValue({ id: 'p1' });
     const id = await createPinnedEntry({ subject: 'Refund Policy', content: '14 days', category: 'process', tags: 'refunds' });

@@ -4,6 +4,7 @@ import { askLibrarian, type LibrarianCandidate, type LibrarianDecision } from '@
 import { provenanceCollector, narrowByBasedOn, type CapturedPath } from '@/lib/provenance-collector';
 import { computeFreshness } from '@/lib/knowledge-freshness';
 import { loadActiveHeadTrees } from '@/lib/knowledge-repos';
+import { createOpenReview } from '@/lib/knowledge-review-create';
 import { config } from '@/lib/config';
 import type { HeadTree } from '@/lib/repo-tree';
 
@@ -134,18 +135,17 @@ async function recordPinnedConflict(
   reason: string,
   basedOnPaths: string[],
 ): Promise<SaveResult> {
-  const review = await prisma.knowledgeReview.create({
-    data: {
-      entryId: page.id,
-      type: 'pinned_conflict',
-      payload: { proposedContent: input.content, category: input.category, reason, basedOnPaths },
-    },
+  const reviewId = await createOpenReview(page.id, 'pinned_conflict', {
+    proposedContent: input.content,
+    category: input.category,
+    reason,
+    basedOnPaths,
   });
-  console.log(`[knowledge] Pinned conflict recorded for "${page.subject}" (review ${review.id})`);
+  console.log(`[knowledge] Pinned conflict recorded for "${page.subject}" (review ${reviewId})`);
   return {
     status: 'conflict',
     action: 'conflict',
-    reviewId: review.id,
+    reviewId,
     subject: page.subject,
     message: `This contradicts the pinned business rule '${page.subject}'. An admin has been asked to review it; do not present your finding as the rule.`,
   };
@@ -265,9 +265,7 @@ async function runSave(input: SaveKnowledgeInput): Promise<SaveResult> {
     for (const c of candidates) {
       const page = similar.find((p) => p.id === c.id);
       if (c.freshness.state === 'stale' && page && page.similarity >= config.knowledgeSupersedesThreshold) {
-        await prisma.knowledgeReview.create({
-          data: { entryId: c.id, type: 'supersedes', payload: { newEntryId: id, newSubject: decision.subject, similarity: page.similarity } },
-        });
+        await createOpenReview(c.id, 'supersedes', { newEntryId: id, newSubject: decision.subject, similarity: page.similarity });
       }
     }
 

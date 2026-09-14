@@ -33,8 +33,6 @@ export async function POST(request: Request) {
       entryId,
       outcome: outcome as Tier2Outcome,
       content: typeof body.content === 'string' ? body.content : undefined,
-      subject: typeof body.subject === 'string' ? body.subject : undefined,
-      tags: typeof body.tags === 'string' ? body.tags : undefined,
     });
     return NextResponse.json({ ok: true });
   } catch (err) {

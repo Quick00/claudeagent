@@ -2,10 +2,15 @@ import { NextResponse } from 'next/server';
 import { requireAdminUser } from '@/lib/api-auth';
 import { buildAttention } from '@/lib/knowledge-attention';
 import { createPinnedEntry } from '@/lib/knowledge-admin';
+import { reconcileStrandedRuns } from '@/lib/knowledge-verify-run';
 
 export async function GET() {
   const auth = await requireAdminUser();
   if (!auth.ok) return auth.response;
+  // A verification run whose process died with the server (deploy, crash) is
+  // landed on a terminal outcome here, so no row stays "pending" — and so a
+  // stranded row never blocks the entry's one-run-at-a-time guard.
+  await reconcileStrandedRuns();
   return NextResponse.json(await buildAttention());
 }
 

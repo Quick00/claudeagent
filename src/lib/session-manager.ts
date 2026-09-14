@@ -6,7 +6,14 @@ import { config } from '@/lib/config';
 const PROJECT_ROOT = path.resolve(process.cwd());
 const SESSIONS_DIR = process.env.SESSIONS_DIR || path.join('/tmp', 'claude-sessions');
 
-function getMcpConfig(provenanceKey: string): string {
+/**
+ * `verificationRunId` is set only for a tier 2 verification run. The MCP
+ * server offers `resolve_verification` when — and only when — it is present,
+ * and accepts no other run id, so an ordinary chat session cannot reach a
+ * pending run even if it learns its id. It also drops `save_knowledge` for
+ * that run, which has no business writing knowledge.
+ */
+function getMcpConfig(provenanceKey: string, verificationRunId?: string): string {
   return JSON.stringify({
     mcpServers: {
       knowledge: {
@@ -18,6 +25,7 @@ function getMcpConfig(provenanceKey: string): string {
           KNOWLEDGE_VERIFY_URL: `${process.env.NEXTAUTH_URL || 'http://localhost:3000'}/api/knowledge/verify-result`,
           KNOWLEDGE_API_SECRET: process.env.KNOWLEDGE_API_SECRET || '',
           PROVENANCE_KEY: provenanceKey,
+          VERIFICATION_RUN_ID: verificationRunId || '',
         },
       },
     },
@@ -26,6 +34,7 @@ function getMcpConfig(provenanceKey: string): string {
 
 interface QueuedRequest {
   resolve: (proc: ChildProcess) => void;
+  reject: (err: Error) => void;
   args: string[];
   message: string;
   claudeToken: string;
@@ -44,7 +53,7 @@ export class SessionManager {
     return this.queue.length;
   }
 
-  startSession(requestId: string, message: string, systemPrompt: string, claudeToken: string, userId: string, repoPaths: string[], provenanceKey: string): ChildProcess | Promise<ChildProcess> {
+  startSession(requestId: string, message: string, systemPrompt: string, claudeToken: string, userId: string, repoPaths: string[], provenanceKey: string, verificationRunId?: string): ChildProcess | Promise<ChildProcess> {
     const addDirArgs: string[] = [];
     for (const p of repoPaths) {
       addDirArgs.push('--add-dir', p);
@@ -58,7 +67,7 @@ export class SessionManager {
       '--max-turns', String(config.claudeMaxTurns),
       ...addDirArgs,
       '--system-prompt', systemPrompt,
-      '--mcp-config', getMcpConfig(provenanceKey),
+      '--mcp-config', getMcpConfig(provenanceKey, verificationRunId),
       '--permission-mode', 'bypassPermissions',
       '--disallowedTools', ...config.claudeDisallowedTools,
     ];
@@ -90,12 +99,21 @@ export class SessionManager {
     }
   }
 
+  /**
+   * Queued requests are rejected rather than dropped: a caller awaiting a
+   * queued promise that is silently discarded hangs forever, and for a
+   * verification run that also leaves its VerificationRun row pending.
+   */
   killAll(): void {
     for (const [, proc] of this.activeProcesses) {
       proc.kill('SIGTERM');
     }
     this.activeProcesses.clear();
+    const dropped = this.queue;
     this.queue = [];
+    for (const q of dropped) {
+      q.reject(new Error('session queue was cleared before this request could start'));
+    }
   }
 
   private spawnOrQueue(requestId: string, args: string[], message: string, claudeToken: string, userId: string): ChildProcess | Promise<ChildProcess> {
@@ -103,8 +121,8 @@ export class SessionManager {
       return this.doSpawn(requestId, args, message, claudeToken, userId);
     }
 
-    return new Promise<ChildProcess>((resolve) => {
-      this.queue.push({ resolve, args, message, claudeToken, userId });
+    return new Promise<ChildProcess>((resolve, reject) => {
+      this.queue.push({ resolve, reject, args, message, claudeToken, userId });
     });
   }
 
@@ -154,8 +172,12 @@ export class SessionManager {
 
     const next = this.queue.shift()!;
     const requestId = `queued-${Date.now()}`;
-    const proc = this.doSpawn(requestId, next.args, next.message, next.claudeToken, next.userId);
-    next.resolve(proc);
+    try {
+      next.resolve(this.doSpawn(requestId, next.args, next.message, next.claudeToken, next.userId));
+    } catch (err) {
+      // A spawn that throws must reach the caller; otherwise it waits forever.
+      next.reject(err instanceof Error ? err : new Error(String(err)));
+    }
   }
 }
 
