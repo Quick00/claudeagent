@@ -20,6 +20,14 @@ export type ConversationsContextValue = {
   refresh: () => Promise<Conversation[]>;
   remove: (id: string) => Promise<void>;
   setTitle: (id: string, title: string) => void;
+  /**
+   * The conversation the user has just clicked, while the router is still
+   * fetching it. Null as soon as the navigation commits. `ChatThread` reads it
+   * to swap to its skeleton immediately instead of leaving the outgoing
+   * thread — or the new-chat empty state — on screen for the round trip.
+   */
+  pendingConversationId: string | null;
+  beginNavigation: (id: string) => void;
 };
 
 const ConversationsContext = createContext<ConversationsContextValue | null>(null);
@@ -101,9 +109,29 @@ export function ConversationsProvider({ children }: { children: ReactNode }) {
     rowsRef.current = conversations;
   }, [conversations]);
 
+  // Recorded with the pathname it was started from, then *derived* rather than
+  // cleared: the moment the router commits the new URL, `pathname` changes and
+  // this reads back as null on its own. No effect to keep in sync, and no way
+  // for an abandoned navigation to leave a thread stuck on its skeleton.
+  const [pending, setPending] = useState<{ id: string; from: string } | null>(null);
+  const pendingConversationId = pending && pending.from === pathname ? pending.id : null;
+
+  const beginNavigation = useCallback(
+    (id: string) => setPending({ id, from: pathname }),
+    [pathname],
+  );
+
   const value = useMemo<ConversationsContextValue>(
-    () => ({ conversations, loading, refresh, remove, setTitle }),
-    [conversations, loading, refresh, remove, setTitle],
+    () => ({
+      conversations,
+      loading,
+      refresh,
+      remove,
+      setTitle,
+      pendingConversationId,
+      beginNavigation,
+    }),
+    [conversations, loading, refresh, remove, setTitle, pendingConversationId, beginNavigation],
   );
 
   return <ConversationsContext value={value}>{children}</ConversationsContext>;

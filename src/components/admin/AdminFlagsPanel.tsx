@@ -15,6 +15,7 @@ import { Collapsible, CollapsibleContent } from '@/components/ui/collapsible';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Textarea } from '@/components/ui/textarea';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
+import { useDeferredSkeleton } from '@/hooks/use-deferred-skeleton';
 import { ROUTES } from '@/lib/navigation';
 import { formatDateTimeShort } from '@/lib/format-date';
 
@@ -87,6 +88,7 @@ export default function AdminFlagsPanel() {
   };
 
   const filtered = flags.filter((f) => filter === 'ALL' || f.status === filter);
+  const showSkeleton = useDeferredSkeleton(loading);
 
   return (
     <PageContainer>
@@ -112,12 +114,19 @@ export default function AdminFlagsPanel() {
 
       <RiseIn delay={0.12}>
       {loading ? (
-        <div className="space-y-4">
-          {Array.from({ length: 3 }).map((_, i) => (
-            <Skeleton key={i} className="h-24 w-full" />
-          ))}
-        </div>
-      ) : error ? (
+        showSkeleton && (
+          <div className="space-y-4">
+            {Array.from({ length: 3 }).map((_, i) => (
+              <Skeleton key={i} className="h-24 w-full" />
+            ))}
+          </div>
+        )
+      ) : (
+      /* Nested RiseIn: this subtree mounts fresh the moment loading flips
+         to false, so the loaded content arrives with the same rise/fade
+         the rest of the page uses instead of popping in place. */
+      <RiseIn delay={0}>
+      {error ? (
         <p className="text-sm text-destructive">{error}</p>
       ) : flags.length === 0 ? (
         <EmptyState icon={Flag} title="No flagged conversations yet" />
@@ -200,6 +209,8 @@ export default function AdminFlagsPanel() {
             );
           })}
         </div>
+      )}
+      </RiseIn>
       )}
       </RiseIn>
     </PageContainer>

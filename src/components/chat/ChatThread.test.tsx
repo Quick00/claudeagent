@@ -1,9 +1,12 @@
 import { beforeEach, describe, expect, jest, test } from '@jest/globals';
-import { screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import { renderWithProviders } from '@/test/render';
+import { TooltipProvider } from '@/components/ui/tooltip';
 import { usePathname } from '@/test/mocks/next-navigation';
 import { setMockSession } from '@/test/mocks/next-auth-react';
-import { ConversationsProvider } from './ConversationsProvider';
+import { StrictMode } from 'react';
+import { Button } from '@/components/ui/button';
+import { ConversationsProvider, useConversations } from './ConversationsProvider';
 import { ChatThread } from './ChatThread';
 
 const mockFetch = jest.fn<(input: string, init?: RequestInit) => Promise<unknown>>();
@@ -47,7 +50,14 @@ const CONVERSATION = {
 
 /** Routes the component's fetches; `overrides` wins per URL prefix. */
 function routeFetch(overrides: Record<string, () => unknown> = {}) {
-  mockFetch.mockImplementation(async (input: string) => {
+  mockFetch.mockImplementation(async (input: string, init?: RequestInit) => {
+    // Faithful to the real `fetch`: an already-aborted signal rejects rather
+    // than quietly succeeding. Without this the mock hides abort bugs.
+    if (init?.signal?.aborted) {
+      const err = new Error('The operation was aborted.');
+      err.name = 'AbortError';
+      throw err;
+    }
     for (const [prefix, handler] of Object.entries(overrides)) {
       if (input.startsWith(prefix)) return handler();
     }
@@ -133,6 +143,50 @@ describe('ChatThread', () => {
 
     expect(await screen.findByRole('button', { name: /link claude account/i })).toBeInTheDocument();
     expect(screen.queryByRole('textbox', { name: /message/i })).not.toBeInTheDocument();
+  });
+
+  // Regression: StrictMode re-runs effects without re-rendering. A shared
+  // AbortController that the first cleanup aborted must not be reused, or
+  // every fetch rejects instantly, `initialLoading` clears with no messages,
+  // and the new-chat empty state flashes on a conversation that has messages.
+  // Rendered with a bare `render` rather than `renderWithProviders`: the
+  // next-themes provider in that helper defers its subtree past the initial
+  // mount, and React only simulates the extra StrictMode mount there — the
+  // double-invocation this test exists to exercise never happens under it.
+  test('loads the thread under StrictMode double-invoked effects', async () => {
+    render(
+      <StrictMode>
+        <TooltipProvider>
+          <ConversationsProvider>
+            <ChatThread initialConversationId="conv-1" />
+          </ConversationsProvider>
+        </TooltipProvider>
+      </StrictMode>,
+    );
+
+    expect(await screen.findByText('It uses OAuth.')).toBeInTheDocument();
+    expect(screen.queryByText(/Ask a question about how the product works/)).not.toBeInTheDocument();
+  });
+
+  test('swaps to the skeleton the moment another conversation is picked', async () => {
+    function OpenOther() {
+      const { beginNavigation } = useConversations();
+      return <Button onClick={() => beginNavigation('conv-2')}>open other</Button>;
+    }
+    const { user } = renderWithProviders(
+      <ConversationsProvider>
+        <OpenOther />
+        <ChatThread initialConversationId={null} />
+      </ConversationsProvider>,
+    );
+    expect(await screen.findByText(/Ask a question about how the product works/)).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'open other' }));
+
+    // The outgoing new-chat empty state must be gone immediately, replaced by
+    // the same skeleton the destination's loading.tsx renders.
+    expect(screen.queryByText(/Ask a question about how the product works/)).not.toBeInTheDocument();
+    expect(document.querySelector('[data-slot="skeleton"]')).not.toBeNull();
   });
 
   test('warns an admin that they are posting in someone else’s conversation', async () => {

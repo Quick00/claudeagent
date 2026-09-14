@@ -10,6 +10,7 @@ import { ChatComposer } from './ChatComposer';
 import { ChatHeader } from './ChatHeader';
 import { ChatMessages } from './ChatMessages';
 import { ChatThreadSkeleton } from './ChatThreadSkeleton';
+import { useConversations } from './ConversationsProvider';
 import { useConversation } from './useConversation';
 
 /**
@@ -34,9 +35,20 @@ export function ChatThread({ initialConversationId }: { initialConversationId: s
     flag,
     refreshClaudeStatus,
   } = useConversation(initialConversationId);
+  const { pendingConversationId } = useConversations();
   const [showLinkModal, setShowLinkModal] = useState(false);
 
-  if (initialLoading) return <ChatThreadSkeleton />;
+  // The router keeps the outgoing route rendered for the whole client
+  // navigation, and `chat/[id]/loading.tsx` cannot cover the gap: the shell
+  // layout reads cookies, so its fallback is never prefetched (see the
+  // loading.js caveat in the Next docs). Without this, clicking a
+  // conversation leaves the new-chat empty state on screen for the round
+  // trip. The skeleton shown here is the one `loading.tsx` renders, so the
+  // user sees a single continuous skeleton rather than three states.
+  const navigatingAway =
+    pendingConversationId !== null && pendingConversationId !== conversationId;
+
+  if (initialLoading || navigatingAway) return <ChatThreadSkeleton />;
 
   const isOwner = !ownership || ownership.isOwner;
 

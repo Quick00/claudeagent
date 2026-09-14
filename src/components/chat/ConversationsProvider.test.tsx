@@ -11,10 +11,13 @@ global.fetch = mockFetch as unknown as typeof fetch;
 const jsonOk = (data: unknown) => ({ ok: true, status: 200, json: async () => data });
 
 function Harness() {
-  const { conversations, loading, refresh, remove, setTitle } = useConversations();
+  const { conversations, loading, refresh, remove, setTitle, pendingConversationId, beginNavigation } =
+    useConversations();
   return (
     <div>
       {loading && <p>Loading conversations</p>}
+      <p>{`pending:${pendingConversationId ?? 'none'}`}</p>
+      <Button onClick={() => beginNavigation('b')}>open b</Button>
       <ul>
         {conversations.map((c) => (
           <li key={c.id}>{c.title}</li>
@@ -103,6 +106,27 @@ describe('ConversationsProvider', () => {
     await user.click(screen.getByRole('button', { name: 'delete b' }));
 
     await waitFor(() => expect(mockRouter.push).toHaveBeenCalledWith('/chat'));
+  });
+
+  test('beginNavigation() marks a conversation pending until the route changes', async () => {
+    mockFetch.mockResolvedValue(jsonOk([{ id: 'b', title: 'Second', updatedAt: '2026-01-02' }]));
+    const { user, rerender } = renderProvider();
+    await screen.findByText('Second');
+    expect(screen.getByText('pending:none')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'open b' }));
+    expect(screen.getByText('pending:b')).toBeInTheDocument();
+
+    // The router commits the navigation: the pathname the pending state was
+    // recorded against is gone, so it must read back as resolved.
+    usePathname.mockReturnValue('/chat/b');
+    rerender(
+      <ConversationsProvider>
+        <Harness />
+      </ConversationsProvider>,
+    );
+
+    expect(screen.getByText('pending:none')).toBeInTheDocument();
   });
 
   test('setTitle() renames a row in place without refetching', async () => {

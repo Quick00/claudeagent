@@ -116,22 +116,30 @@ export function useConversation(initialConversationId: string | null) {
   const [flagSubmitting, setFlagSubmitting] = useState(false);
 
   const knowledgeConfettiFired = useRef(false);
-  // One controller for everything this hook has in flight, aborted on unmount
-  // so a stream never writes into an unmounted thread. StrictMode remounts the
-  // component against the same ref, so a controller the previous cleanup
-  // aborted is replaced here rather than reused (which would abort instantly).
   const abortRef = useRef<AbortController | null>(null);
-  if (!abortRef.current || abortRef.current.signal.aborted) {
-    abortRef.current = new AbortController();
-  }
-  const signal = abortRef.current.signal;
 
-  useEffect(() => {
-    const controller = abortRef.current;
-    return () => controller?.abort();
+  /**
+   * The abort signal for everything this hook has in flight, resolved at the
+   * point of use rather than during render.
+   *
+   * That distinction matters: StrictMode re-runs effects *without* an
+   * intervening render, so a controller the previous cleanup aborted is still
+   * in the ref when the effects run again. Replacing it during render is too
+   * late — every refetch inherits the aborted signal and rejects immediately.
+   */
+  const nextSignal = useCallback(() => {
+    if (!abortRef.current || abortRef.current.signal.aborted) {
+      abortRef.current = new AbortController();
+    }
+    return abortRef.current.signal;
   }, []);
 
+  // Read the ref at cleanup time, not setup time, so a controller created
+  // after this effect ran is still the one that gets aborted on unmount.
+  useEffect(() => () => abortRef.current?.abort(), []);
+
   const refreshClaudeStatus = useCallback(async () => {
+    const signal = nextSignal();
     try {
       const res = await fetch('/api/auth/claude/status', { signal });
       const data = await res.json();
@@ -139,7 +147,7 @@ export function useConversation(initialConversationId: string | null) {
     } catch {
       if (!signal.aborted) setClaudeLinked(false);
     }
-  }, [signal]);
+  }, [nextSignal]);
 
   useEffect(() => {
     refreshClaudeStatus();
@@ -178,6 +186,7 @@ export function useConversation(initialConversationId: string | null) {
     // `initialLoading` already starts false for a brand-new thread.
     if (!initialConversationId) return;
     let cancelled = false;
+    const signal = nextSignal();
     (async () => {
       try {
         const res = await fetch(`/api/conversations/${initialConversationId}`, { signal });
@@ -188,13 +197,16 @@ export function useConversation(initialConversationId: string | null) {
       } catch {
         // Leave the thread empty; the visibility poll retries on focus.
       } finally {
-        if (!cancelled) setInitialLoading(false);
+        // An aborted load has not finished, it was thrown away. Clearing the
+        // flag here would drop the skeleton and show the "no messages yet"
+        // empty state on a conversation that does have messages.
+        if (!cancelled && !signal.aborted) setInitialLoading(false);
       }
     })();
     return () => {
       cancelled = true;
     };
-  }, [initialConversationId, applyConversation, signal]);
+  }, [initialConversationId, applyConversation, nextSignal]);
 
   // Coming back to the tab: re-read the thread. If the last message is still
   // the user's, the answer is being generated elsewhere — poll until it lands.
@@ -205,7 +217,7 @@ export function useConversation(initialConversationId: string | null) {
     const poll = async (convId: string) => {
       if (cancelled) return;
       try {
-        const res = await fetch(`/api/conversations/${convId}`, { signal });
+        const res = await fetch(`/api/conversations/${convId}`, { signal: nextSignal() });
         if (!res.ok || cancelled) return;
         const data = (await res.json()) as ApiConversation;
         if (cancelled) return;
@@ -233,7 +245,7 @@ export function useConversation(initialConversationId: string | null) {
       if (pollTimer) clearTimeout(pollTimer);
       document.removeEventListener('visibilitychange', onVisibilityChange);
     };
-  }, [conversationId, isLoading, applyConversation, signal]);
+  }, [conversationId, isLoading, applyConversation, nextSignal]);
 
   const appendMessage = useCallback((message: Message) => {
     setMessages((prev) => [...prev, message]);
@@ -273,6 +285,7 @@ export function useConversation(initialConversationId: string | null) {
       // protocol against `/api/chat`. `feature/resumable-chat-streams` replaces
       // this block wholesale with `useConversationStream`; nothing outside the
       // markers knows how the bytes arrive, so that rebase is local.
+      const signal = nextSignal();
       try {
         const res = isAdminSend
           ? await fetch(`/api/admin/conversations/${conversationId}/messages`, {
@@ -406,7 +419,7 @@ export function useConversation(initialConversationId: string | null) {
       }
       // ─────────────────────── end SSE streaming block ───────────────────────
     },
-    [appendMessage, conversationId, ownership, refreshConversations, session, signal],
+    [appendMessage, conversationId, nextSignal, ownership, refreshConversations, session],
   );
 
   const hasPendingFlag = flags.some((f) => f.status === 'PENDING');
@@ -420,7 +433,7 @@ export function useConversation(initialConversationId: string | null) {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ conversationId, reason }),
-          signal,
+          signal: nextSignal(),
         });
         if (!res.ok) return false;
         const created = (await res.json()) as Flag;
@@ -432,7 +445,7 @@ export function useConversation(initialConversationId: string | null) {
         setFlagSubmitting(false);
       }
     },
-    [conversationId, flagSubmitting, hasPendingFlag, signal],
+    [conversationId, flagSubmitting, hasPendingFlag, nextSignal],
   );
 
   return {

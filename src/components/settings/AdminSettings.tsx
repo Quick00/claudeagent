@@ -11,6 +11,7 @@ import { Label } from '@/components/ui/label';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
+import { useDeferredSkeleton } from '@/hooks/use-deferred-skeleton';
 
 type AdminSettingsData = {
   requireUserApproval: boolean;
@@ -83,7 +84,10 @@ export default function AdminSettings() {
     }
   };
 
+  const showSkeleton = useDeferredSkeleton(data === null);
+
   if (data === null) {
+    if (!showSkeleton) return null;
     return (
       <PageContainer width="form">
         <PageHeader title="Admin Settings" description="Account approval and knowledge provenance." />

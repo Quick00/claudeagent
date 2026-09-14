@@ -13,6 +13,7 @@ import { Button } from '@/components/ui/button';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
+import { useDeferredSkeleton } from '@/hooks/use-deferred-skeleton';
 import { formatDateTimeShort } from '@/lib/format-date';
 
 interface FeedbackRow {
@@ -66,6 +67,7 @@ export default function AdminFeedbackPanel() {
   };
 
   const filtered = posts.filter((p) => filter === 'ALL' || p.status === filter);
+  const showSkeleton = useDeferredSkeleton(loading);
 
   return (
     <PageContainer>
@@ -91,12 +93,19 @@ export default function AdminFeedbackPanel() {
 
       <RiseIn delay={0.12}>
       {loading ? (
-        <div className="space-y-4">
-          {Array.from({ length: 3 }).map((_, i) => (
-            <Skeleton key={i} className="h-20 w-full" />
-          ))}
-        </div>
-      ) : error ? (
+        showSkeleton && (
+          <div className="space-y-4">
+            {Array.from({ length: 3 }).map((_, i) => (
+              <Skeleton key={i} className="h-20 w-full" />
+            ))}
+          </div>
+        )
+      ) : (
+      /* Nested RiseIn: mounts fresh the moment loading flips to false, so
+         the loaded content arrives with the same rise/fade the rest of
+         the page uses instead of popping in place. */
+      <RiseIn delay={0}>
+      {error ? (
         <p className="text-sm text-destructive">{error}</p>
       ) : posts.length === 0 ? (
         <EmptyState icon={Lightbulb} title="No feedback submissions yet" />
@@ -155,6 +164,8 @@ export default function AdminFeedbackPanel() {
             );
           })}
         </div>
+      )}
+      </RiseIn>
       )}
       </RiseIn>
     </PageContainer>

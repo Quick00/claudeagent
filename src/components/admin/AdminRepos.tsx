@@ -30,6 +30,7 @@ import { Switch } from '@/components/ui/switch';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Textarea } from '@/components/ui/textarea';
 import { useConfirm } from '@/hooks/use-confirm';
+import { useDeferredSkeleton } from '@/hooks/use-deferred-skeleton';
 import { formatDateTime } from '@/lib/format-date';
 
 interface Repository {
@@ -95,6 +96,8 @@ export default function AdminRepos() {
 
   const addedIds = new Set(repos.map((r) => r.gitlabProjectId));
   const availableProjects = gitlabProjects.filter((p) => !addedIds.has(p.id));
+  const showReposSkeleton = useDeferredSkeleton(loadingRepos);
+  const showProjectsSkeleton = useDeferredSkeleton(loadingProjects);
 
   const addRepo = async () => {
     if (!modalProject || !modalDescription.trim() || !modalBranch.trim()) return;
@@ -193,8 +196,13 @@ export default function AdminRepos() {
       <RiseIn delay={0.06}>
       <div>
         {loadingRepos ? (
-          <AdminTableSkeleton columns={6} container={false} />
-        ) : repos.length === 0 ? (
+          showReposSkeleton && <AdminTableSkeleton columns={6} container={false} />
+        ) : (
+        /* Nested RiseIn: mounts fresh the moment loading flips to false, so
+           the loaded content arrives with the same rise/fade the rest of
+           the page uses instead of popping in place. */
+        <RiseIn delay={0}>
+        {repos.length === 0 ? (
           <EmptyState icon={FolderGit2} title="No repositories yet" description="Add one from GitLab below." />
         ) : (
           <Table>
@@ -300,6 +308,8 @@ export default function AdminRepos() {
             </TableBody>
           </Table>
         )}
+        </RiseIn>
+        )}
       </div>
       </RiseIn>
 
@@ -312,12 +322,19 @@ export default function AdminRepos() {
         </h2>
 
         {loadingProjects ? (
-          <div className="space-y-2">
-            {Array.from({ length: 3 }).map((_, i) => (
-              <Skeleton key={i} className="h-12 w-full" />
-            ))}
-          </div>
-        ) : availableProjects.length === 0 ? (
+          showProjectsSkeleton && (
+            <div className="space-y-2">
+              {Array.from({ length: 3 }).map((_, i) => (
+                <Skeleton key={i} className="h-12 w-full" />
+              ))}
+            </div>
+          )
+        ) : (
+        /* Nested RiseIn: mounts fresh the moment loading flips to false, so
+           the loaded content arrives with the same rise/fade the rest of
+           the page uses instead of popping in place. */
+        <RiseIn delay={0}>
+        {availableProjects.length === 0 ? (
           <p className="text-sm text-muted-foreground">
             {gitlabProjects.length === 0
               ? 'No GitLab projects found. Check that GITLAB_TOKEN is configured with read_api scope.'
@@ -346,6 +363,8 @@ export default function AdminRepos() {
               </div>
             ))}
           </div>
+        )}
+        </RiseIn>
         )}
       </RiseIn>
 

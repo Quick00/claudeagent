@@ -46,7 +46,7 @@ export function ConversationList({
   notificationConvIds?: string[];
   onNavigate?: () => void;
 }) {
-  const { conversations, loading, remove } = useConversations();
+  const { conversations, loading, remove, beginNavigation } = useConversations();
   const confirm = useConfirm();
   const pathname = usePathname();
   const [filter, setFilter] = useState('');
@@ -110,14 +110,20 @@ export function ConversationList({
           <EmptyState title="No matches" description={`Nothing matches "${filter.trim()}".`} />
         ) : (
           <SidebarMenu>
-            {visible.map((conv) => (
+            {visible.map((conv) => {
+              const isActive = isActiveHref(ROUTES.chat(conv.id), pathname);
+              return (
               <SidebarMenuItem key={conv.id}>
-                <SidebarMenuButton
-                  asChild
-                  isActive={isActiveHref(ROUTES.chat(conv.id), pathname)}
-                  className="pr-8"
-                >
-                  <Link href={ROUTES.chat(conv.id)} onClick={onNavigate}>
+                <SidebarMenuButton asChild isActive={isActive} className="pr-8">
+                  <Link
+                    href={ROUTES.chat(conv.id)}
+                    onClick={() => {
+                      // Skip on the open row: the pathname would not change,
+                      // so the pending state would never resolve.
+                      if (!isActive) beginNavigation(conv.id);
+                      onNavigate?.();
+                    }}
+                  >
                     <span className="truncate">{conv.title}</span>
                     {unread.has(conv.id) && (
                       <>
@@ -138,7 +144,8 @@ export function ConversationList({
                   <span className="sr-only">{`Delete conversation: ${conv.title}`}</span>
                 </SidebarMenuAction>
               </SidebarMenuItem>
-            ))}
+              );
+            })}
           </SidebarMenu>
         )}
       </SidebarGroupContent>

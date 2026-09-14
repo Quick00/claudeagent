@@ -21,6 +21,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { useConfirm } from '@/hooks/use-confirm';
+import { useDeferredSkeleton } from '@/hooks/use-deferred-skeleton';
 import { cn } from '@/lib/utils';
 import { formatDateTime } from '@/lib/format-date';
 
@@ -105,7 +106,9 @@ export default function AdminUsersPanel() {
     toast.success('User deleted');
   };
 
-  if (loading) return <AdminTableSkeleton columns={7} />;
+  const showSkeleton = useDeferredSkeleton(loading);
+
+  if (loading) return showSkeleton ? <AdminTableSkeleton columns={7} /> : null;
 
   return (
     <PageContainer>

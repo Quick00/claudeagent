@@ -17,6 +17,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
 import { useConfirm } from '@/hooks/use-confirm';
+import { useDeferredSkeleton } from '@/hooks/use-deferred-skeleton';
 import { formatDateTime } from '@/lib/format-date';
 
 interface Item {
@@ -91,8 +92,10 @@ export default function AdminKnowledgeAttention() {
     await act(item.id, () => patch(item.id, { status: 'retired' }), () => 'Retired');
   };
 
+  const showSkeleton = useDeferredSkeleton(data === null);
+
   if (!data) {
-    return <AdminTableSkeleton columns={5} />;
+    return showSkeleton ? <AdminTableSkeleton columns={5} /> : null;
   }
 
   const counts: Record<Tab, number> = {

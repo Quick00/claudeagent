@@ -21,6 +21,7 @@ import { MarkdownContent } from '@/components/shared/MarkdownContent';
 import { PageContainer } from '@/components/shared/PageContainer';
 import { RiseIn } from '@/components/shared/RiseIn';
 import { useAnimatedNumber } from '@/hooks/use-animated-number';
+import { useDeferredSkeleton } from '@/hooks/use-deferred-skeleton';
 import { KnowledgeDashboardSkeleton } from './KnowledgeDashboardSkeleton';
 
 interface DashboardData {
@@ -138,8 +139,12 @@ export function KnowledgeDashboard() {
     [performSearch],
   );
 
+  const showSkeleton = useDeferredSkeleton(data === null);
+
   if (!data) {
-    return <KnowledgeDashboardSkeleton />;
+    // Within the initial grace period this renders nothing at all — see
+    // useDeferredSkeleton — so a fast response never flashes the skeleton.
+    return showSkeleton ? <KnowledgeDashboardSkeleton /> : null;
   }
 
   const filteredEntries = selectedTag
