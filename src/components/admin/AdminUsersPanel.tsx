@@ -1,6 +1,7 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSession } from 'next-auth/react';
 import { MoreHorizontal, Users as UsersIcon } from 'lucide-react';
 import { toast } from 'sonner';
@@ -22,6 +23,8 @@ import {
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { useConfirm } from '@/hooks/use-confirm';
 import { useDeferredSkeleton } from '@/hooks/use-deferred-skeleton';
+import { apiFetch, jsonBody } from '@/lib/api';
+import { qk } from '@/lib/query-keys';
 import { cn } from '@/lib/utils';
 import { formatDateTime } from '@/lib/format-date';
 
@@ -38,46 +41,56 @@ interface UserRow {
 export default function AdminUsersPanel() {
   const { data: session } = useSession();
   const confirmDialog = useConfirm();
-  const [users, setUsers] = useState<UserRow[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const queryClient = useQueryClient();
   const [viewingConvos, setViewingConvos] = useState<{ userId: string; name: string } | null>(null);
 
-  useEffect(() => {
-    fetch('/api/admin/users')
-      .then((res) => {
-        if (res.status === 403) { setError('Forbidden'); return []; }
-        if (!res.ok) throw new Error('Failed to fetch users');
-        return res.json();
-      })
-      .then(setUsers)
-      .catch((err) => setError(err.message))
-      .finally(() => setLoading(false));
-  }, []);
+  const {
+    data: users = [],
+    isPending,
+    isError,
+    error,
+  } = useQuery({
+    queryKey: qk.users.list(),
+    queryFn: () => apiFetch<UserRow[]>('/api/admin/users'),
+  });
+
+  const invalidateUsers = () => queryClient.invalidateQueries({ queryKey: qk.users.list() });
+
+  const roleMutation = useMutation({
+    mutationFn: ({ userId, role }: { userId: string; role: string }) =>
+      apiFetch('/api/admin/users', jsonBody('PATCH', { userId, role })),
+    onSuccess: () => {
+      invalidateUsers();
+      toast.success('Role updated');
+    },
+    onError: () => toast.error('Failed to change role'),
+  });
+
+  const statusMutation = useMutation({
+    mutationFn: ({ userId, status }: { userId: string; status: 'APPROVED' | 'REJECTED' }) =>
+      apiFetch('/api/admin/users', jsonBody('PATCH', { userId, status })),
+    onSuccess: (_data, variables) => {
+      invalidateUsers();
+      toast.success(variables.status === 'APPROVED' ? 'User approved' : 'User rejected');
+    },
+    onError: () => toast.error('Failed to update user'),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (userId: string) => apiFetch('/api/admin/users', jsonBody('DELETE', { userId })),
+    onSuccess: () => {
+      invalidateUsers();
+      toast.success('User deleted');
+    },
+    onError: () => toast.error('Failed to delete user'),
+  });
 
   const currentUserId = (session?.user as Record<string, unknown> | undefined)?.id;
 
-  const setRole = async (userId: string, role: string) => {
-    const res = await fetch('/api/admin/users', {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ userId, role }),
-    });
-    if (!res.ok) { toast.error('Failed to change role'); return; }
-    setUsers((prev) => prev.map((u) => (u.id === userId ? { ...u, role } : u)));
-    toast.success('Role updated');
-  };
+  const setRole = (userId: string, role: string) => roleMutation.mutate({ userId, role });
 
-  const setStatus = async (userId: string, status: 'APPROVED' | 'REJECTED') => {
-    const res = await fetch('/api/admin/users', {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ userId, status }),
-    });
-    if (!res.ok) { toast.error('Failed to update user'); return; }
-    setUsers((prev) => prev.map((u) => (u.id === userId ? { ...u, status } : u)));
-    toast.success(status === 'APPROVED' ? 'User approved' : 'User rejected');
-  };
+  const setStatus = (userId: string, status: 'APPROVED' | 'REJECTED') =>
+    statusMutation.mutate({ userId, status });
 
   const rejectUser = async (user: UserRow) => {
     const ok = await confirmDialog({
@@ -86,7 +99,7 @@ export default function AdminUsersPanel() {
       confirmLabel: 'Reject',
     });
     if (!ok) return;
-    await setStatus(user.id, 'REJECTED');
+    setStatus(user.id, 'REJECTED');
   };
 
   const deleteUser = async (user: UserRow) => {
@@ -96,19 +109,12 @@ export default function AdminUsersPanel() {
       confirmLabel: 'Delete',
     });
     if (!ok) return;
-    const res = await fetch('/api/admin/users', {
-      method: 'DELETE',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ userId: user.id }),
-    });
-    if (!res.ok) { toast.error('Failed to delete user'); return; }
-    setUsers((prev) => prev.filter((u) => u.id !== user.id));
-    toast.success('User deleted');
+    deleteMutation.mutate(user.id);
   };
 
-  const showSkeleton = useDeferredSkeleton(loading);
+  const showSkeleton = useDeferredSkeleton(isPending);
 
-  if (loading) return showSkeleton ? <AdminTableSkeleton columns={7} /> : null;
+  if (isPending) return showSkeleton ? <AdminTableSkeleton columns={7} /> : null;
 
   return (
     <PageContainer>
@@ -117,8 +123,8 @@ export default function AdminUsersPanel() {
       </RiseIn>
 
       <RiseIn delay={0.06}>
-      {error ? (
-        <p className="text-sm text-destructive">{error}</p>
+      {isError ? (
+        <p className="text-sm text-destructive">{error.message}</p>
       ) : users.length === 0 ? (
         <EmptyState icon={UsersIcon} title="No users yet" description="Users will appear here once they sign in." />
       ) : (

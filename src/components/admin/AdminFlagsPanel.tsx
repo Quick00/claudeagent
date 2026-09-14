@@ -1,7 +1,7 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { useSession } from 'next-auth/react';
+import { useState } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
 import { Flag } from 'lucide-react';
 import { toast } from 'sonner';
@@ -16,7 +16,9 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Textarea } from '@/components/ui/textarea';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { useDeferredSkeleton } from '@/hooks/use-deferred-skeleton';
+import { apiFetch, jsonBody } from '@/lib/api';
 import { ROUTES } from '@/lib/navigation';
+import { qk } from '@/lib/query-keys';
 import { formatDateTimeShort } from '@/lib/format-date';
 
 interface FlagRow {
@@ -34,61 +36,40 @@ interface FlagRow {
 type Filter = 'PENDING' | 'RESPONDED' | 'ALL';
 
 export default function AdminFlagsPanel() {
-  const { data: session } = useSession();
-  const [flags, setFlags] = useState<FlagRow[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const queryClient = useQueryClient();
   const [respondingTo, setRespondingTo] = useState<string | null>(null);
   const [responseText, setResponseText] = useState('');
-  const [submitting, setSubmitting] = useState(false);
   const [filter, setFilter] = useState<Filter>('PENDING');
 
-  useEffect(() => {
-    fetch('/api/flags')
-      .then((res) => {
-        if (res.status === 403) { setError('Forbidden'); return []; }
-        if (!res.ok) throw new Error('Failed to fetch flags');
-        return res.json();
-      })
-      .then(setFlags)
-      .catch((err) => setError(err.message))
-      .finally(() => setLoading(false));
-  }, []);
+  const {
+    data: flags = [],
+    isPending,
+    isError,
+    error,
+  } = useQuery({
+    queryKey: qk.flags.adminList(),
+    queryFn: () => apiFetch<FlagRow[]>('/api/flags'),
+  });
 
-  const handleRespond = async (flagId: string) => {
-    if (!responseText.trim() || submitting) return;
-    setSubmitting(true);
-    try {
-      const res = await fetch(`/api/flags/${flagId}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ adminResponse: responseText }),
-      });
-      if (!res.ok) { toast.error('Failed to send response'); return; }
-      const updated = await res.json();
-      setFlags((prev) =>
-        prev.map((f) =>
-          f.id === flagId
-            ? {
-                ...f,
-                status: updated.status,
-                adminResponse: updated.adminResponse,
-                respondedAt: updated.respondedAt,
-                admin: { id: (session?.user as Record<string, string>)?.id, name: session?.user?.name || 'Admin' },
-              }
-            : f
-        )
-      );
+  const respondMutation = useMutation({
+    mutationFn: ({ flagId, adminResponse }: { flagId: string; adminResponse: string }) =>
+      apiFetch(`/api/flags/${flagId}`, jsonBody('PATCH', { adminResponse })),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: qk.flags.adminList() });
       setRespondingTo(null);
       setResponseText('');
       toast.success('Response sent');
-    } finally {
-      setSubmitting(false);
-    }
+    },
+    onError: () => toast.error('Failed to send response'),
+  });
+
+  const handleRespond = (flagId: string) => {
+    if (!responseText.trim() || respondMutation.isPending) return;
+    respondMutation.mutate({ flagId, adminResponse: responseText });
   };
 
   const filtered = flags.filter((f) => filter === 'ALL' || f.status === filter);
-  const showSkeleton = useDeferredSkeleton(loading);
+  const showSkeleton = useDeferredSkeleton(isPending);
 
   return (
     <PageContainer>
@@ -113,7 +94,7 @@ export default function AdminFlagsPanel() {
       </RiseIn>
 
       <RiseIn delay={0.12}>
-      {loading ? (
+      {isPending ? (
         showSkeleton && (
           <div className="space-y-4">
             {Array.from({ length: 3 }).map((_, i) => (
@@ -126,8 +107,8 @@ export default function AdminFlagsPanel() {
          to false, so the loaded content arrives with the same rise/fade
          the rest of the page uses instead of popping in place. */
       <RiseIn delay={0}>
-      {error ? (
-        <p className="text-sm text-destructive">{error}</p>
+      {isError ? (
+        <p className="text-sm text-destructive">{error.message}</p>
       ) : flags.length === 0 ? (
         <EmptyState icon={Flag} title="No flagged conversations yet" />
       ) : filtered.length === 0 ? (
@@ -198,9 +179,9 @@ export default function AdminFlagsPanel() {
                       <Button
                         size="sm"
                         onClick={() => handleRespond(flag.id)}
-                        disabled={!responseText.trim() || submitting}
+                        disabled={!responseText.trim() || respondMutation.isPending}
                       >
-                        {submitting ? 'Sending...' : 'Send Response'}
+                        {respondMutation.isPending ? 'Sending...' : 'Send Response'}
                       </Button>
                     </div>
                   </CollapsibleContent>

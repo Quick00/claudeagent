@@ -1,6 +1,7 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useState } from 'react';
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { FolderGit2, MoreHorizontal } from 'lucide-react';
 import { toast } from 'sonner';
 import { AdminTableSkeleton } from '@/components/admin/AdminTableSkeleton';
@@ -31,6 +32,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Textarea } from '@/components/ui/textarea';
 import { useConfirm } from '@/hooks/use-confirm';
 import { useDeferredSkeleton } from '@/hooks/use-deferred-skeleton';
+import { apiFetch, jsonBody } from '@/lib/api';
+import { qk } from '@/lib/query-keys';
 import { formatDateTime } from '@/lib/format-date';
 
 interface Repository {
@@ -58,11 +61,7 @@ interface GitLabProject {
 
 export default function AdminRepos() {
   const confirmDialog = useConfirm();
-  const [repos, setRepos] = useState<Repository[]>([]);
-  const [loadingRepos, setLoadingRepos] = useState(true);
-  const [gitlabProjects, setGitlabProjects] = useState<GitLabProject[]>([]);
-  const [loadingProjects, setLoadingProjects] = useState(true);
-  const [addingId, setAddingId] = useState<number | null>(null);
+  const queryClient = useQueryClient();
   const [modalProject, setModalProject] = useState<GitLabProject | null>(null);
   const [modalDescription, setModalDescription] = useState('');
   const [modalBranch, setModalBranch] = useState('');
@@ -70,109 +69,117 @@ export default function AdminRepos() {
   const [editDescription, setEditDescription] = useState('');
   const [editingBranchId, setEditingBranchId] = useState<string | null>(null);
   const [editBranch, setEditBranch] = useState('');
-  const [branchSaving, setBranchSaving] = useState(false);
   const [branchError, setBranchError] = useState<string | null>(null);
 
-  const fetchRepos = useCallback(async () => {
-    const res = await fetch('/api/admin/repos');
-    if (res.ok) setRepos(await res.json());
-    setLoadingRepos(false);
-  }, []);
+  const {
+    data: repos = [],
+    isPending: loadingRepos,
+    isError: reposErrored,
+    error: reposError,
+  } = useQuery({
+    queryKey: qk.repos.list(),
+    queryFn: () => apiFetch<Repository[]>('/api/admin/repos'),
+  });
 
-  const fetchGitLabProjects = useCallback(async () => {
-    setLoadingProjects(true);
-    try {
-      const res = await fetch('/api/admin/gitlab/search');
-      if (res.ok) setGitlabProjects(await res.json());
-    } finally {
-      setLoadingProjects(false);
-    }
-  }, []);
+  // No search input exists in this panel yet — every load asks for the same
+  // (unfiltered) project list, so the query key's `q` is always ''.
+  // `placeholderData` still earns its keep: it's what stops the "Add from
+  // GitLab" list from blanking out during a background refetch.
+  const {
+    data: gitlabProjects = [],
+    isPending: loadingProjects,
+    isError: projectsErrored,
+    error: projectsError,
+  } = useQuery({
+    queryKey: qk.repos.gitlabSearch(''),
+    queryFn: () => apiFetch<GitLabProject[]>('/api/admin/gitlab/search'),
+    placeholderData: keepPreviousData,
+  });
 
-  useEffect(() => {
-    fetchRepos();
-    fetchGitLabProjects();
-  }, [fetchRepos, fetchGitLabProjects]);
+  const invalidateRepos = () => queryClient.invalidateQueries({ queryKey: qk.repos.list() });
+
+  const addRepoMutation = useMutation({
+    mutationFn: (payload: {
+      name: string;
+      description: string;
+      gitlabProjectId: number;
+      gitlabUrl: string;
+      defaultBranch: string;
+    }) => apiFetch('/api/admin/repos', jsonBody('POST', payload)),
+    onSuccess: () => {
+      invalidateRepos();
+      setModalProject(null);
+      setModalDescription('');
+      toast.success('Repository added');
+    },
+    onError: () => toast.error('Failed to add repository'),
+  });
+
+  const toggleActiveMutation = useMutation({
+    mutationFn: ({ id, active }: { id: string; active: boolean }) =>
+      apiFetch(`/api/admin/repos/${id}`, jsonBody('PATCH', { active })),
+    onSuccess: invalidateRepos,
+    onError: () => toast.error('Failed to update repository'),
+  });
+
+  const saveBranchMutation = useMutation({
+    mutationFn: ({ id, defaultBranch }: { id: string; defaultBranch: string }) =>
+      apiFetch(`/api/admin/repos/${id}`, jsonBody('PATCH', { defaultBranch })),
+    onSuccess: () => {
+      invalidateRepos();
+      setEditingBranchId(null);
+      setBranchError(null);
+      toast.success('Branch updated');
+    },
+    onError: (err) => setBranchError(err instanceof Error ? err.message : 'Failed to update branch'),
+  });
+
+  const saveDescriptionMutation = useMutation({
+    mutationFn: ({ id, description }: { id: string; description: string }) =>
+      apiFetch(`/api/admin/repos/${id}`, jsonBody('PATCH', { description })),
+    onSuccess: () => {
+      invalidateRepos();
+      setEditingId(null);
+      toast.success('Description updated');
+    },
+    onError: () => toast.error('Failed to update description'),
+  });
+
+  const deleteRepoMutation = useMutation({
+    mutationFn: (id: string) => apiFetch(`/api/admin/repos/${id}`, jsonBody('DELETE')),
+    onSuccess: () => {
+      invalidateRepos();
+      toast.success('Repository deleted');
+    },
+    onError: () => toast.error('Failed to delete repository'),
+  });
 
   const addedIds = new Set(repos.map((r) => r.gitlabProjectId));
   const availableProjects = gitlabProjects.filter((p) => !addedIds.has(p.id));
   const showReposSkeleton = useDeferredSkeleton(loadingRepos);
   const showProjectsSkeleton = useDeferredSkeleton(loadingProjects);
 
-  const addRepo = async () => {
+  const addRepo = () => {
     if (!modalProject || !modalDescription.trim() || !modalBranch.trim()) return;
-    setAddingId(modalProject.id);
-    try {
-      const res = await fetch('/api/admin/repos', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name: modalProject.name,
-          description: modalDescription,
-          gitlabProjectId: modalProject.id,
-          gitlabUrl: modalProject.httpUrlToRepo,
-          defaultBranch: modalBranch.trim(),
-        }),
-      });
-      if (!res.ok) { toast.error('Failed to add repository'); return; }
-      setModalProject(null);
-      setModalDescription('');
-      await fetchRepos();
-      toast.success('Repository added');
-    } finally {
-      setAddingId(null);
-    }
-  };
-
-  const toggleActive = async (repo: Repository) => {
-    const res = await fetch(`/api/admin/repos/${repo.id}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ active: !repo.active }),
+    addRepoMutation.mutate({
+      name: modalProject.name,
+      description: modalDescription,
+      gitlabProjectId: modalProject.id,
+      gitlabUrl: modalProject.httpUrlToRepo,
+      defaultBranch: modalBranch.trim(),
     });
-    if (!res.ok) { toast.error('Failed to update repository'); return; }
-    await fetchRepos();
   };
 
-  const saveBranch = async (repoId: string) => {
-    setBranchSaving(true);
+  const toggleActive = (repo: Repository) =>
+    toggleActiveMutation.mutate({ id: repo.id, active: !repo.active });
+
+  const saveBranch = (repoId: string) => {
     setBranchError(null);
-    try {
-      const res = await fetch(`/api/admin/repos/${repoId}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ defaultBranch: editBranch }),
-      });
-      if (res.ok) {
-        setEditingBranchId(null);
-        await fetchRepos();
-        toast.success('Branch updated');
-      } else {
-        let message = 'Failed to update branch';
-        try {
-          const body = await res.json();
-          if (body?.error) message = body.error;
-        } catch {
-          // non-JSON error body — keep default message
-        }
-        setBranchError(message);
-      }
-    } finally {
-      setBranchSaving(false);
-    }
+    saveBranchMutation.mutate({ id: repoId, defaultBranch: editBranch });
   };
 
-  const saveDescription = async (repoId: string) => {
-    const res = await fetch(`/api/admin/repos/${repoId}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ description: editDescription }),
-    });
-    if (!res.ok) { toast.error('Failed to update description'); return; }
-    setEditingId(null);
-    await fetchRepos();
-    toast.success('Description updated');
-  };
+  const saveDescription = (repoId: string) =>
+    saveDescriptionMutation.mutate({ id: repoId, description: editDescription });
 
   const deleteRepo = async (repo: Repository) => {
     const ok = await confirmDialog({
@@ -181,11 +188,11 @@ export default function AdminRepos() {
       confirmLabel: 'Delete',
     });
     if (!ok) return;
-    const res = await fetch(`/api/admin/repos/${repo.id}`, { method: 'DELETE' });
-    if (!res.ok) { toast.error('Failed to delete repository'); return; }
-    await fetchRepos();
-    toast.success('Repository deleted');
+    deleteRepoMutation.mutate(repo.id);
   };
+
+  const addingId = addRepoMutation.isPending ? modalProject?.id ?? null : null;
+  const branchSaving = saveBranchMutation.isPending;
 
   return (
     <PageContainer className="space-y-8">
@@ -202,7 +209,9 @@ export default function AdminRepos() {
            the loaded content arrives with the same rise/fade the rest of
            the page uses instead of popping in place. */
         <RiseIn delay={0}>
-        {repos.length === 0 ? (
+        {reposErrored ? (
+          <p className="text-sm text-destructive">{reposError.message}</p>
+        ) : repos.length === 0 ? (
           <EmptyState icon={FolderGit2} title="No repositories yet" description="Add one from GitLab below." />
         ) : (
           <Table>
@@ -334,7 +343,9 @@ export default function AdminRepos() {
            the loaded content arrives with the same rise/fade the rest of
            the page uses instead of popping in place. */
         <RiseIn delay={0}>
-        {availableProjects.length === 0 ? (
+        {projectsErrored ? (
+          <p className="text-sm text-destructive">{projectsError.message}</p>
+        ) : availableProjects.length === 0 ? (
           <p className="text-sm text-muted-foreground">
             {gitlabProjects.length === 0
               ? 'No GitLab projects found. Check that GITLAB_TOKEN is configured with read_api scope.'

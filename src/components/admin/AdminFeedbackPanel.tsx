@@ -1,6 +1,7 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Bug, Lightbulb } from 'lucide-react';
 import { toast } from 'sonner';
 import { EmptyState } from '@/components/shared/EmptyState';
@@ -14,6 +15,8 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/component
 import { Skeleton } from '@/components/ui/skeleton';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { useDeferredSkeleton } from '@/hooks/use-deferred-skeleton';
+import { apiFetch, jsonBody } from '@/lib/api';
+import { qk } from '@/lib/query-keys';
 import { formatDateTimeShort } from '@/lib/format-date';
 
 interface FeedbackRow {
@@ -30,44 +33,37 @@ interface FeedbackRow {
 type Filter = 'TODO' | 'DONE' | 'ALL';
 
 export default function AdminFeedbackPanel() {
-  const [posts, setPosts] = useState<FeedbackRow[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const queryClient = useQueryClient();
   const [expandedId, setExpandedId] = useState<string | null>(null);
-  const [updatingId, setUpdatingId] = useState<string | null>(null);
   const [filter, setFilter] = useState<Filter>('TODO');
 
-  useEffect(() => {
-    fetch('/api/admin/feedback')
-      .then((res) => {
-        if (res.status === 403) { setError('Forbidden'); return []; }
-        if (!res.ok) throw new Error('Failed to fetch feedback');
-        return res.json();
-      })
-      .then(setPosts)
-      .catch((err) => setError(err.message))
-      .finally(() => setLoading(false));
-  }, []);
+  const {
+    data: posts = [],
+    isPending,
+    isError,
+    error,
+  } = useQuery({
+    queryKey: qk.feedback.adminList(),
+    queryFn: () => apiFetch<FeedbackRow[]>('/api/admin/feedback'),
+  });
 
-  const updateStatus = async (id: string, status: 'TODO' | 'DONE') => {
-    setUpdatingId(id);
-    try {
-      const res = await fetch(`/api/admin/feedback/${id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status }),
-      });
-      if (!res.ok) { toast.error('Failed to update feedback'); return; }
-      const updated = await res.json();
-      setPosts((prev) => prev.map((p) => (p.id === id ? updated : p)));
-      toast.success(status === 'DONE' ? 'Marked as done' : 'Reopened');
-    } finally {
-      setUpdatingId(null);
-    }
-  };
+  const updateStatusMutation = useMutation({
+    mutationFn: ({ id, status }: { id: string; status: 'TODO' | 'DONE' }) =>
+      apiFetch(`/api/admin/feedback/${id}`, jsonBody('PATCH', { status })),
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: qk.feedback.adminList() });
+      toast.success(variables.status === 'DONE' ? 'Marked as done' : 'Reopened');
+    },
+    onError: () => toast.error('Failed to update feedback'),
+  });
+
+  const updateStatus = (id: string, status: 'TODO' | 'DONE') =>
+    updateStatusMutation.mutate({ id, status });
+
+  const updatingId = updateStatusMutation.isPending ? updateStatusMutation.variables?.id ?? null : null;
 
   const filtered = posts.filter((p) => filter === 'ALL' || p.status === filter);
-  const showSkeleton = useDeferredSkeleton(loading);
+  const showSkeleton = useDeferredSkeleton(isPending);
 
   return (
     <PageContainer>
@@ -92,7 +88,7 @@ export default function AdminFeedbackPanel() {
       </RiseIn>
 
       <RiseIn delay={0.12}>
-      {loading ? (
+      {isPending ? (
         showSkeleton && (
           <div className="space-y-4">
             {Array.from({ length: 3 }).map((_, i) => (
@@ -105,8 +101,8 @@ export default function AdminFeedbackPanel() {
          the loaded content arrives with the same rise/fade the rest of
          the page uses instead of popping in place. */
       <RiseIn delay={0}>
-      {error ? (
-        <p className="text-sm text-destructive">{error}</p>
+      {isError ? (
+        <p className="text-sm text-destructive">{error.message}</p>
       ) : posts.length === 0 ? (
         <EmptyState icon={Lightbulb} title="No feedback submissions yet" />
       ) : filtered.length === 0 ? (

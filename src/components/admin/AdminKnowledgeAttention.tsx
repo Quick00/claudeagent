@@ -1,6 +1,7 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useState } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { AdminTableSkeleton } from '@/components/admin/AdminTableSkeleton';
 import { EmptyState } from '@/components/shared/EmptyState';
@@ -18,6 +19,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
 import { useConfirm } from '@/hooks/use-confirm';
 import { useDeferredSkeleton } from '@/hooks/use-deferred-skeleton';
+import { ApiError, apiFetch, jsonBody } from '@/lib/api';
+import { qk } from '@/lib/query-keys';
 import { formatDateTime } from '@/lib/format-date';
 
 interface Item {
@@ -34,68 +37,110 @@ const CATEGORIES = ['terminology', 'product_insight', 'process', 'developer'];
 
 export default function AdminKnowledgeAttention() {
   const confirmDialog = useConfirm();
-  const [data, setData] = useState<Attention | null>(null);
+  const queryClient = useQueryClient();
   const [tab, setTab] = useState<Tab>('stale');
-  const [busy, setBusy] = useState<string | null>(null);
+  // A key per in-flight action (an entry id or a review id), not one global
+  // flag: a slow tier-2 verify on one entry must not disable every other
+  // row's buttons or the other tabs while it runs.
+  const [busyKeys, setBusyKeys] = useState<Set<string>>(new Set());
   const [editing, setEditing] = useState<Item | null>(null);
   const [creating, setCreating] = useState(false);
   const [form, setForm] = useState({ subject: '', content: '', category: 'process', tags: '' });
 
-  const load = useCallback(async () => {
-    const res = await fetch('/api/admin/knowledge');
-    if (res.ok) setData(await res.json());
-  }, []);
+  const {
+    data,
+    isPending,
+    isError,
+    error,
+  } = useQuery({
+    queryKey: qk.knowledge.attention(),
+    queryFn: () => apiFetch<Attention>('/api/admin/knowledge'),
+  });
 
-  useEffect(() => {
-    load();
-  }, [load]);
+  const invalidateAttention = () => queryClient.invalidateQueries({ queryKey: qk.knowledge.attention() });
 
-  const act = useCallback(async (
-    key: string,
-    fn: () => Promise<Response>,
-    okMessage?: (body: Record<string, unknown>) => string,
-  ) => {
-    setBusy(key);
-    try {
-      const res = await fn();
-      const body = await res.json().catch(() => ({}));
-      if (res.ok) {
-        toast.success(okMessage ? okMessage(body) : 'Done');
-      } else {
-        toast.error(`Error: ${body.error || res.status}`);
+  const actMutation = useMutation({
+    mutationFn: (vars: {
+      key: string;
+      run: () => Promise<Record<string, unknown>>;
+      okMessage?: (body: Record<string, unknown>) => string;
+    }) => vars.run(),
+    onMutate: (vars) => {
+      setBusyKeys((prev) => new Set(prev).add(vars.key));
+    },
+    onSuccess: (body, vars) => {
+      toast.success(vars.okMessage ? vars.okMessage(body) : 'Done');
+      invalidateAttention();
+    },
+    onError: (err) => {
+      if (err instanceof ApiError) {
+        // The request completed with an error response (e.g. a 409 because a
+        // tier 2 run is already in flight) — the server may still have
+        // recorded something, so refresh rather than leaving the tab stale.
+        toast.error(`Error: ${(err.body as { error?: string } | null)?.error ?? err.status}`);
+        invalidateAttention();
+        return;
       }
-      await load();
-    } catch (err) {
       // A full verification holds the connection for as long as the verifier
       // runs, so a proxy timeout or a dropped connection lands here. Without
       // this the button just re-enabled with no message and the admin had
-      // every reason to start a second (paid) run.
+      // every reason to start a second (paid) run. The server-side outcome
+      // here is genuinely unknown, so this does not invalidate.
       toast.error(
         `The request did not complete: ${err instanceof Error ? err.message : String(err)}. ` +
           'A full verification may still be running — reload this page in a few minutes before starting another one.',
       );
-    } finally {
-      setBusy(null);
-    }
-  }, [load]);
+    },
+    onSettled: (_data, _err, vars) => {
+      setBusyKeys((prev) => {
+        const next = new Set(prev);
+        next.delete(vars.key);
+        return next;
+      });
+    },
+  });
+
+  // `mutateAsync` (not `mutate`) so the `EntryForm` dialog below can `await`
+  // this and keep its own "Saving…" state up for the full round trip. The
+  // `onError` above already reports failures via toast, so the rejection
+  // here is swallowed rather than left unhandled for fire-and-forget callers
+  // (the row action buttons, which don't await this at all).
+  const act = (
+    key: string,
+    run: () => Promise<Record<string, unknown>>,
+    okMessage?: (body: Record<string, unknown>) => string,
+  ) => actMutation.mutateAsync({ key, run, okMessage }).catch(() => undefined);
 
   const patch = (id: string, body: Record<string, string>) =>
-    fetch(`/api/admin/knowledge/${id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    apiFetch<Record<string, unknown>>(`/api/admin/knowledge/${id}`, jsonBody('PATCH', body));
   const verify = (id: string, tier: 1 | 2) =>
-    fetch(`/api/admin/knowledge/${id}/verify`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ tier }) });
+    apiFetch<Record<string, unknown>>(`/api/admin/knowledge/${id}/verify`, jsonBody('POST', { tier }));
   const review = (id: string, action: 'accept' | 'dismiss') =>
-    fetch(`/api/admin/knowledge/reviews/${id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action }) });
+    apiFetch<Record<string, unknown>>(`/api/admin/knowledge/reviews/${id}`, jsonBody('PATCH', { action }));
 
   const retireEntry = async (item: Item) => {
     const ok = await confirmDialog({ title: `Retire "${item.subject}"?`, confirmLabel: 'Retire' });
     if (!ok) return;
-    await act(item.id, () => patch(item.id, { status: 'retired' }), () => 'Retired');
+    act(item.id, () => patch(item.id, { status: 'retired' }), () => 'Retired');
   };
 
-  const showSkeleton = useDeferredSkeleton(data === null);
+  const showSkeleton = useDeferredSkeleton(isPending);
 
-  if (!data) {
+  if (isPending) {
     return showSkeleton ? <AdminTableSkeleton columns={5} /> : null;
+  }
+
+  if (isError || !data) {
+    return (
+      <PageContainer>
+        <RiseIn delay={0}>
+          <PageHeader title="Knowledge" description="Stale, unverified, and pinned knowledge entries." />
+        </RiseIn>
+        <RiseIn delay={0.06}>
+          <p className="text-sm text-destructive">{error?.message ?? 'Failed to load knowledge entries'}</p>
+        </RiseIn>
+      </PageContainer>
+    );
   }
 
   const counts: Record<Tab, number> = {
@@ -145,10 +190,10 @@ export default function AdminKnowledgeAttention() {
                       variant="link"
                       size="sm"
                       className="h-auto p-0"
-                      disabled={busy !== null}
+                      disabled={busyKeys.has(it.id)}
                       onClick={() => act(it.id, () => verify(it.id, 1), (b) => `Quick check: ${b.outcome} — ${b.reason}`)}
                     >
-                      {busy === it.id ? 'Working…' : 'Quick check'}
+                      {busyKeys.has(it.id) ? 'Working…' : 'Quick check'}
                     </Button>
                   )}
                   {/* A pinned entry is human-owned and always fresh: there is nothing to verify. */}
@@ -157,7 +202,7 @@ export default function AdminKnowledgeAttention() {
                       variant="link"
                       size="sm"
                       className="h-auto p-0"
-                      disabled={busy !== null}
+                      disabled={busyKeys.has(it.id)}
                       onClick={() => act(
                         it.id,
                         () => verify(it.id, 2),
@@ -171,7 +216,7 @@ export default function AdminKnowledgeAttention() {
                     variant="link"
                     size="sm"
                     className="h-auto p-0 text-muted-foreground"
-                    disabled={busy !== null}
+                    disabled={busyKeys.has(it.id)}
                     onClick={() => setEditing(it)}
                   >
                     Edit
@@ -181,7 +226,7 @@ export default function AdminKnowledgeAttention() {
                       variant="link"
                       size="sm"
                       className="h-auto p-0 text-warning"
-                      disabled={busy !== null}
+                      disabled={busyKeys.has(it.id)}
                       onClick={() => act(it.id, () => patch(it.id, { kind: 'derived' }), () => 'Unpinned — its provenance is back in use')}
                     >
                       Unpin
@@ -191,7 +236,7 @@ export default function AdminKnowledgeAttention() {
                       variant="link"
                       size="sm"
                       className="h-auto p-0 text-warning"
-                      disabled={busy !== null}
+                      disabled={busyKeys.has(it.id)}
                       onClick={() => act(it.id, () => patch(it.id, { kind: 'pinned' }), () => 'Pinned — find it in the Pinned tab')}
                     >
                       Pin
@@ -201,7 +246,7 @@ export default function AdminKnowledgeAttention() {
                     variant="link"
                     size="sm"
                     className="h-auto p-0 text-destructive"
-                    disabled={busy !== null}
+                    disabled={busyKeys.has(it.id)}
                     onClick={() => retireEntry(it)}
                   >
                     Retire
@@ -265,7 +310,7 @@ export default function AdminKnowledgeAttention() {
                       variant="link"
                       size="sm"
                       className="h-auto p-0 text-success"
-                      disabled={busy !== null}
+                      disabled={busyKeys.has(r.id)}
                       onClick={() => act(r.id, () => review(r.id, 'accept'), () => 'Accepted')}
                     >
                       Accept
@@ -274,7 +319,7 @@ export default function AdminKnowledgeAttention() {
                       variant="link"
                       size="sm"
                       className="h-auto p-0 text-muted-foreground"
-                      disabled={busy !== null}
+                      disabled={busyKeys.has(r.id)}
                       onClick={() => act(r.id, () => review(r.id, 'dismiss'), () => 'Dismissed')}
                     >
                       Dismiss
@@ -333,7 +378,7 @@ export default function AdminKnowledgeAttention() {
             onCancel={() => { setEditing(null); setCreating(false); }}
             onSubmit={async (values) => {
               if (creating) {
-                await act('create', () => fetch('/api/admin/knowledge', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(values) }), () => 'Pinned rule created');
+                await act('create', () => apiFetch('/api/admin/knowledge', jsonBody('POST', values)), () => 'Pinned rule created');
                 setForm({ subject: '', content: '', category: 'process', tags: '' });
                 setCreating(false);
                 // Show the admin what they just wrote instead of losing it.
