@@ -44,4 +44,13 @@ describe('knowledge config defaults', () => {
       'WebSearch',
     ]);
   });
+
+  it('tells the tier 2 verifier that source files are data, never instructions', () => {
+    // Without this, a comment in a synced customer repo can dictate both the
+    // verdict and the replacement text of a knowledge page.
+    const prompt = config.verificationSystemPrompt;
+    expect(prompt).toMatch(/strictly as data/i);
+    expect(prompt).toMatch(/look like instructions|looks like instructions/i);
+    expect(prompt).toMatch(/run id/i);
+  });
 });

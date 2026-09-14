@@ -110,6 +110,56 @@ describe('SessionManager', () => {
     expect(manager.queueSize).toBe(0);
   });
 
+  it('rejects queued requests when killAll clears the queue, instead of hanging the caller', async () => {
+    // A dropped queue entry used to leave its promise unsettled forever: the
+    // caller never returned, and a verification run's row stayed "pending".
+    const procs = [createMockProcess(), createMockProcess()];
+    let spawnIndex = 0;
+    mockSpawn.mockImplementation(() => procs[spawnIndex++]);
+
+    const manager = new SessionManager();
+    manager.startSession('msg-1', 'Hello 1', '', 'test-token', 'user-1', ['/mock/repo'], 'k1');
+    manager.startSession('msg-2', 'Hello 2', '', 'test-token', 'user-1', ['/mock/repo'], 'k2');
+    const queued = manager.startSession('msg-3', 'Hello 3', '', 'test-token', 'user-1', ['/mock/repo'], 'k3') as Promise<ChildProcess>;
+    expect(manager.queueSize).toBe(1);
+
+    manager.killAll();
+
+    await expect(queued).rejects.toThrow(/queue was cleared/);
+    expect(manager.queueSize).toBe(0);
+  });
+
+  it('rejects a queued request whose spawn throws when its turn comes', async () => {
+    const first = createMockProcess();
+    mockSpawn.mockImplementationOnce(() => first)
+      .mockImplementationOnce(() => createMockProcess())
+      .mockImplementationOnce(() => { throw new Error('spawn ENOENT'); });
+
+    const manager = new SessionManager();
+    manager.startSession('msg-1', 'Hello 1', '', 'test-token', 'user-1', ['/mock/repo'], 'k1');
+    manager.startSession('msg-2', 'Hello 2', '', 'test-token', 'user-1', ['/mock/repo'], 'k2');
+    const queued = manager.startSession('msg-3', 'Hello 3', '', 'test-token', 'user-1', ['/mock/repo'], 'k3') as Promise<ChildProcess>;
+
+    first.emit('close', 0);
+
+    await expect(queued).rejects.toThrow('spawn ENOENT');
+  });
+
+  it('tells the MCP server which verification run it serves, and nothing when there is none', () => {
+    mockSpawn.mockReturnValue(createMockProcess());
+    const manager = new SessionManager();
+
+    manager.startSession('msg-1', 'Hi', '', 'tok', 'user-1', ['/mock/repo'], 'key-1');
+    const chatArgs = mockSpawn.mock.calls[0][1] as string[];
+    const chatMcp = JSON.parse(chatArgs[chatArgs.indexOf('--mcp-config') + 1]);
+    expect(chatMcp.mcpServers.knowledge.env.VERIFICATION_RUN_ID).toBe('');
+
+    manager.startSession('msg-2', 'Hi', '', 'tok', 'user-1', ['/mock/repo'], 'verify-run-9', 'run-9');
+    const verifyArgs = mockSpawn.mock.calls[1][1] as string[];
+    const verifyMcp = JSON.parse(verifyArgs[verifyArgs.indexOf('--mcp-config') + 1]);
+    expect(verifyMcp.mcpServers.knowledge.env.VERIFICATION_RUN_ID).toBe('run-9');
+  });
+
   it('cleans up process on close', () => {
     const proc = createMockProcess();
     mockSpawn.mockReturnValue(proc);

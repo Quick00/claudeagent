@@ -5,6 +5,7 @@ import { sessionManager } from '@/lib/session-manager';
 import { decrypt } from '@/lib/crypto';
 import { attachClaudeProcess, createSseResponse } from '@/lib/claude-process-stream';
 import { provenanceCollector } from '@/lib/provenance-collector';
+import { getKnowledgeIgnoreLists } from '@/lib/settings';
 import type { ChildProcess } from 'child_process';
 
 export async function POST(
@@ -84,7 +85,7 @@ export async function POST(
     where: { active: true },
     select: { gitlabProjectId: true, localPath: true },
   });
-  provenanceCollector.start(adminMessage.id, activeRepos);
+  provenanceCollector.start(adminMessage.id, activeRepos, await getKnowledgeIgnoreLists());
 
   return createSseResponse((sink) => {
     let fullResponse = '';

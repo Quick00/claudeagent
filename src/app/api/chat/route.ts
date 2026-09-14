@@ -7,6 +7,7 @@ import { decrypt } from '@/lib/crypto';
 import { ChildProcess } from 'child_process';
 import { retrieveKnowledge, formatKnowledgeBlock, formatKnowledgeDelta, type LabelledEntry } from '@/lib/knowledge-context';
 import { provenanceCollector } from '@/lib/provenance-collector';
+import { getKnowledgeIgnoreLists } from '@/lib/settings';
 import path from 'path';
 import { attachClaudeProcess, createSseResponse } from '@/lib/claude-process-stream';
 import { NextResponse } from 'next/server';
@@ -79,6 +80,7 @@ export async function POST(request: Request) {
   provenanceCollector.start(
     userMessage.id,
     activeRepos.map((r) => ({ gitlabProjectId: r.gitlabProjectId, localPath: r.localPath })),
+    await getKnowledgeIgnoreLists(),
   );
 
   // Link attachments to the user message and build image references for CLI

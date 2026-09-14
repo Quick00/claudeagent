@@ -1,5 +1,6 @@
 import path from 'path';
 import { config } from '@/lib/config';
+import type { IgnoreLists } from '@/lib/settings';
 
 export interface RepoRef {
   gitlabProjectId: number;
@@ -16,17 +17,23 @@ interface RunState {
   reads: CapturedPath[];
   windowStart: number;
   startedAt: number;
+  ignore: IgnoreLists;
 }
 
 const MAX_RUN_AGE_MS = 60 * 60 * 1000;
 
+/** The hardcoded ignore lists, used whenever the caller doesn't supply admin-edited ones. */
+function defaultIgnore(): IgnoreLists {
+  return { segments: [...config.knowledgeIgnoreSegments], basenames: [...config.knowledgeIgnoreBasenames] };
+}
+
 /** Paths that change constantly and carry no product knowledge (translations, lockfiles, vendored code). */
-export function isIgnoredPath(relativePath: string): boolean {
+export function isIgnoredPath(relativePath: string, ignore: IgnoreLists = defaultIgnore()): boolean {
   const parts = relativePath.split('/');
   const basename = parts[parts.length - 1];
-  if (config.knowledgeIgnoreBasenames.includes(basename)) return true;
+  if (ignore.basenames.includes(basename)) return true;
   if (basename.toUpperCase().startsWith('CHANGELOG')) return true;
-  return parts.slice(0, -1).some((segment) => config.knowledgeIgnoreSegments.includes(segment.toLowerCase()));
+  return parts.slice(0, -1).some((segment) => ignore.segments.includes(segment.toLowerCase()));
 }
 
 /** Map an absolute path to (gitlabProjectId, repo-relative forward-slash path), or null if outside every repo. */
@@ -64,9 +71,9 @@ export function narrowByBasedOn(paths: CapturedPath[], basedOn?: string[]): Capt
 export class ProvenanceCollector {
   private runs = new Map<string, RunState>();
 
-  start(key: string, repos: RepoRef[]): void {
+  start(key: string, repos: RepoRef[], ignore: IgnoreLists = defaultIgnore()): void {
     this.sweep();
-    this.runs.set(key, { repos, reads: [], windowStart: 0, startedAt: Date.now() });
+    this.runs.set(key, { repos, reads: [], windowStart: 0, startedAt: Date.now(), ignore });
   }
 
   recordToolUse(key: string, toolName: string, input: Record<string, unknown>): void {
@@ -75,7 +82,7 @@ export class ProvenanceCollector {
     const filePath = input.file_path;
     if (typeof filePath !== 'string') return;
     const captured = toRepoRelative(filePath, run.repos);
-    if (!captured || isIgnoredPath(captured.relativePath)) return;
+    if (!captured || isIgnoredPath(captured.relativePath, run.ignore)) return;
     run.reads.push(captured);
   }
 

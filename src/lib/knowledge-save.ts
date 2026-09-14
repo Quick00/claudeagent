@@ -4,6 +4,8 @@ import { askLibrarian, type LibrarianCandidate, type LibrarianDecision } from '@
 import { provenanceCollector, narrowByBasedOn, type CapturedPath } from '@/lib/provenance-collector';
 import { computeFreshness } from '@/lib/knowledge-freshness';
 import { loadActiveHeadTrees } from '@/lib/knowledge-repos';
+import { createOpenReview } from '@/lib/knowledge-review-create';
+import { config } from '@/lib/config';
 import type { HeadTree } from '@/lib/repo-tree';
 
 export const KNOWLEDGE_CATEGORIES = ['terminology', 'product_insight', 'process', 'developer'] as const;
@@ -26,7 +28,8 @@ export interface SourceInput {
 
 export type SaveResult =
   | { status: 'saved'; action: 'create' | 'update'; id: string; subject: string; message: string; sourceCount: number }
-  | { status: 'skipped'; action: 'skip'; reason: string; message: string };
+  | { status: 'skipped'; action: 'skip'; reason: string; message: string }
+  | { status: 'conflict'; action: 'conflict'; reviewId: string; subject: string; message: string };
 
 interface PageData {
   subject: string;
@@ -122,6 +125,33 @@ function created(id: string, subject: string, sourceCount: number): SaveResult {
 }
 
 /**
+ * A save that contradicts a pinned (human-owned) page never writes to it.
+ * Instead it records a review row for an admin to resolve later (Task 5) and
+ * tells Claude not to present its finding as settled fact.
+ */
+async function recordPinnedConflict(
+  page: SimilarPage,
+  input: { content: string; category: string },
+  reason: string,
+  basedOnPaths: string[],
+): Promise<SaveResult> {
+  const reviewId = await createOpenReview(page.id, 'pinned_conflict', {
+    proposedContent: input.content,
+    category: input.category,
+    reason,
+    basedOnPaths,
+  });
+  console.log(`[knowledge] Pinned conflict recorded for "${page.subject}" (review ${reviewId})`);
+  return {
+    status: 'conflict',
+    action: 'conflict',
+    reviewId,
+    subject: page.subject,
+    message: `This contradicts the pinned business rule '${page.subject}'. An admin has been asked to review it; do not present your finding as the rule.`,
+  };
+}
+
+/**
  * Save or merge a knowledge page.
  *
  * The provenance window is consumed only when something was actually written:
@@ -167,15 +197,17 @@ async function runSave(input: SaveKnowledgeInput): Promise<SaveResult> {
     return created(id, subject, sources.length);
   }
 
-  // 3. Librarian decides create / update / skip with freshness in view.
+  // 3. Librarian decides create / update / skip / conflict with freshness in view.
+  const candidates = await buildCandidates(similar, headTrees);
+  const basedOnPaths = sources.map((s) => s.path);
   let decision: LibrarianDecision;
   try {
     decision = await askLibrarian({
       content,
       category,
       subject: input.subject,
-      basedOnPaths: sources.map((s) => s.path),
-      candidates: await buildCandidates(similar, headTrees),
+      basedOnPaths,
+      candidates,
     });
   } catch (err) {
     console.error('[knowledge] Librarian failed, saving as new:', (err as Error).message);
@@ -191,7 +223,22 @@ async function runSave(input: SaveKnowledgeInput): Promise<SaveResult> {
     }
   }
 
+  // Claude can never write to a pinned entry — enforced here regardless of what
+  // the (untrusted) librarian output claims, not only via the prompt.
+  if (decision.action === 'conflict') {
+    const page = similar.find((p) => p.id === decision.pageId);
+    if (!page || page.kind !== 'pinned') {
+      console.error(`[knowledge] Librarian conflict on non-pinned or unknown page ${decision.pageId}; treating as skip`);
+      return { status: 'skipped', action: 'skip', reason: decision.reason, message: 'Not saved: conflicting with an existing page.' };
+    }
+    return recordPinnedConflict(page, { content, category }, decision.reason, basedOnPaths);
+  }
+
   if (decision.action === 'update') {
+    const target = similar.find((p) => p.id === decision.pageId);
+    if (target?.kind === 'pinned') {
+      return recordPinnedConflict(target, { content, category }, 'Claude attempted to update a pinned rule', basedOnPaths);
+    }
     await updateEntry(decision, sources, headTrees);
     console.log(`[knowledge] Updated page: "${decision.subject}" (${decision.pageId}, ${sources.length} sources refreshed)`);
     return {
@@ -212,6 +259,16 @@ async function runSave(input: SaveKnowledgeInput): Promise<SaveResult> {
       sources,
     );
     console.log(`[knowledge] New page created: "${decision.subject}" [${category}] (${sources.length} sources)`);
+
+    // A new page that lands very close to an existing stale one may be
+    // superseding it; flag it for an admin rather than silently leaving both.
+    for (const c of candidates) {
+      const page = similar.find((p) => p.id === c.id);
+      if (c.freshness.state === 'stale' && page && page.similarity >= config.knowledgeSupersedesThreshold) {
+        await createOpenReview(c.id, 'supersedes', { newEntryId: id, newSubject: decision.subject, similarity: page.similarity });
+      }
+    }
+
     return created(id, decision.subject, sources.length);
   }
 

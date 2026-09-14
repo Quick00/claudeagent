@@ -42,7 +42,17 @@ export interface LibrarianDecisionSkip {
   coveredBy: string;
 }
 
-export type LibrarianDecision = LibrarianDecisionUpdate | LibrarianDecisionCreate | LibrarianDecisionSkip;
+export interface LibrarianDecisionConflict {
+  action: 'conflict';
+  pageId: string;
+  reason: string;
+}
+
+export type LibrarianDecision =
+  | LibrarianDecisionUpdate
+  | LibrarianDecisionCreate
+  | LibrarianDecisionSkip
+  | LibrarianDecisionConflict;
 
 function describeFreshness(f: Freshness): string {
   if (f.state === 'stale') return `STALE — these files changed since the page was written: ${f.changedPaths.join(', ')}`;
@@ -57,8 +67,12 @@ export async function askLibrarian(req: LibrarianRequest): Promise<LibrarianDeci
   }
 
   const candidateList = req.candidates
-    .map((c, i) =>
-      `Page ${i + 1} (id: ${c.id}):\n  Subject: ${c.subject}\n  Category: ${c.category}\n  Tags: ${c.tags}\n  Status: ${describeFreshness(c.freshness)}\n  Content: ${c.content}`)
+    .map((c, i) => {
+      const status = c.kind === 'pinned'
+        ? 'PINNED BUSINESS RULE — immutable. You may not update it. If the new knowledge contradicts it, answer "conflict".'
+        : describeFreshness(c.freshness);
+      return `Page ${i + 1} (id: ${c.id}):\n  Subject: ${c.subject}\n  Category: ${c.category}\n  Tags: ${c.tags}\n  Status: ${status}\n  Content: ${c.content}`;
+    })
     .join('\n\n');
 
   const basedOn = req.basedOnPaths.length > 0
@@ -85,11 +99,14 @@ Decide ONE of the following:
 
 3. "skip" — the existing pages already fully cover this information AND none of them is STALE. Nothing new to add.
 
+4. "conflict" — the new knowledge contradicts a PINNED page. Pinned pages are business policy set by humans and cannot be changed by you. Return the pinned page ID and a one-sentence reason. If the new knowledge merely adds detail without contradicting the pinned rule, use "skip" (if fully covered) or "create" (if it is a separate subject).
+
 Respond with ONLY valid JSON in this exact format (no markdown, no explanation):
 
 For update: {"action":"update","pageId":"<id>","subject":"<improved subject>","content":"<full rewritten page content>","tags":"<comma-separated tags>"}
 For create: {"action":"create","subject":"<subject title>","content":"<page content>","tags":"<comma-separated tags>"}
-For skip: {"action":"skip","reason":"<brief reason>","coveredBy":"<subject of page that covers it>"}`;
+For skip: {"action":"skip","reason":"<brief reason>","coveredBy":"<subject of page that covers it>"}
+For conflict: {"action":"conflict","pageId":"<id>","reason":"<one sentence>"}`;
 
   const res = await fetch(OPENROUTER_API_URL, {
     method: 'POST',
@@ -126,7 +143,7 @@ For skip: {"action":"skip","reason":"<brief reason>","coveredBy":"<subject of pa
     throw new Error(`Librarian returned invalid JSON: ${cleaned.slice(0, 200)}`);
   }
 
-  if (!['update', 'create', 'skip'].includes(decision.action)) {
+  if (!['update', 'create', 'skip', 'conflict'].includes(decision.action)) {
     throw new Error(`Librarian returned invalid action: ${(decision as { action: string }).action}`);
   }
 
@@ -144,6 +161,10 @@ For skip: {"action":"skip","reason":"<brief reason>","coveredBy":"<subject of pa
   } else if (decision.action === 'skip') {
     if (!decision.reason) {
       throw new Error(`Librarian 'skip' decision missing reason`);
+    }
+  } else if (decision.action === 'conflict') {
+    if (!decision.pageId || !decision.reason) {
+      throw new Error(`Librarian 'conflict' decision missing pageId or reason`);
     }
   }
 

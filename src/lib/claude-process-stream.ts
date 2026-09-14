@@ -21,9 +21,11 @@ export interface ClaudeEventHandlers {
   /** Emitted when Claude reports a rate-limit message with user-facing text. */
   onRateLimit?: (content: string) => void;
   /** Emitted for the `result` event (terminal success or error).
+   *  `total_cost_usd` is the CLI's own accounting for the whole run and is
+   *  absent on error results.
    *  Return `true` to stop processing remaining lines in this chunk
    *  (e.g. when scheduling a retry that attaches a new process). */
-  onResult?: (event: { is_error?: boolean; subtype?: string; session_id?: string }) => boolean | void;
+  onResult?: (event: { is_error?: boolean; subtype?: string; session_id?: string; total_cost_usd?: number }) => boolean | void;
   /** Emitted when the child process closes. */
   onClose?: (code: number | null) => void;
   /** Emitted when the child process emits an `error`. */
@@ -100,7 +102,7 @@ export function attachClaudeProcess(
       if (typeof event.session_id === 'string') {
         handlers.onSessionId?.(event.session_id);
       }
-      const stop = handlers.onResult?.(event as { is_error?: boolean; subtype?: string; session_id?: string });
+      const stop = handlers.onResult?.(event as { is_error?: boolean; subtype?: string; session_id?: string; total_cost_usd?: number });
       if (stop) return true; // signal caller to stop processing this chunk
     }
 
