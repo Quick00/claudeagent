@@ -73,18 +73,33 @@ describe('repo-manager', () => {
       // chmod u+w (make writable)
       expect(calls[0][0]).toBe('chmod');
       expect(calls[0][1]).toEqual(['-R', 'u+w', repoPath]);
+      // rev-parse HEAD before fetch
+      expect(calls[1][1]).toEqual(['rev-parse', 'HEAD']);
       // git fetch with authed URL (no set-url — avoids persisting token in .git/config)
-      expect(calls[1][0]).toBe('git');
-      expect(calls[1][1]).toEqual(expect.arrayContaining(['fetch']));
-      const fetchArgs = calls[1][1] as string[];
+      expect(calls[2][0]).toBe('git');
+      expect(calls[2][1]).toEqual(expect.arrayContaining(['fetch']));
+      const fetchArgs = calls[2][1] as string[];
       expect(fetchArgs.some((a: string) => a.includes('oauth2:'))).toBe(true);
       expect(fetchArgs).toContain('main');
       // git reset --hard FETCH_HEAD
-      expect(calls[2][0]).toBe('git');
-      expect(calls[2][1]).toEqual(expect.arrayContaining(['reset', '--hard', 'FETCH_HEAD']));
+      expect(calls[3][1]).toEqual(expect.arrayContaining(['reset', '--hard', 'FETCH_HEAD']));
+      // rev-parse HEAD after reset
+      expect(calls[4][1]).toEqual(['rev-parse', 'HEAD']);
       // chmod a-w (make read-only)
-      expect(calls[3][0]).toBe('chmod');
-      expect(calls[3][1]).toEqual(['-R', 'a-w', repoPath]);
+      expect(calls[5][0]).toBe('chmod');
+      expect(calls[5][1]).toEqual(['-R', 'a-w', repoPath]);
+    });
+
+    it('returns the HEAD sha before and after', async () => {
+      const repoPath = path.join(tmpDir, 'myrepo');
+      fs.mkdirSync(repoPath, { recursive: true });
+      let n = 0;
+      mockExecFileSync.mockImplementation((_cmd, args) => {
+        if ((args as string[])[0] === 'rev-parse') return Buffer.from(n++ === 0 ? 'aaa\n' : 'bbb\n');
+        return Buffer.from('');
+      });
+      const result = await syncRepo({ localPath: repoPath, branch: 'main', token: 't', gitlabUrl: 'https://gitlab.com/g/r.git' });
+      expect(result).toEqual({ fromSha: 'aaa', toSha: 'bbb' });
     });
   });
 });

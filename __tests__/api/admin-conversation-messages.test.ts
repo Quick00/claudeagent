@@ -9,6 +9,8 @@ jest.mock('@/lib/prisma', () => ({
     conversation: { findUnique: jest.fn() },
     message: { create: jest.fn() },
     flag: { updateMany: jest.fn() },
+    repository: { findMany: jest.fn() },
+    appSetting: { findUnique: jest.fn(), upsert: jest.fn() },
     $transaction: jest.fn(),
   },
 }));
@@ -99,14 +101,16 @@ import { EventEmitter } from 'events';
 
 const mockMsgCreate = prisma.message.create as jest.Mock;
 const mockFlagUpdate = prisma.flag.updateMany as jest.Mock;
+const mockRepoFind = prisma.repository.findMany as jest.Mock;
 const mockTx = prisma.$transaction as jest.Mock;
 const mockResume = sessionManager.resumeSession as jest.Mock;
 
 describe('POST /api/admin/conversations/[id]/messages — happy path', () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    mockMsgCreate.mockResolvedValue({});
+    mockMsgCreate.mockResolvedValue({ id: 'admin-msg-1' });
     mockFlagUpdate.mockResolvedValue({ count: 1 });
+    mockRepoFind.mockResolvedValue([]);
     mockTx.mockImplementation((ops) => Promise.all(ops.map((p: Promise<unknown>) => p)));
   });
 
@@ -150,7 +154,7 @@ describe('POST /api/admin/conversations/[id]/messages — happy path', () => {
       'Hello from admin',
       'dec(enc)',
       'u-other',
-      'r1',
+      'admin-msg-1',
     );
   });
 });

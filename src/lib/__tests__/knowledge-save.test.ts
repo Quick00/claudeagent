@@ -1,0 +1,286 @@
+import { saveKnowledge, toSourceInputs } from '@/lib/knowledge-save';
+import { prisma } from '@/lib/prisma';
+import { embedText, findSimilarPages } from '@/lib/embeddings';
+import { askLibrarian } from '@/lib/knowledge-librarian';
+import { loadActiveHeadTrees } from '@/lib/knowledge-repos';
+import { provenanceCollector } from '@/lib/provenance-collector';
+import type { HeadTree } from '@/lib/repo-tree';
+
+jest.mock('@/lib/prisma', () => {
+  const tx = {
+    knowledgeEntry: { update: jest.fn() },
+    knowledgeSource: { upsert: jest.fn() },
+    $executeRaw: jest.fn(),
+  };
+  return {
+    prisma: {
+      knowledgeEntry: { create: jest.fn(), findUnique: jest.fn() },
+      knowledgeSource: { findMany: jest.fn().mockResolvedValue([]) },
+      knowledgeReview: { findFirst: jest.fn(), create: jest.fn(), update: jest.fn() },
+      $executeRaw: jest.fn(),
+      $transaction: jest.fn(async (fn: (t: typeof tx) => Promise<void>) => fn(tx)),
+      __tx: tx,
+    },
+  };
+});
+jest.mock('@/lib/embeddings', () => ({ embedText: jest.fn(), findSimilarPages: jest.fn() }));
+jest.mock('@/lib/knowledge-librarian', () => ({ askLibrarian: jest.fn() }));
+jest.mock('@/lib/knowledge-repos', () => ({ loadActiveHeadTrees: jest.fn() }));
+jest.mock('@/lib/config', () => ({
+  config: {
+    knowledgeMaxSourcesPerSave: 15,
+    knowledgeIgnoreSegments: [],
+    knowledgeIgnoreBasenames: [],
+    knowledgeSupersedesThreshold: 0.8,
+  },
+}));
+
+const mockCreate = prisma.knowledgeEntry.create as jest.Mock;
+const mockFindUnique = prisma.knowledgeEntry.findUnique as jest.Mock;
+const mockEntrySources = prisma.knowledgeSource.findMany as jest.Mock;
+const mockEmbed = embedText as jest.Mock;
+const mockSimilar = findSimilarPages as jest.Mock;
+const mockLibrarian = askLibrarian as jest.Mock;
+const mockTrees = loadActiveHeadTrees as jest.Mock;
+const tx = (prisma as unknown as { __tx: { knowledgeEntry: { update: jest.Mock }; knowledgeSource: { upsert: jest.Mock } } }).__tx;
+
+const tree: HeadTree = { commitSha: 'head1', blobs: new Map([['a.php', 'blobA'], ['b.php', 'blobB']]) };
+const trees = new Map([[1, tree]]);
+const repos = [{ gitlabProjectId: 1, localPath: '/repos/1' }];
+
+describe('toSourceInputs', () => {
+  it('attaches blob and commit, dropping paths not in HEAD', () => {
+    const out = toSourceInputs(
+      [{ gitlabProjectId: 1, relativePath: 'a.php' }, { gitlabProjectId: 1, relativePath: 'gone.php' }, { gitlabProjectId: 7, relativePath: 'a.php' }],
+      trees,
+    );
+    expect(out).toEqual([{ gitlabProjectId: 1, path: 'a.php', blobSha: 'blobA', commitSha: 'head1' }]);
+  });
+});
+
+describe('saveKnowledge', () => {
+  // Every branch logs its decision; keep the suite output clean.
+  const consoleLog = jest.spyOn(console, 'log').mockImplementation(() => {});
+  const consoleError = jest.spyOn(console, 'error').mockImplementation(() => {});
+  afterAll(() => {
+    consoleLog.mockRestore();
+    consoleError.mockRestore();
+  });
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockTrees.mockResolvedValue(trees);
+    mockEmbed.mockResolvedValue([0.1, 0.2]);
+    mockCreate.mockResolvedValue({ id: 'new-id' });
+    mockEntrySources.mockResolvedValue([]);
+    provenanceCollector.end('m1');
+    provenanceCollector.start('m1', repos);
+  });
+
+  it('creates an entry with sources from the provenance window and marks the save', async () => {
+    provenanceCollector.recordToolUse('m1', 'Read', { file_path: '/repos/1/a.php' });
+    provenanceCollector.recordToolUse('m1', 'Read', { file_path: '/repos/1/b.php' });
+    mockSimilar.mockResolvedValue([]);
+
+    const result = await saveKnowledge({ category: 'product_insight', content: 'Badges print per attendee.', subject: 'Badge Printing', provenanceKey: 'm1' });
+
+    expect(result).toMatchObject({ status: 'saved', action: 'create', id: 'new-id', sourceCount: 2 });
+    expect(mockCreate).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        subject: 'Badge Printing',
+        sources: {
+          create: [
+            { gitlabProjectId: 1, path: 'a.php', blobSha: 'blobA', commitSha: 'head1' },
+            { gitlabProjectId: 1, path: 'b.php', blobSha: 'blobB', commitSha: 'head1' },
+          ],
+        },
+      }),
+    });
+    // window consumed: next snapshot with a new read only contains the new read
+    provenanceCollector.recordToolUse('m1', 'Read', { file_path: '/repos/1/b.php' });
+    expect(provenanceCollector.snapshot('m1').map((p) => p.relativePath)).toEqual(['b.php']);
+  });
+
+  it('narrows sources with based_on', async () => {
+    provenanceCollector.recordToolUse('m1', 'Read', { file_path: '/repos/1/a.php' });
+    provenanceCollector.recordToolUse('m1', 'Read', { file_path: '/repos/1/b.php' });
+    mockSimilar.mockResolvedValue([]);
+
+    await saveKnowledge({ category: 'process', content: 'x', provenanceKey: 'm1', basedOn: ['b.php'] });
+
+    const data = mockCreate.mock.calls[0][0].data;
+    expect(data.sources.create.map((s: { path: string }) => s.path)).toEqual(['b.php']);
+  });
+
+  it('creates with zero sources when there is no provenance key (unverified)', async () => {
+    mockSimilar.mockResolvedValue([]);
+    const result = await saveKnowledge({ category: 'terminology', content: 'A cluster groups sessions.' });
+    expect(result).toMatchObject({ action: 'create', sourceCount: 0 });
+    expect(mockCreate.mock.calls[0][0].data.sources.create).toEqual([]);
+  });
+
+  it('on update refreshes only the sources read in this run and bumps correctionCount when the page was fresh', async () => {
+    provenanceCollector.recordToolUse('m1', 'Read', { file_path: '/repos/1/a.php' });
+    mockSimilar.mockResolvedValue([{ id: 'p1', subject: 'Badge Printing', content: 'old', category: 'product_insight', tags: 'badges', kind: 'derived', similarity: 0.9 }]);
+    mockEntrySources.mockResolvedValue([
+      { entryId: 'p1', gitlabProjectId: 1, path: 'a.php', blobSha: 'blobA' },
+      { entryId: 'p1', gitlabProjectId: 1, path: 'b.php', blobSha: 'blobB' },
+    ]);
+    mockFindUnique.mockResolvedValue({
+      id: 'p1', kind: 'derived',
+      sources: [
+        { gitlabProjectId: 1, path: 'a.php', blobSha: 'blobA' },
+        { gitlabProjectId: 1, path: 'b.php', blobSha: 'blobB' },
+      ],
+    });
+    mockLibrarian.mockResolvedValue({ action: 'update', pageId: 'p1', subject: 'Badge Printing', content: 'new', tags: 'badges' });
+
+    const result = await saveKnowledge({ category: 'product_insight', content: 'new fact', provenanceKey: 'm1' });
+
+    expect(result).toMatchObject({ action: 'update', id: 'p1', sourceCount: 1 });
+    expect(tx.knowledgeEntry.update).toHaveBeenCalledWith({
+      where: { id: 'p1' },
+      data: { subject: 'Badge Printing', content: 'new', tags: 'badges', correctionCount: { increment: 1 } },
+    });
+    expect(tx.knowledgeSource.upsert).toHaveBeenCalledTimes(1);
+    expect(tx.knowledgeSource.upsert.mock.calls[0][0].where).toEqual({
+      entryId_gitlabProjectId_path: { entryId: 'p1', gitlabProjectId: 1, path: 'a.php' },
+    });
+    // librarian saw freshness + based-on paths
+    expect(mockLibrarian).toHaveBeenCalledWith(expect.objectContaining({
+      basedOnPaths: ['a.php'],
+      candidates: [expect.objectContaining({ id: 'p1', freshness: { state: 'fresh' } })],
+    }));
+  });
+
+  it('does not bump correctionCount when the page was stale', async () => {
+    mockSimilar.mockResolvedValue([{ id: 'p1', subject: 's', content: 'old', category: 'process', tags: '', kind: 'derived', similarity: 0.9 }]);
+    mockEntrySources.mockResolvedValue([{ entryId: 'p1', gitlabProjectId: 1, path: 'a.php', blobSha: 'OLD' }]);
+    mockFindUnique.mockResolvedValue({ id: 'p1', kind: 'derived', sources: [{ gitlabProjectId: 1, path: 'a.php', blobSha: 'OLD' }] });
+    mockLibrarian.mockResolvedValue({ action: 'update', pageId: 'p1', subject: 's', content: 'new', tags: '' });
+
+    await saveKnowledge({ category: 'process', content: 'x', provenanceKey: 'm1' });
+
+    expect(tx.knowledgeEntry.update.mock.calls[0][0].data).toEqual({ subject: 's', content: 'new', tags: '' });
+  });
+
+  it('falls back to create when the librarian returns an unknown pageId', async () => {
+    mockSimilar.mockResolvedValue([{ id: 'p1', subject: 's', content: 'old', category: 'process', tags: '', kind: 'derived', similarity: 0.9 }]);
+    mockLibrarian.mockResolvedValue({ action: 'update', pageId: 'bogus', subject: 's2', content: 'c2', tags: 't' });
+    const result = await saveKnowledge({ category: 'process', content: 'x' });
+    expect(result).toMatchObject({ action: 'create', subject: 's2' });
+  });
+
+  it('returns skipped without writing', async () => {
+    mockSimilar.mockResolvedValue([{ id: 'p1', subject: 's', content: 'old', category: 'process', tags: '', kind: 'derived', similarity: 0.9 }]);
+    mockLibrarian.mockResolvedValue({ action: 'skip', reason: 'covered', coveredBy: 's' });
+    const result = await saveKnowledge({ category: 'process', content: 'x' });
+    expect(result).toEqual({ status: 'skipped', action: 'skip', reason: 'covered', message: "Already covered in 's'." });
+    expect(mockCreate).not.toHaveBeenCalled();
+    expect(tx.knowledgeEntry.update).not.toHaveBeenCalled();
+  });
+
+  it('leaves the provenance window intact when the librarian skips', async () => {
+    provenanceCollector.recordToolUse('m1', 'Read', { file_path: '/repos/1/a.php' });
+    mockSimilar.mockResolvedValue([{ id: 'p1', subject: 's', content: 'old', category: 'process', tags: '', kind: 'derived', similarity: 0.9 }]);
+    mockLibrarian.mockResolvedValue({ action: 'skip', reason: 'covered', coveredBy: 's' });
+
+    await saveKnowledge({ category: 'process', content: 'x', provenanceKey: 'm1' });
+
+    // nothing was written, so the read is still available to the next save
+    expect(provenanceCollector.snapshot('m1').map((p) => p.relativePath)).toEqual(['a.php']);
+  });
+
+  it('does not re-attach the whole run to a second save that read nothing new', async () => {
+    provenanceCollector.recordToolUse('m1', 'Read', { file_path: '/repos/1/a.php' });
+    provenanceCollector.recordToolUse('m1', 'Read', { file_path: '/repos/1/b.php' });
+    mockSimilar.mockResolvedValue([]);
+
+    await saveKnowledge({ category: 'process', content: 'first', provenanceKey: 'm1' });
+    const second = await saveKnowledge({ category: 'process', content: 'second', provenanceKey: 'm1' });
+
+    expect(mockCreate.mock.calls[0][0].data.sources.create).toHaveLength(2);
+    expect(second).toMatchObject({ action: 'create', sourceCount: 0 });
+    expect(mockCreate.mock.calls[1][0].data.sources.create).toEqual([]);
+  });
+
+  it('warns when a provenanceKey has no live collector run', async () => {
+    const consoleWarn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+    mockSimilar.mockResolvedValue([]);
+
+    await saveKnowledge({ category: 'process', content: 'x', provenanceKey: 'swept-away' });
+
+    expect(consoleWarn).toHaveBeenCalledWith(expect.stringContaining('swept-away'));
+    consoleWarn.mockRestore();
+  });
+
+  it('saves without embedding when embedText fails', async () => {
+    mockEmbed.mockRejectedValue(new Error('down'));
+    const result = await saveKnowledge({ category: 'process', content: 'x', subject: 'S' });
+    expect(result).toMatchObject({ action: 'create', subject: 'S' });
+    expect(prisma.$executeRaw).not.toHaveBeenCalled();
+  });
+
+  it('creates a pinned_conflict review instead of writing when the librarian returns conflict', async () => {
+    (prisma.knowledgeReview.create as jest.Mock).mockResolvedValue({ id: 'rev-1' });
+    mockSimilar.mockResolvedValue([{ id: 'pin1', subject: 'Refund Policy', content: '14 days', category: 'process', tags: '', kind: 'pinned', similarity: 0.95 }]);
+    mockLibrarian.mockResolvedValue({ action: 'conflict', pageId: 'pin1', reason: 'code says 30 days' });
+
+    const result = await saveKnowledge({ category: 'process', content: 'Refunds within 30 days.', provenanceKey: 'm1' });
+
+    expect(result).toEqual({
+      status: 'conflict', action: 'conflict', reviewId: 'rev-1', subject: 'Refund Policy',
+      message: "This contradicts the pinned business rule 'Refund Policy'. An admin has been asked to review it; do not present your finding as the rule.",
+    });
+    expect(prisma.knowledgeReview.create).toHaveBeenCalledWith({
+      data: {
+        entryId: 'pin1',
+        type: 'pinned_conflict',
+        payload: { proposedContent: 'Refunds within 30 days.', category: 'process', reason: 'code says 30 days', basedOnPaths: [] },
+      },
+    });
+    expect(mockCreate).not.toHaveBeenCalled();
+    expect(tx.knowledgeEntry.update).not.toHaveBeenCalled();
+  });
+
+  it('turns an update aimed at a pinned page into a conflict', async () => {
+    (prisma.knowledgeReview.create as jest.Mock).mockResolvedValue({ id: 'rev-2' });
+    mockSimilar.mockResolvedValue([{ id: 'pin1', subject: 'Refund Policy', content: '14 days', category: 'process', tags: '', kind: 'pinned', similarity: 0.95 }]);
+    mockLibrarian.mockResolvedValue({ action: 'update', pageId: 'pin1', subject: 'Refund Policy', content: '30 days', tags: '' });
+
+    const result = await saveKnowledge({ category: 'process', content: 'Refunds within 30 days.' });
+
+    expect(result).toMatchObject({ action: 'conflict', reviewId: 'rev-2' });
+    expect(tx.knowledgeEntry.update).not.toHaveBeenCalled();
+  });
+
+  it('queues a supersedes review when a create lands next to a stale page', async () => {
+    (prisma.knowledgeReview.create as jest.Mock).mockResolvedValue({ id: 'rev-3' });
+    mockSimilar.mockResolvedValue([{ id: 'old', subject: 'Badge Printing', content: 'old', category: 'product_insight', tags: '', kind: 'derived', similarity: 0.85 }]);
+    (prisma.knowledgeSource.findMany as jest.Mock).mockResolvedValue([{ entryId: 'old', gitlabProjectId: 1, path: 'a.php', blobSha: 'OLD' }]);
+    mockLibrarian.mockResolvedValue({ action: 'create', subject: 'Badge Printing v2', content: 'new', tags: '' });
+
+    await saveKnowledge({ category: 'product_insight', content: 'new' });
+
+    expect(prisma.knowledgeReview.create).toHaveBeenCalledWith({
+      data: { entryId: 'old', type: 'supersedes', payload: { newEntryId: 'new-id', newSubject: 'Badge Printing v2', similarity: 0.85 } },
+    });
+  });
+
+  it('updates the open review instead of queueing a near-identical second one', async () => {
+    // A recurring chat topic contradicts the same pinned rule over and over;
+    // one row per (entry, type) keeps the Reviews tab actionable.
+    (prisma.knowledgeReview.findFirst as jest.Mock).mockResolvedValue({ id: 'rev-open' });
+    mockSimilar.mockResolvedValue([{ id: 'pin1', subject: 'Refund Policy', content: '14 days', category: 'process', tags: '', kind: 'pinned', similarity: 0.95 }]);
+    mockLibrarian.mockResolvedValue({ action: 'conflict', pageId: 'pin1', reason: 'code says 30 days' });
+
+    const result = await saveKnowledge({ category: 'process', content: 'Refunds within 30 days.' });
+
+    expect(result).toMatchObject({ action: 'conflict', reviewId: 'rev-open' });
+    expect(prisma.knowledgeReview.create).not.toHaveBeenCalled();
+    expect(prisma.knowledgeReview.update).toHaveBeenCalledWith({
+      where: { id: 'rev-open' },
+      data: { payload: { proposedContent: 'Refunds within 30 days.', category: 'process', reason: 'code says 30 days', basedOnPaths: [] } },
+    });
+  });
+});

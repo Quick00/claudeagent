@@ -4,6 +4,8 @@ import { prisma } from '@/lib/prisma';
 import { sessionManager } from '@/lib/session-manager';
 import { decrypt } from '@/lib/crypto';
 import { attachClaudeProcess, createSseResponse } from '@/lib/claude-process-stream';
+import { provenanceCollector } from '@/lib/provenance-collector';
+import { getKnowledgeIgnoreLists } from '@/lib/settings';
 import type { ChildProcess } from 'child_process';
 
 export async function POST(
@@ -55,12 +57,11 @@ export async function POST(
   const conversationId = conversation.id;
   const ownerUserId = conversation.user.id;
   const ownerClaudeToken = decrypt(conversation.user.claudeToken);
-  const repositoryId = conversation.repositoryId ?? undefined;
   const sessionId = conversation.claudeSessionId;
 
   // Persist admin message + flip PENDING flags atomically so the admin's
   // intent is recorded even if the Claude stream later fails.
-  await prisma.$transaction([
+  const [adminMessage] = await prisma.$transaction([
     prisma.message.create({
       data: {
         conversationId,
@@ -80,6 +81,12 @@ export async function POST(
     }),
   ]);
 
+  const activeRepos = await prisma.repository.findMany({
+    where: { active: true },
+    select: { gitlabProjectId: true, localPath: true },
+  });
+  provenanceCollector.start(adminMessage.id, activeRepos, await getKnowledgeIgnoreLists());
+
   return createSseResponse((sink) => {
     let fullResponse = '';
     let newSessionId: string | null = null;
@@ -95,7 +102,11 @@ export async function POST(
         onToolUse: (tool) => {
           sink.send(JSON.stringify({ type: 'tool_use', tool }));
         },
+        onToolUseInput: (tool, input) => {
+          provenanceCollector.recordToolUse(adminMessage.id, tool, input);
+        },
         onClose: async () => {
+          provenanceCollector.end(adminMessage.id);
           if (fullResponse) {
             await prisma.message.create({
               data: {
@@ -121,6 +132,7 @@ export async function POST(
             type: 'error',
             content: 'Claude process encountered an error. Please try again.',
           }));
+          provenanceCollector.end(adminMessage.id);
           sink.close();
         },
       });
@@ -133,7 +145,7 @@ export async function POST(
       content,
       ownerClaudeToken,
       ownerUserId,
-      repositoryId,
+      adminMessage.id,
     );
 
     if (procOrPromise instanceof Promise) {

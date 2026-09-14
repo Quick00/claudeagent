@@ -73,17 +73,78 @@ model Attachment {
 }
 
 model KnowledgeEntry {
-  id           String                          @id @default(uuid())
-  subject      String                          @default("")
-  category     String
-  content      String
-  tags         String                          @default("")
-  source       String?
-  repositoryId String?
-  embedding    Unsupported("vector(1024)")?
-  createdAt    DateTime                        @default(now())
-  updatedAt    DateTime                        @default(now()) @updatedAt
-  repository   Repository? @relation(fields: [repositoryId], references: [id], onDelete: SetNull)
+  id              String    @id @default(uuid())
+  subject         String    @default("")
+  category        String
+  content         String
+  tags            String    @default("")
+  kind            String    @default("derived") // "derived" | "pinned"
+  status          String    @default("active")  // "active" | "retired"
+  hitCount        Int       @default(0)
+  lastRetrievedAt DateTime?
+  correctionCount Int       @default(0)
+  embedding       Unsupported("vector(1024)")?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @default(now()) @updatedAt
+  sources         KnowledgeSource[]
+  reviews          KnowledgeReview[]
+  verificationRuns VerificationRun[]
+}
+
+model KnowledgeSource {
+  id              String   @id @default(uuid())
+  entryId         String
+  gitlabProjectId Int
+  path            String
+  blobSha         String
+  commitSha       String
+  verifiedAt      DateTime @default(now())
+  entry           KnowledgeEntry @relation(fields: [entryId], references: [id], onDelete: Cascade)
+
+  @@unique([entryId, gitlabProjectId, path])
+  @@index([gitlabProjectId, path])
+}
+
+model KnowledgeReview {
+  id           String    @id @default(uuid())
+  entryId      String
+  type         String    // "pinned_conflict" | "supersedes" | "proposed_update"
+  payload      Json
+  status       String    @default("open") // "open" | "resolved"
+  createdAt    DateTime  @default(now())
+  resolvedAt   DateTime?
+  resolvedById String?
+  entry        KnowledgeEntry @relation(fields: [entryId], references: [id], onDelete: Cascade)
+
+  @@index([status, createdAt])
+}
+
+model VerificationRun {
+  id         String   @id @default(uuid())
+  entryId    String
+  tier       Int      // 1 = Haiku over sources, 2 = Claude Code run
+  outcome    String   @default("pending") // "pending" | "confirmed" | "changed" | "unsure" | "retired" | "failed"
+  reason     String   @default("")
+  costUsd    Float?
+  durationMs Int      @default(0)
+  startedById String?
+  createdAt  DateTime @default(now())
+  entry      KnowledgeEntry @relation(fields: [entryId], references: [id], onDelete: Cascade)
+
+  @@index([entryId, createdAt])
+}
+
+model RepoSync {
+  id              String   @id @default(uuid())
+  repositoryId    String?
+  gitlabProjectId Int
+  fromSha         String
+  toSha           String
+  changedFiles    String[]
+  reason          String   @default("sync") // "sync" | "branch_change" | "removed"
+  wouldStaleCount Int      @default(0)
+  syncedAt        DateTime @default(now())
+  repository      Repository? @relation(fields: [repositoryId], references: [id], onDelete: SetNull)
 }
 
 model Flag {
@@ -132,5 +193,5 @@ model Repository {
   updatedAt        DateTime  @updatedAt
 
   conversations    Conversation[]
-  knowledgeEntries KnowledgeEntry[]
+  syncs            RepoSync[]
 }

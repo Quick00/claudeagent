@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { findRelevantEntries } from '@/lib/embeddings';
+import { retrieveKnowledge } from '@/lib/knowledge-context';
 
 export async function POST(request: Request) {
   const authHeader = request.headers.get('authorization');
@@ -15,8 +15,19 @@ export async function POST(request: Request) {
   }
 
   try {
-    const entries = await findRelevantEntries(query, limit || 10);
-    return NextResponse.json({ entries });
+    const entries = await retrieveKnowledge(query, limit || 10);
+    return NextResponse.json({
+      entries: entries.map((e) => ({
+        id: e.id,
+        subject: e.subject,
+        category: e.category,
+        content: e.content,
+        tags: e.tags,
+        kind: e.kind,
+        freshness: e.freshness.state,
+        changedPaths: e.freshness.state === 'stale' ? e.freshness.changedPaths : [],
+      })),
+    });
   } catch (err) {
     console.error('[knowledge/search] Error:', (err as Error).message);
     return NextResponse.json({ error: 'Search failed' }, { status: 500 });

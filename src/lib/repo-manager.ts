@@ -51,12 +51,17 @@ export async function cloneRepo({ gitlabUrl, localPath, branch, token }: CloneOp
   makeReadOnly(localPath);
 }
 
+function readHead(localPath: string): string {
+  return execFileSync('git', ['rev-parse', 'HEAD'], { cwd: localPath, stdio: 'pipe' }).toString().trim();
+}
+
 /**
  * Sync a cloned repo: make temporarily writable, fetch + reset, then lock down again.
+ * Returns the HEAD commit before and after so callers can record what changed.
  * SECURITY: Even if the process crashes mid-sync, the repo was read-only before
  * and will be re-locked on the next sync cycle.
  */
-export async function syncRepo({ localPath, branch, token, gitlabUrl }: SyncOptions): Promise<void> {
+export async function syncRepo({ localPath, branch, token, gitlabUrl }: SyncOptions): Promise<{ fromSha: string; toSha: string }> {
   if (!fs.existsSync(localPath)) {
     throw new Error(`Repo path does not exist: ${localPath}`);
   }
@@ -64,10 +69,13 @@ export async function syncRepo({ localPath, branch, token, gitlabUrl }: SyncOpti
   makeWritable(localPath);
 
   try {
+    const fromSha = readHead(localPath);
     // Fetch using the authed URL directly — avoids persisting the token in .git/config
     const authedUrl = injectToken(gitlabUrl, token);
     execFileSync('git', ['fetch', authedUrl, branch], { cwd: localPath, timeout: 120000, stdio: 'pipe' });
     execFileSync('git', ['reset', '--hard', 'FETCH_HEAD'], { cwd: localPath, stdio: 'pipe' });
+    const toSha = readHead(localPath);
+    return { fromSha, toSha };
   } finally {
     makeReadOnly(localPath);
   }

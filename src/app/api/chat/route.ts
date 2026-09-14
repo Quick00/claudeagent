@@ -5,7 +5,9 @@ import { config } from '@/lib/config';
 import { stripSourceReferences } from '@/lib/sanitize-response';
 import { decrypt } from '@/lib/crypto';
 import { ChildProcess } from 'child_process';
-import { findRelevantEntries, KnowledgeEntryResult } from '@/lib/embeddings';
+import { retrieveKnowledge, formatKnowledgeBlock, formatKnowledgeDelta, type LabelledEntry } from '@/lib/knowledge-context';
+import { provenanceCollector } from '@/lib/provenance-collector';
+import { getKnowledgeIgnoreLists } from '@/lib/settings';
 import path from 'path';
 import { attachClaudeProcess, createSseResponse } from '@/lib/claude-process-stream';
 import { NextResponse } from 'next/server';
@@ -37,7 +39,7 @@ export async function POST(request: Request) {
   // --- Collect all active repo directories (before any DB writes) ---
   const activeRepos = await prisma.repository.findMany({
     where: { active: true },
-    select: { name: true, description: true, localPath: true, lastPulledAt: true },
+    select: { name: true, description: true, localPath: true, lastPulledAt: true, gitlabProjectId: true },
   });
   const repoPaths = activeRepos.map(r => r.localPath);
 
@@ -49,7 +51,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'No repositories configured. Please ask an admin to add a repository.' }, { status: 503 });
   }
 
-  let conversation: { id: string; claudeSessionId: string | null; repositoryId: string | null };
+  let conversation: { id: string; claudeSessionId: string | null };
   if (conversationId) {
     const existing = await prisma.conversation.findFirst({
       where: { id: conversationId, userId: userId },
@@ -74,6 +76,12 @@ export async function POST(request: Request) {
       content: message,
     },
   });
+
+  provenanceCollector.start(
+    userMessage.id,
+    activeRepos.map((r) => ({ gitlabProjectId: r.gitlabProjectId, localPath: r.localPath })),
+    await getKnowledgeIgnoreLists(),
+  );
 
   // Link attachments to the user message and build image references for CLI
   let cliMessage = message;
@@ -108,36 +116,21 @@ export async function POST(request: Request) {
         repoContext += ` (last synced: ${repo.lastPulledAt.toISOString()})`;
       }
     }
-    repoContext += `\nIf a knowledge entry contradicts what you see in the current code, trust the code — the entry may be outdated. Use save_knowledge to save the corrected version — the system will update the page automatically.`;
+    repoContext += `\nKnowledge marked VERIFIED matches the current code. Knowledge marked POSSIBLY OUTDATED describes code that has changed since it was saved: read the code before repeating it, and if it is wrong, save the corrected version with save_knowledge (the system merges it into the right page). Pinned business rules take precedence over code: if the code differs from a pinned rule, say so.`;
   }
 
-  let knowledgeEntries: KnowledgeEntryResult[] = [];
+  let knowledge: LabelledEntry[] = [];
   try {
-    knowledgeEntries = await findRelevantEntries(message, 10);
+    knowledge = await retrieveKnowledge(message, 10);
   } catch (err) {
-    console.error('[chat] Failed to fetch relevant entries, falling back to all:', (err as Error).message);
-    const fallback = await prisma.knowledgeEntry.findMany({
-      orderBy: { createdAt: 'asc' },
-    });
-    knowledgeEntries = fallback.map((e) => ({ ...e, repositoryName: null }));
+    console.error('[chat] Knowledge retrieval failed, continuing without knowledge:', (err as Error).message);
   }
 
   let systemPrompt = config.systemPrompt;
-
-  if (knowledgeEntries.length > 0) {
-    let knowledgeBlock = '\n\n---\nKNOWLEDGE BASE (use this to give better answers):\n';
-
-    for (const entry of knowledgeEntries) {
-      const heading = entry.subject || entry.category.replace('_', ' ');
-      const source = entry.repositoryName ? ` [from: ${entry.repositoryName}]` : '';
-      knowledgeBlock += `\n## ${heading}${source}\n${entry.content}\n`;
-    }
-
-    systemPrompt += knowledgeBlock;
+  if (!conversation.claudeSessionId) {
+    systemPrompt += formatKnowledgeBlock(knowledge);
   }
-
   systemPrompt += repoContext;
-
   systemPrompt += `\n\n${config.knowledgeToolsPrompt}`;
 
   return createSseResponse((sink) => {
@@ -148,7 +141,7 @@ export async function POST(request: Request) {
     // drifts and starts including file paths / code references.  Prepend
     // a short reminder to each follow-up message.
     const effectiveMessage = conversation.claudeSessionId
-      ? config.responseReminder + cliMessage
+      ? config.responseReminder + (knowledge.length > 0 ? formatKnowledgeDelta(knowledge) + '\n\n' : '') + cliMessage
       : cliMessage;
 
     function attachProcess(proc: ChildProcess, retryCount: number) {
@@ -178,6 +171,9 @@ export async function POST(request: Request) {
         onToolUse: (tool) => {
           sink.send(JSON.stringify({ type: 'tool_use', tool }));
         },
+        onToolUseInput: (tool, input) => {
+          provenanceCollector.recordToolUse(userMessage.id, tool, input);
+        },
         onAuthFailed: () => {
           console.error('[chat] Authentication failed — invalid Claude token');
           authFailed = true;
@@ -194,6 +190,7 @@ export async function POST(request: Request) {
             content: 'Your Claude account token is invalid or expired. Please re-link your Claude account in Settings.',
             errorType: 'claude_token_expired',
           }));
+          provenanceCollector.end(userMessage.id);
           sink.close();
         },
         onRateLimit: (rateLimitMessage) => {
@@ -212,8 +209,8 @@ export async function POST(request: Request) {
             retrying = true;
             const retryRequestId = `${conversation.id}-retry-${Date.now()}`;
             const retryProcOrPromise = conversation.claudeSessionId
-              ? sessionManager.resumeSession(retryRequestId, conversation.claudeSessionId, effectiveMessage, userClaudeToken, userId, conversation.repositoryId || undefined)
-              : sessionManager.startSession(retryRequestId, effectiveMessage, systemPrompt, userClaudeToken, userId, repoPaths);
+              ? sessionManager.resumeSession(retryRequestId, conversation.claudeSessionId, effectiveMessage, userClaudeToken, userId, userMessage.id)
+              : sessionManager.startSession(retryRequestId, effectiveMessage, systemPrompt, userClaudeToken, userId, repoPaths, userMessage.id);
 
             if (retryProcOrPromise instanceof Promise) {
               retryProcOrPromise.then((retryProc) => attachProcess(retryProc, retryCount + 1)).catch((err) => {
@@ -239,6 +236,7 @@ export async function POST(request: Request) {
           if (retrying) {
             return;
           }
+          provenanceCollector.end(userMessage.id);
           if (fullResponse) {
             const finalSanitized = stripSourceReferences(fullResponse);
 
@@ -273,17 +271,18 @@ export async function POST(request: Request) {
             type: 'error',
             content: 'Claude process encountered an error. Please try again.',
           }));
+          provenanceCollector.end(userMessage.id);
           sink.close();
         },
       });
     }
 
     const requestId = `${conversation.id}-${Date.now()}`;
-    console.log(`[chat] Starting request (requestId=${requestId}, conversationId=${conversation.id}, resume=${!!conversation.claudeSessionId}, knowledgeEntries=${knowledgeEntries.length})`);
+    console.log(`[chat] Starting request (requestId=${requestId}, conversationId=${conversation.id}, resume=${!!conversation.claudeSessionId}, knowledgeEntries=${knowledge.length})`);
 
     const procOrPromise = conversation.claudeSessionId
-      ? sessionManager.resumeSession(requestId, conversation.claudeSessionId, effectiveMessage, userClaudeToken, userId, conversation.repositoryId || undefined)
-      : sessionManager.startSession(requestId, effectiveMessage, systemPrompt, userClaudeToken, userId, repoPaths);
+      ? sessionManager.resumeSession(requestId, conversation.claudeSessionId, effectiveMessage, userClaudeToken, userId, userMessage.id)
+      : sessionManager.startSession(requestId, effectiveMessage, systemPrompt, userClaudeToken, userId, repoPaths, userMessage.id);
 
     if (procOrPromise instanceof Promise) {
       procOrPromise.then((proc) => {

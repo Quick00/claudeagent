@@ -4,6 +4,7 @@ import { PrismaClient } from '@prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { writeFileSync } from 'fs';
 import { embedText } from '../src/lib/embed-text';
+import { config } from '../src/lib/config';
 
 const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL ?? '' });
 const prisma = new PrismaClient({ adapter });
@@ -19,7 +20,6 @@ interface Entry {
   content: string;
   tags: string;
   createdAt: Date;
-  repositoryId: string | null;
 }
 
 interface ConsolidatedPage {
@@ -163,13 +163,42 @@ async function generateSubject(content: string, category: string): Promise<strin
   return title || content.slice(0, 60);
 }
 
+interface CarriedSource {
+  gitlabProjectId: number;
+  path: string;
+  blobSha: string;
+  commitSha: string;
+  verifiedAt: Date;
+}
+
+/**
+ * Union of the cluster's provenance, deduped by (repo, path) keeping the most
+ * recently verified row, newest first, capped the same way a save is. The cap
+ * matters: a merged page whose freshness depends on a hundred files would read
+ * as outdated the moment any one of them moves.
+ */
+async function carryOverSources(entryIds: string[]): Promise<CarriedSource[]> {
+  const rows = await prisma.knowledgeSource.findMany({
+    where: { entryId: { in: entryIds } },
+    select: { gitlabProjectId: true, path: true, blobSha: true, commitSha: true, verifiedAt: true },
+    orderBy: { verifiedAt: 'desc' },
+  });
+
+  const byPath = new Map<string, CarriedSource>();
+  for (const r of rows) {
+    const key = `${r.gitlabProjectId}:${r.path}`;
+    if (!byPath.has(key)) byPath.set(key, r);
+  }
+  return [...byPath.values()].slice(0, config.knowledgeMaxSourcesPerSave);
+}
+
 async function main() {
   console.log('=== Knowledge Consolidation ===\n');
 
   // Step 1: Load all entries (embeddings stay in the DB)
   const rawEntries: Entry[] = await prisma.knowledgeEntry.findMany({
     orderBy: { createdAt: 'asc' },
-    select: { id: true, category: true, content: true, tags: true, createdAt: true, repositoryId: true },
+    select: { id: true, category: true, content: true, tags: true, createdAt: true },
   });
 
   if (rawEntries.length === 0) {
@@ -183,84 +212,81 @@ async function main() {
   writeFileSync(backupFile, JSON.stringify(rawEntries, null, 2));
   console.log(`Backed up ${rawEntries.length} entries to ${backupFile}`);
 
-  // Step 2: Group by repository, then cluster within each group using pgvector
+  // Step 2: Cluster every entry using pgvector
   const entryMap = new Map<string, Entry>();
   for (const e of rawEntries) entryMap.set(e.id, e);
 
-  const byRepo = new Map<string | null, string[]>();
-  for (const entry of rawEntries) {
-    const key = entry.repositoryId;
-    if (!byRepo.has(key)) byRepo.set(key, []);
-    byRepo.get(key)!.push(entry.id);
-  }
-
   let totalPages = 0;
 
-  for (const [repoId, entryIds] of byRepo) {
-    console.log(`\nProcessing ${entryIds.length} entries (repo: ${repoId || 'global'})...`);
+  console.log(`\nProcessing ${rawEntries.length} entries...`);
 
-    const clusters = await clusterEntries(entryIds);
-    const multiClusters = clusters.filter((c) => c.length > 1);
-    const singletons = clusters.filter((c) => c.length === 1);
-    console.log(`  ${clusters.length} clusters: ${multiClusters.length} groups to merge, ${singletons.length} unique entries`);
+  const clusters = await clusterEntries(rawEntries.map((e) => e.id));
+  const multiClusters = clusters.filter((c) => c.length > 1);
+  const singletons = clusters.filter((c) => c.length === 1);
+  console.log(`  ${clusters.length} clusters: ${multiClusters.length} groups to merge, ${singletons.length} unique entries`);
 
-    let completed = 0;
-    const processCluster = async (i: number) => {
-      const clusterIds = clusters[i];
-      const clusterData = clusterIds.map((id) => entryMap.get(id)!);
-      let page: ConsolidatedPage;
-      try {
-        page = await mergeCluster(clusterData);
-      } catch (err) {
-        console.error(`  [${++completed}/${clusters.length}] Failed: ${(err as Error).message}`);
-        const newest = clusterData[clusterData.length - 1];
-        page = {
-          subject: newest.content.slice(0, 60),
-          category: newest.category,
-          content: newest.content,
-          tags: newest.tags,
-        };
-      }
-
-      let embedding: number[] | null = null;
-      try {
-        embedding = await embedText(page.content);
-      } catch (err) {
-        console.error(`  Failed to embed "${page.subject}": ${(err as Error).message}`);
-      }
-
-      await prisma.$transaction(async (tx) => {
-        await tx.knowledgeEntry.deleteMany({ where: { id: { in: clusterIds } } });
-        const entry = await tx.knowledgeEntry.create({
-          data: {
-            subject: page.subject,
-            category: page.category,
-            content: page.content,
-            tags: page.tags,
-            repositoryId: repoId,
-          },
-        });
-        if (embedding) {
-          const vectorStr = `[${embedding.join(',')}]`;
-          await tx.$executeRaw`
-            UPDATE "KnowledgeEntry"
-            SET embedding = ${vectorStr}::vector
-            WHERE id = ${entry.id}
-          `;
-        }
-      });
-
-      totalPages++;
-      completed++;
-      const label = clusterData.length > 1 ? `merged ${clusterData.length} entries` : 'subject assigned';
-      console.log(`  [${completed}/${clusters.length}] "${page.subject}" (${label})`);
-    };
-
-    // Process clusters in pools of CONCURRENCY
-    for (let start = 0; start < clusters.length; start += CONCURRENCY) {
-      const batch = clusters.slice(start, start + CONCURRENCY).map((_, j) => processCluster(start + j));
-      await Promise.all(batch);
+  let completed = 0;
+  const processCluster = async (i: number) => {
+    const clusterIds = clusters[i];
+    const clusterData = clusterIds.map((id) => entryMap.get(id)!);
+    let page: ConsolidatedPage;
+    try {
+      page = await mergeCluster(clusterData);
+    } catch (err) {
+      console.error(`  [${++completed}/${clusters.length}] Failed: ${(err as Error).message}`);
+      const newest = clusterData[clusterData.length - 1];
+      page = {
+        subject: newest.content.slice(0, 60),
+        category: newest.category,
+        content: newest.content,
+        tags: newest.tags,
+      };
     }
+
+    let embedding: number[] | null = null;
+    try {
+      embedding = await embedText(page.content);
+    } catch (err) {
+      console.error(`  Failed to embed "${page.subject}": ${(err as Error).message}`);
+    }
+
+    // KnowledgeSource cascades on entry delete, so the merged page would come
+    // back with zero sources — permanently "unverified" — unless the cluster's
+    // provenance is carried across. The merged content IS those entries', so the
+    // union of their sources is the honest provenance for it.
+    const carried = await carryOverSources(clusterIds);
+
+    await prisma.$transaction(async (tx) => {
+      await tx.knowledgeEntry.deleteMany({ where: { id: { in: clusterIds } } });
+      const entry = await tx.knowledgeEntry.create({
+        data: {
+          subject: page.subject,
+          category: page.category,
+          content: page.content,
+          tags: page.tags,
+          sources: { create: carried },
+        },
+      });
+      if (embedding) {
+        const vectorStr = `[${embedding.join(',')}]`;
+        await tx.$executeRaw`
+          UPDATE "KnowledgeEntry"
+          SET embedding = ${vectorStr}::vector
+          WHERE id = ${entry.id}
+        `;
+      }
+    });
+
+    totalPages++;
+    completed++;
+    const label = clusterData.length > 1 ? `merged ${clusterData.length} entries` : 'subject assigned';
+    console.log(`  [${completed}/${clusters.length}] "${page.subject}" (${label}, ${carried.length} sources carried over)`);
+  };
+
+  // Process clusters in pools of CONCURRENCY
+  for (let start = 0; start < clusters.length; start += CONCURRENCY) {
+    const batch = clusters.slice(start, start + CONCURRENCY).map((_, j) => processCluster(start + j));
+    await Promise.all(batch);
   }
 
   console.log(`\n=== Done: ${rawEntries.length} entries → ${totalPages} pages ===`);

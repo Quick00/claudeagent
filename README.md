@@ -260,8 +260,7 @@ scripts/
   backfill-embeddings.ts      # One-off: backfill embeddings for existing entries
   cleanup-uploads.ts          # Cron: delete orphaned/old uploads
   consolidate-knowledge.ts    # One-off: merge duplicate knowledge entries
-  sync-repos.ts               # Cron: git pull all registered repos
-  verify-knowledge.ts         # One-off: validate knowledge entry integrity
+  sync-repos.ts               # Cron: fetch + reset all registered repos, record RepoSync rows
 ```
 
 ## Running tests
@@ -304,6 +303,21 @@ The system prompt can be customized in `src/lib/config.ts`. It controls how Clau
 - Never mention file paths, code, or technical terms
 - Answer in the same language as the question
 - Save important discoveries to the knowledge base
+
+Knowledge retrieval and provenance are tuned via environment variables (all optional, defaults shown):
+
+- `KNOWLEDGE_RETRIEVAL_THRESHOLD` (`0.45`) — minimum cosine similarity for a knowledge entry to be injected into a chat
+- `KNOWLEDGE_MAX_SOURCES_PER_SAVE` (`15`) — cap on provenance files attached to one save
+- `CLAUDE_DISALLOWED_TOOLS` (`Bash,Task,Write,Edit,NotebookEdit,WebFetch,WebSearch`) — tools removed from the Claude Code CLI so file reads are observable and repos stay read-only
+
+### Knowledge maintenance
+
+Knowledge entries can be marked **pinned** — human-owned business rules that Claude can never overwrite and that always render as fresh. Everything else is **derived**: freshness is never stored, only computed on the fly from whether its source files still match the code at HEAD.
+
+Admins review stale, unverified, pinned, conflicting, and duplicate knowledge at **Settings → Knowledge Attention** (`/admin/knowledge`). The tabs are Stale, Unverified, Pinned, Reviews and Syncs; from any entry row it can be edited, pinned or unpinned, retired, or (unless it is pinned) re-verified against the code:
+
+- **Quick check** (tier 1) sends the entry and its recorded source files to Haiku via OpenRouter, and either confirms it, proposes a correction for an admin to accept, or gives up as unsure. It refuses pinned entries.
+- **Full verification** (tier 2) runs Claude Code against the entry, free to explore the whole repository — on the admin's own linked Claude account, since this phase has no separate service account for it. A "confirmed" result refreshes the entry's provenance and "retired" retires it, but a **correction is never applied directly**: the verifier's text is shaped by repository file contents, which are not trusted input, so it is queued as a review for an admin to accept or dismiss. Only one full verification per entry can run at a time, and the request stays open for as long as the run does — if it times out at your proxy, reload the panel rather than starting another (paid) run.
 
 ## Customizing for your team
 

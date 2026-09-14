@@ -2,6 +2,7 @@ import { PATCH } from '@/app/api/admin/repos/[id]/route';
 import { getServerSession } from 'next-auth';
 import { prisma } from '@/lib/prisma';
 import { syncRepo } from '@/lib/repo-manager';
+import { recordRepoSync } from '@/lib/knowledge-invalidation';
 
 jest.mock('next-auth');
 jest.mock('@/lib/prisma', () => ({
@@ -14,12 +15,17 @@ jest.mock('@/lib/repo-manager', () => ({
   syncRepo: jest.fn(),
   removeRepo: jest.fn(),
 }));
+jest.mock('@/lib/knowledge-invalidation', () => ({
+  diffCommits: jest.fn(() => []),
+  recordRepoSync: jest.fn(),
+}));
 
 const mockSession = getServerSession as jest.Mock;
 const mockUserFind = prisma.user.findUnique as jest.Mock;
 const mockRepoFind = prisma.repository.findUnique as jest.Mock;
 const mockRepoUpdate = prisma.repository.update as jest.Mock;
 const mockSync = syncRepo as jest.Mock;
+const mockRecordRepoSync = recordRepoSync as jest.Mock;
 
 const params = (id: string) => ({ params: Promise.resolve({ id }) });
 const req = (body: object) =>
@@ -31,6 +37,7 @@ const existingRepo = {
   defaultBranch: 'main',
   localPath: '/repos/123',
   gitlabUrl: 'https://gitlab.example.com/org/web-app.git',
+  gitlabProjectId: 42,
 };
 
 describe('PATCH /api/admin/repos/[id] — defaultBranch', () => {
@@ -57,8 +64,8 @@ describe('PATCH /api/admin/repos/[id] — defaultBranch', () => {
     expect(mockRepoUpdate).not.toHaveBeenCalled();
   });
 
-  it('syncs the new branch and persists defaultBranch + lastPulledAt', async () => {
-    mockSync.mockResolvedValue(undefined);
+  it('syncs the new branch, records a branch_change sync, and persists defaultBranch + lastPulledAt', async () => {
+    mockSync.mockResolvedValue({ fromSha: 'aaa', toSha: 'bbb' });
     const res = await PATCH(req({ defaultBranch: 'develop' }), params('r1'));
     expect(res.status).toBe(200);
     expect(mockSync).toHaveBeenCalledWith({
@@ -67,6 +74,14 @@ describe('PATCH /api/admin/repos/[id] — defaultBranch', () => {
       token: 'test-token',
       gitlabUrl: 'https://gitlab.example.com/org/web-app.git',
     });
+    expect(mockRecordRepoSync).toHaveBeenCalledWith(
+      prisma,
+      existingRepo,
+      'aaa',
+      'bbb',
+      [],
+      'branch_change',
+    );
     expect(mockRepoUpdate).toHaveBeenCalledWith({
       where: { id: 'r1' },
       data: expect.objectContaining({
@@ -74,6 +89,22 @@ describe('PATCH /api/admin/repos/[id] — defaultBranch', () => {
         lastPulledAt: expect.any(Date),
       }),
     });
+  });
+
+  it('still persists the branch when recording the sync fails — the clone already switched', async () => {
+    const consoleError = jest.spyOn(console, 'error').mockImplementation(() => {});
+    mockSync.mockResolvedValue({ fromSha: 'aaa', toSha: 'bbb' });
+    mockRecordRepoSync.mockRejectedValue(new Error('connection terminated unexpectedly'));
+
+    const res = await PATCH(req({ defaultBranch: 'develop' }), params('r1'));
+
+    expect(res.status).toBe(200);
+    expect(mockRepoUpdate).toHaveBeenCalledWith({
+      where: { id: 'r1' },
+      data: expect.objectContaining({ defaultBranch: 'develop', lastPulledAt: expect.any(Date) }),
+    });
+    expect(consoleError.mock.calls[0][0]).not.toContain('not found');
+    consoleError.mockRestore();
   });
 
   it('400 when sync fails, no DB write', async () => {

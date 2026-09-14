@@ -3,6 +3,8 @@ import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { NextResponse } from 'next/server';
 import { removeRepo, syncRepo } from '@/lib/repo-manager';
+import { diffCommits, recordRepoSync } from '@/lib/knowledge-invalidation';
+import { getHeadSha } from '@/lib/repo-tree';
 
 // PATCH: Update repo description, branch (with inline sync validation), or toggle active
 export async function PATCH(
@@ -55,19 +57,35 @@ export async function PATCH(
 
       // Validate-on-save: fetch + reset to the new branch before persisting.
       // If the branch doesn't exist the fetch fails and the working tree is untouched.
+      // Only syncRepo belongs in this try — anything after it runs with the clone
+      // already on the new branch, so its failure is not "branch not found".
+      let fromSha: string;
+      let toSha: string;
       try {
-        await syncRepo({
+        ({ fromSha, toSha } = await syncRepo({
           localPath: existing.localPath,
           branch,
           token,
           gitlabUrl: existing.gitlabUrl,
-        });
+        }));
       } catch (err) {
         const redacted = (err as Error).message.replace(/\/\/[^@\s/]+@/g, '//***@');
         console.error(`[repos] Branch sync failed for "${branch}":`, redacted);
         return NextResponse.json(
           { error: `Branch "${branch}" not found or sync failed` },
           { status: 400 },
+        );
+      }
+
+      // The switch already happened on disk. Recording it is bookkeeping and must
+      // not fail the branch change, or the clone and the DB would disagree.
+      try {
+        const changed = diffCommits(existing.localPath, fromSha, toSha);
+        await recordRepoSync(prisma, existing, fromSha, toSha, changed, 'branch_change');
+      } catch (err) {
+        console.error(
+          `[repos] Branch changed to "${branch}" but recording the sync failed:`,
+          (err as Error).message,
         );
       }
 
@@ -112,16 +130,20 @@ export async function DELETE(
     return new Response('Not found', { status: 404 });
   }
 
+  let headSha = '';
+  try {
+    headSha = await getHeadSha(repo.localPath);
+  } catch {
+    // clone may already be gone; record the removal anyway
+  }
+  await recordRepoSync(prisma, { id: null, gitlabProjectId: repo.gitlabProjectId }, headSha, '', [], 'removed');
+
   // Remove files first — if this fails, DB stays intact
   await removeRepo(repo.localPath);
 
   // DB cleanup in a transaction so it's atomic
   await prisma.$transaction([
     prisma.conversation.updateMany({
-      where: { repositoryId: id },
-      data: { repositoryId: null },
-    }),
-    prisma.knowledgeEntry.updateMany({
       where: { repositoryId: id },
       data: { repositoryId: null },
     }),

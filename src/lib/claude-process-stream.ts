@@ -13,14 +13,19 @@ export interface ClaudeEventHandlers {
   onTextDelta?: (delta: string) => void;
   /** Emitted whenever the assistant invokes a tool. */
   onToolUse?: (toolName: string) => void;
+  /** Emitted once per tool_use block on `assistant` events with the complete input
+   *  (partial stream events carry an empty input and are not forwarded). */
+  onToolUseInput?: (toolName: string, input: Record<string, unknown>) => void;
   /** Emitted when Claude reports an authentication failure. */
   onAuthFailed?: () => void;
   /** Emitted when Claude reports a rate-limit message with user-facing text. */
   onRateLimit?: (content: string) => void;
   /** Emitted for the `result` event (terminal success or error).
+   *  `total_cost_usd` is the CLI's own accounting for the whole run and is
+   *  absent on error results.
    *  Return `true` to stop processing remaining lines in this chunk
    *  (e.g. when scheduling a retry that attaches a new process). */
-  onResult?: (event: { is_error?: boolean; subtype?: string; session_id?: string }) => boolean | void;
+  onResult?: (event: { is_error?: boolean; subtype?: string; session_id?: string; total_cost_usd?: number }) => boolean | void;
   /** Emitted when the child process closes. */
   onClose?: (code: number | null) => void;
   /** Emitted when the child process emits an `error`. */
@@ -73,7 +78,9 @@ export function attachClaudeProcess(
       handlers.onAuthFailed?.();
     }
 
-    const assistantMsg = event.message as { content?: Array<{ type?: string; name?: string; text?: string }> } | undefined;
+    const assistantMsg = event.message as {
+      content?: Array<{ type?: string; name?: string; text?: string; input?: unknown }>;
+    } | undefined;
 
     if (event.type === 'assistant' && event.error === 'rate_limit' && assistantMsg?.content?.[0]?.text) {
       handlers.onRateLimit?.(assistantMsg.content[0].text);
@@ -82,7 +89,11 @@ export function attachClaudeProcess(
     if (event.type === 'assistant' && assistantMsg?.content) {
       for (const block of assistantMsg.content) {
         if (block.type === 'tool_use') {
-          handlers.onToolUse?.(block.name ?? 'unknown');
+          const name = block.name ?? 'unknown';
+          handlers.onToolUse?.(name);
+          if (block.input && typeof block.input === 'object') {
+            handlers.onToolUseInput?.(name, block.input as Record<string, unknown>);
+          }
         }
       }
     }
@@ -91,7 +102,7 @@ export function attachClaudeProcess(
       if (typeof event.session_id === 'string') {
         handlers.onSessionId?.(event.session_id);
       }
-      const stop = handlers.onResult?.(event as { is_error?: boolean; subtype?: string; session_id?: string });
+      const stop = handlers.onResult?.(event as { is_error?: boolean; subtype?: string; session_id?: string; total_cost_usd?: number });
       if (stop) return true; // signal caller to stop processing this chunk
     }
 
