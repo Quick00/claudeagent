@@ -189,7 +189,7 @@ export default function AdminRepos() {
 
       <div>
         {loadingRepos ? (
-          <AdminTableSkeleton columns={6} />
+          <AdminTableSkeleton columns={6} container={false} />
         ) : repos.length === 0 ? (
           <EmptyState icon={FolderGit2} title="No repositories yet" description="Add one from GitLab below." />
         ) : (

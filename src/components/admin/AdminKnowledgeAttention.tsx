@@ -91,12 +91,7 @@ export default function AdminKnowledgeAttention() {
   };
 
   if (!data) {
-    return (
-      <PageContainer>
-        <PageHeader title="Knowledge" description="Stale, unverified, and pinned knowledge entries." />
-        <AdminTableSkeleton columns={5} />
-      </PageContainer>
-    );
+    return <AdminTableSkeleton columns={5} />;
   }
 
   const counts: Record<Tab, number> = {

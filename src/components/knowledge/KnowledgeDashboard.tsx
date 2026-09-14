@@ -137,11 +137,7 @@ export function KnowledgeDashboard() {
   );
 
   if (!data) {
-    return (
-      <PageContainer className="space-y-8">
-        <KnowledgeDashboardSkeleton />
-      </PageContainer>
-    );
+    return <KnowledgeDashboardSkeleton />;
   }
 
   const filteredEntries = selectedTag

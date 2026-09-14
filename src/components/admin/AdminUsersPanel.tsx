@@ -104,13 +104,13 @@ export default function AdminUsersPanel() {
     toast.success('User deleted');
   };
 
+  if (loading) return <AdminTableSkeleton columns={7} />;
+
   return (
     <PageContainer>
       <PageHeader title="Users" description="Manage roles, approvals, and access." />
 
-      {loading ? (
-        <AdminTableSkeleton columns={7} />
-      ) : error ? (
+      {error ? (
         <p className="text-sm text-destructive">{error}</p>
       ) : users.length === 0 ? (
         <EmptyState icon={UsersIcon} title="No users yet" description="Users will appear here once they sign in." />

@@ -1,11 +1,17 @@
+import { PageContainer } from '@/components/shared/PageContainer';
 import { Card, CardContent } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 
-/** Mirrors KnowledgeDashboard's final layout: stats, category strip, topics/conversations, timeline. */
+/**
+ * Mirrors KnowledgeDashboard's final layout — container included: stats,
+ * category strip, topics/conversations, timeline. Used both by the route's
+ * `loading.tsx` and by the dashboard's own first fetch, so it must carry its
+ * own `PageContainer` rather than relying on a caller to add one.
+ */
 export function KnowledgeDashboardSkeleton() {
   return (
-    <div className="mx-auto max-w-6xl space-y-8" aria-hidden>
-      <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+    <PageContainer className="space-y-8">
+      <div className="grid grid-cols-2 gap-4 sm:grid-cols-4" aria-hidden>
         {Array.from({ length: 4 }).map((_, i) => (
           <Card key={i} size="sm">
             <CardContent>
@@ -16,9 +22,9 @@ export function KnowledgeDashboardSkeleton() {
         ))}
       </div>
 
-      <div className="flex gap-3">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4" aria-hidden>
         {Array.from({ length: 4 }).map((_, i) => (
-          <Card key={i} size="sm" className="flex-1">
+          <Card key={i} size="sm">
             <CardContent>
               <Skeleton className="h-4 w-24" />
               <Skeleton className="mt-2 h-7 w-8" />
@@ -27,7 +33,7 @@ export function KnowledgeDashboardSkeleton() {
         ))}
       </div>
 
-      <div className="grid grid-cols-1 gap-8 lg:grid-cols-3">
+      <div className="grid grid-cols-1 gap-8 lg:grid-cols-3" aria-hidden>
         <div className="lg:col-span-1 space-y-8">
           <Card size="sm">
             <CardContent>
@@ -57,6 +63,6 @@ export function KnowledgeDashboardSkeleton() {
           <Skeleton className="h-28 w-full rounded-xl" />
         </div>
       </div>
-    </div>
+    </PageContainer>
   );
 }

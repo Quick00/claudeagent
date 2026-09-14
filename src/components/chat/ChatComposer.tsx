@@ -141,8 +141,8 @@ export function ChatComposer({ onSend, disabled }: ChatComposerProps) {
             ))}
           </div>
         )}
-        <div className="flex items-end gap-3" onDrop={handleDrop} onDragOver={(e) => e.preventDefault()}>
-          <InputGroup className="flex-1 rounded-xl">
+        <div onDrop={handleDrop} onDragOver={(e) => e.preventDefault()}>
+          <InputGroup className="rounded-xl">
             <InputGroupAddon align="inline-start">
               <Tooltip>
                 <TooltipTrigger asChild>
@@ -169,7 +169,10 @@ export function ChatComposer({ onSend, disabled }: ChatComposerProps) {
                 e.target.value = '';
               }}
             />
-            {/* `field-sizing-content` on Textarea grows it as you type — no resize effect. */}
+            {/* `field-sizing-content` on Textarea grows it as you type — no resize effect.
+                `min-h-0` overrides Textarea's own `min-h-16` floor so a single line sizes to
+                exactly its line height + padding; otherwise the group centres the paperclip
+                and Send addons against a box taller than the first line of text. */}
             <InputGroupTextarea
               aria-label="Message"
               value={input}
@@ -179,17 +182,21 @@ export function ChatComposer({ onSend, disabled }: ChatComposerProps) {
               placeholder="Ask a question about the platform..."
               disabled={disabled || uploading}
               rows={1}
-              className="max-h-48 min-h-11"
+              className="min-h-0 max-h-48"
             />
+            <InputGroupAddon align="inline-end">
+              <InputGroupButton
+                type="button"
+                variant="default"
+                size="sm"
+                className="rounded-lg px-4"
+                disabled={disabled || uploading || (!input.trim() && images.length === 0)}
+                onClick={handleSubmit}
+              >
+                {uploading ? 'Uploading...' : 'Send'}
+              </InputGroupButton>
+            </InputGroupAddon>
           </InputGroup>
-          <Button
-            size="lg"
-            className="rounded-xl"
-            disabled={disabled || uploading || (!input.trim() && images.length === 0)}
-            onClick={handleSubmit}
-          >
-            {uploading ? 'Uploading...' : 'Send'}
-          </Button>
         </div>
       </div>
     </div>
