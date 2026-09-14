@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { MoreHorizontal } from 'lucide-react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { AdminTableSkeleton } from '@/components/admin/AdminTableSkeleton';
@@ -11,6 +12,13 @@ import { RiseIn } from '@/components/shared/RiseIn';
 import { StatusBadge } from '@/components/shared/StatusBadge';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { Field, FieldLabel } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -161,101 +169,106 @@ export default function AdminKnowledgeAttention() {
     if (items.length === 0) {
       return <EmptyState title={pinned ? 'No pinned rules yet' : 'Nothing here'} />;
     }
+    // `table-fixed` is load-bearing here. Under the default auto layout a
+    // column is at least its min-content width, and these entries contain
+    // unbroken comma-joined tag strings — so the subject column grew past the
+    // panel and a max-w on the cell's child could not pull it back.
     return (
-      <Table>
+      <Table className="table-fixed">
         <TableHeader>
           <TableRow>
             <TableHead>Subject</TableHead>
-            <TableHead>{stale ? 'Changed files' : 'Sources'}</TableHead>
-            <TableHead>Hits</TableHead>
-            <TableHead>Last verified</TableHead>
-            <TableHead>Actions</TableHead>
+            <TableHead className="w-[22%]">{stale ? 'Changed files' : 'Sources'}</TableHead>
+            <TableHead className="w-16">Hits</TableHead>
+            <TableHead className="w-[22%]">Last verified</TableHead>
+            {/* A fixed width, and the label is for screen readers only: at a
+                percentage width the word "Actions" was itself wider than the
+                column and pushed the table past the panel. */}
+            <TableHead className="w-12">
+              <span className="sr-only">Actions</span>
+            </TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
           {items.map((it) => (
             <TableRow key={it.id}>
               <TableCell className="align-top">
-                <div className="font-medium">{it.subject || <span className="text-muted-foreground italic">(no subject)</span>}</div>
-                <div className="mt-1 max-w-xl text-xs text-muted-foreground">{it.content}</div>
-                <div className="mt-1 text-xs text-muted-foreground">
+                <div className="truncate font-medium">
+                  {it.subject || <span className="text-muted-foreground italic">(no subject)</span>}
+                </div>
+                {/* wrap-anywhere: the tag lists have no spaces to break on. */}
+                <div className="mt-1 line-clamp-2 text-xs wrap-anywhere text-muted-foreground">
+                  {it.content}
+                </div>
+                <div className="mt-1 truncate text-xs text-muted-foreground">
                   {it.category} · {it.tags}{it.correctionCount > 0 && ` · corrected ${it.correctionCount}×`}
                 </div>
               </TableCell>
               <TableCell className="align-top font-mono text-xs text-muted-foreground">
-                {stale ? it.changedPaths.map((p) => <div key={p}>{p}</div>) : `${it.sourceCount} files`}
+                {stale
+                  ? it.changedPaths.map((p) => <div key={p} className="truncate" title={p}>{p}</div>)
+                  : `${it.sourceCount} files`}
               </TableCell>
               <TableCell className="align-top">{it.hitCount}</TableCell>
               <TableCell className="align-top text-xs">{it.lastVerifiedAt ? formatDateTime(it.lastVerifiedAt) : '—'}</TableCell>
-              <TableCell className="align-top">
-                <div className="flex flex-wrap gap-3 text-xs">
-                  {stale && (
+              <TableCell className="align-top text-right">
+                {/*
+                  * One menu rather than four inline links: at this column width
+                  * they wrapped onto three lines per row, which is what made the
+                  * table look broken.
+                  */}
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
                     <Button
-                      variant="link"
-                      size="sm"
-                      className="h-auto p-0"
+                      variant="ghost"
+                      size="icon"
+                      className="size-8"
                       disabled={busyKeys.has(it.id)}
-                      onClick={() => act(it.id, () => verify(it.id, 1), (b) => `Quick check: ${b.outcome} — ${b.reason}`)}
                     >
-                      {busyKeys.has(it.id) ? 'Working…' : 'Quick check'}
+                      <MoreHorizontal />
+                      <span className="sr-only">{`Actions for ${it.subject || 'this entry'}`}</span>
                     </Button>
-                  )}
-                  {/* A pinned entry is human-owned and always fresh: there is nothing to verify. */}
-                  {!pinned && (
-                    <Button
-                      variant="link"
-                      size="sm"
-                      className="h-auto p-0"
-                      disabled={busyKeys.has(it.id)}
-                      onClick={() => act(
-                        it.id,
-                        () => verify(it.id, 2),
-                        (b) => `Full verification: ${b.outcome} — ${b.reason}${b.costUsd ? ` ($${Number(b.costUsd).toFixed(2)})` : ''}`,
-                      )}
-                    >
-                      Full verification
-                    </Button>
-                  )}
-                  <Button
-                    variant="link"
-                    size="sm"
-                    className="h-auto p-0 text-muted-foreground"
-                    disabled={busyKeys.has(it.id)}
-                    onClick={() => setEditing(it)}
-                  >
-                    Edit
-                  </Button>
-                  {pinned ? (
-                    <Button
-                      variant="link"
-                      size="sm"
-                      className="h-auto p-0 text-warning"
-                      disabled={busyKeys.has(it.id)}
-                      onClick={() => act(it.id, () => patch(it.id, { kind: 'derived' }), () => 'Unpinned — its provenance is back in use')}
-                    >
-                      Unpin
-                    </Button>
-                  ) : (
-                    <Button
-                      variant="link"
-                      size="sm"
-                      className="h-auto p-0 text-warning"
-                      disabled={busyKeys.has(it.id)}
-                      onClick={() => act(it.id, () => patch(it.id, { kind: 'pinned' }), () => 'Pinned — find it in the Pinned tab')}
-                    >
-                      Pin
-                    </Button>
-                  )}
-                  <Button
-                    variant="link"
-                    size="sm"
-                    className="h-auto p-0 text-destructive"
-                    disabled={busyKeys.has(it.id)}
-                    onClick={() => retireEntry(it)}
-                  >
-                    Retire
-                  </Button>
-                </div>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    {stale && (
+                      <DropdownMenuItem
+                        onSelect={() => act(it.id, () => verify(it.id, 1), (b) => `Quick check: ${b.outcome} — ${b.reason}`)}
+                      >
+                        {busyKeys.has(it.id) ? 'Working…' : 'Quick check'}
+                      </DropdownMenuItem>
+                    )}
+                    {/* A pinned entry is human-owned and always fresh: there is nothing to verify. */}
+                    {!pinned && (
+                      <DropdownMenuItem
+                        onSelect={() => act(
+                          it.id,
+                          () => verify(it.id, 2),
+                          (b) => `Full verification: ${b.outcome} — ${b.reason}${b.costUsd ? ` ($${Number(b.costUsd).toFixed(2)})` : ''}`,
+                        )}
+                      >
+                        Full verification
+                      </DropdownMenuItem>
+                    )}
+                    <DropdownMenuItem onSelect={() => setEditing(it)}>Edit</DropdownMenuItem>
+                    {pinned ? (
+                      <DropdownMenuItem
+                        onSelect={() => act(it.id, () => patch(it.id, { kind: 'derived' }), () => 'Unpinned — its provenance is back in use')}
+                      >
+                        Unpin
+                      </DropdownMenuItem>
+                    ) : (
+                      <DropdownMenuItem
+                        onSelect={() => act(it.id, () => patch(it.id, { kind: 'pinned' }), () => 'Pinned — find it in the Pinned tab')}
+                      >
+                        Pin
+                      </DropdownMenuItem>
+                    )}
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem variant="destructive" onSelect={() => retireEntry(it)}>
+                      Retire
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
               </TableCell>
             </TableRow>
           ))}
