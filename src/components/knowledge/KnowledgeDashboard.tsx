@@ -255,16 +255,19 @@ export function KnowledgeDashboard() {
             Recent Conversations
           </h2>
           <Card size="sm" className="py-0">
-            <CardContent className="px-0">
+            {/*
+              * Rows are inset and rounded rather than full-bleed: a square
+              * highlight spanning the whole card cuts across its rounded
+              * corners on the first and last row, and the divider borders
+              * then read as gaps in the highlight on hover.
+              */}
+            <CardContent className="p-1.5">
               {data.recentConversations.length > 0 ? (
-                data.recentConversations.map((conv, i) => (
+                data.recentConversations.map((conv) => (
                   <Link
                     key={conv.id}
                     href={ROUTES.chat(conv.id)}
-                    className={cn(
-                      'block px-4 py-3 text-sm text-foreground hover:bg-muted',
-                      i > 0 && 'border-t border-border',
-                    )}
+                    className="block rounded-md px-3 py-2.5 text-sm text-foreground transition-colors hover:bg-muted"
                   >
                     <div className="truncate font-medium">{conv.title}</div>
                     <div className="text-xs text-muted-foreground">
@@ -274,7 +277,7 @@ export function KnowledgeDashboard() {
                   </Link>
                 ))
               ) : (
-                <EmptyState icon={MessagesSquare} title="No conversations yet" className="p-6" />
+                <EmptyState icon={MessagesSquare} title="No conversations yet" className="p-5" />
               )}
             </CardContent>
           </Card>
