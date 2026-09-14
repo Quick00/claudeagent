@@ -90,6 +90,35 @@ describe('AppShell', () => {
     expect(screen.getByRole('link', { name: 'Settings' })).toBeInTheDocument();
   });
 
+  test('drops the collapse trigger where collapsing would do nothing', async () => {
+    (usePathname as jest.Mock).mockReturnValue('/settings');
+    await renderShell();
+
+    expect(screen.queryByRole('button', { name: /toggle sidebar/i })).not.toBeInTheDocument();
+    // The title stays, and is the header's only child — no orphaned gap.
+    const header = document.querySelector('[data-slot="sidebar-inset"] header');
+    expect(header).toHaveTextContent('Settings');
+    expect(header?.children).toHaveLength(1);
+  });
+
+  test('keeps the collapse trigger where there is a panel to collapse', async () => {
+    await renderShell();
+
+    expect(screen.getByRole('button', { name: /toggle sidebar/i })).toBeInTheDocument();
+  });
+
+  test('keeps the trigger on mobile even with no panel, as the only way in', async () => {
+    isMobile.mockReturnValue(true);
+    (usePathname as jest.Mock).mockReturnValue('/settings');
+    const { user: userEvent } = await renderShell();
+
+    const trigger = screen.getByRole('button', { name: /toggle sidebar/i });
+    await userEvent.click(trigger);
+
+    expect(await screen.findByRole('dialog')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Chat' })).toBeInTheDocument();
+  });
+
   test('never lets the shell exceed the viewport height', async () => {
     await renderShell();
 

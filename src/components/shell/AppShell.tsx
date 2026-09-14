@@ -77,12 +77,13 @@ function ShellFrame({ user, children }: { user: ShellUser; children: ReactNode }
             <UserMenu user={user} showLabel />
           </SidebarFooter>
         </Sidebar>
-        <ShellInset title={title}>{children}</ShellInset>
+        {/* The trigger is the only way to reach navigation on mobile, panel or not. */}
+        <ShellInset title={title} showTrigger>
+          {children}
+        </ShellInset>
       </>
     );
   }
-
-  const hasPanel = hasPanelFor(pathname);
 
   return (
     /**
@@ -110,7 +111,14 @@ function ShellFrame({ user, children }: { user: ShellUser; children: ReactNode }
         <AppRail user={user} />
         <SectionPanel className="hidden flex-1 md:flex" />
       </Sidebar>
-      <ShellInset title={title}>{children}</ShellInset>
+      {/*
+        With no panel the sidebar is already at rail width, so collapsing it
+        changes nothing — the trigger would be a button that visibly does
+        nothing. Hide it rather than leave it there.
+      */}
+      <ShellInset title={title} showTrigger={hasPanel}>
+        {children}
+      </ShellInset>
     </div>
   );
 }
@@ -119,11 +127,21 @@ function ShellFrame({ user, children }: { user: ShellUser; children: ReactNode }
  * The page card. `h-dvh` rather than `h-screen`: on mobile `100vh` sits behind
  * the URL bar, which would push the composer off the bottom of the screen.
  */
-function ShellInset({ title, children }: { title: string; children: ReactNode }) {
+function ShellInset({
+  title,
+  showTrigger,
+  children,
+}: {
+  title: string;
+  showTrigger: boolean;
+  children: ReactNode;
+}) {
   return (
     <SidebarInset className="flex h-dvh min-h-0 flex-col overflow-hidden md:h-[calc(100dvh-1rem)]">
+      {/* `gap-2` only applies between items, so dropping the trigger leaves
+          no orphaned space before the title. */}
       <header className="flex h-12 shrink-0 items-center gap-2 border-b px-3">
-        <SidebarTrigger />
+        {showTrigger && <SidebarTrigger />}
         <span className="truncate text-sm font-medium">{title}</span>
       </header>
       <div className="min-h-0 flex-1 overflow-auto">{children}</div>
