@@ -1,6 +1,7 @@
 import { GET, PATCH } from '@/app/api/admin/settings/route';
 import { getServerSession } from 'next-auth';
 import { prisma } from '@/lib/prisma';
+import { defaultIgnorePatternsText } from '@/lib/settings';
 
 jest.mock('next-auth');
 jest.mock('@/lib/prisma', () => ({
@@ -23,6 +24,13 @@ const mockSettingUpsert = prisma.appSetting.upsert as jest.Mock;
 function signedInAs(role: string, status = 'APPROVED') {
   mockGetServerSession.mockResolvedValue({ user: { email: 'someone@example.com' } });
   mockUserFindUnique.mockResolvedValue({ id: 'u1', email: 'someone@example.com', role, status });
+}
+
+/** Stubs appSetting.findUnique to answer per-key, like the real table would. */
+function stubSettings(values: Record<string, string>) {
+  mockSettingFindUnique.mockImplementation(({ where }: { where: { key: string } }) =>
+    Promise.resolve(where.key in values ? { key: where.key, value: values[where.key] } : null)
+  );
 }
 
 function patchRequest(body: unknown) {
@@ -49,18 +57,34 @@ describe('GET /api/admin/settings', () => {
 
   it('reports the approval setting as off by default', async () => {
     signedInAs('admin');
-    mockSettingFindUnique.mockResolvedValue(null);
+    stubSettings({});
 
     const response = await GET();
 
-    expect(await response.json()).toEqual({ requireUserApproval: false });
+    expect(await response.json()).toEqual({
+      requireUserApproval: false,
+      knowledgeIgnorePatterns: defaultIgnorePatternsText(),
+    });
   });
 
   it('reports the approval setting when enabled', async () => {
     signedInAs('admin');
-    mockSettingFindUnique.mockResolvedValue({ key: 'requireUserApproval', value: 'true' });
+    stubSettings({ requireUserApproval: 'true' });
 
-    expect(await (await GET()).json()).toEqual({ requireUserApproval: true });
+    expect(await (await GET()).json()).toEqual({
+      requireUserApproval: true,
+      knowledgeIgnorePatterns: defaultIgnorePatternsText(),
+    });
+  });
+
+  it('reports saved ignore patterns', async () => {
+    signedInAs('admin');
+    stubSettings({ knowledgeIgnorePatterns: 'legacy/\nfoo.lock' });
+
+    expect(await (await GET()).json()).toEqual({
+      requireUserApproval: false,
+      knowledgeIgnorePatterns: 'legacy/\nfoo.lock',
+    });
   });
 });
 

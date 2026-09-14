@@ -19,18 +19,24 @@ const repos = [
   { gitlabProjectId: 2, localPath: '/repos/2' },
 ];
 
+const ignore = { segments: ['translations', 'vendor'], basenames: ['composer.lock'] };
+
 describe('isIgnoredPath', () => {
   it('ignores configured directory segments case-insensitively', () => {
-    expect(isIgnoredPath('resources/Translations/nl.json')).toBe(true);
-    expect(isIgnoredPath('vendor/foo/bar.php')).toBe(true);
+    expect(isIgnoredPath('resources/Translations/nl.json', ignore)).toBe(true);
+    expect(isIgnoredPath('vendor/foo/bar.php', ignore)).toBe(true);
   });
   it('ignores configured basenames and CHANGELOG files', () => {
-    expect(isIgnoredPath('composer.lock')).toBe(true);
-    expect(isIgnoredPath('docs/CHANGELOG.md')).toBe(true);
+    expect(isIgnoredPath('composer.lock', ignore)).toBe(true);
+    expect(isIgnoredPath('docs/CHANGELOG.md', ignore)).toBe(true);
   });
   it('keeps ordinary source files', () => {
+    expect(isIgnoredPath('app/Models/Event.php', ignore)).toBe(false);
+    expect(isIgnoredPath('app/Translator.php', ignore)).toBe(false);
+  });
+  it('defaults to the config ignore lists when none are supplied', () => {
+    expect(isIgnoredPath('vendor/foo/bar.php')).toBe(true);
     expect(isIgnoredPath('app/Models/Event.php')).toBe(false);
-    expect(isIgnoredPath('app/Translator.php')).toBe(false);
   });
 });
 
@@ -133,5 +139,13 @@ describe('ProvenanceCollector', () => {
     // Sanity: path.resolve is platform-native; relative paths are always forward-slash.
     const rel = toRepoRelative(path.join('/repos/1', 'app', 'x.php'), repos);
     expect(rel?.relativePath).toBe('app/x.php');
+  });
+
+  it('start accepts custom ignore lists', () => {
+    const c = new ProvenanceCollector();
+    c.start('k', repos, { segments: ['legacy'], basenames: [] });
+    c.recordToolUse('k', 'Read', { file_path: '/repos/1/legacy/x.php' });
+    c.recordToolUse('k', 'Read', { file_path: '/repos/1/vendor/y.php' }); // no longer ignored
+    expect(c.snapshot('k').map((p) => p.relativePath)).toEqual(['vendor/y.php']);
   });
 });

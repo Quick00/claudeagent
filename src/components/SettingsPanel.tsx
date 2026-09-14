@@ -14,6 +14,9 @@ export default function SettingsPanel() {
   const [isAdmin, setIsAdmin] = useState(false);
   const [requireApproval, setRequireApproval] = useState<boolean | null>(null);
   const [savingApproval, setSavingApproval] = useState(false);
+  const [ignoreText, setIgnoreText] = useState<string | null>(null);
+  const [ignoreSaving, setIgnoreSaving] = useState(false);
+  const [ignoreSaved, setIgnoreSaved] = useState(false);
   const { preference, setPreference } = useTheme();
 
   const fetchStatus = () => {
@@ -31,7 +34,10 @@ export default function SettingsPanel() {
     fetch('/api/admin/settings')
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
-        if (data) setRequireApproval(data.requireUserApproval);
+        if (data) {
+          setRequireApproval(data.requireUserApproval);
+          setIgnoreText(data.knowledgeIgnorePatterns);
+        }
       })
       .catch(() => {});
   }, []);
@@ -70,6 +76,22 @@ export default function SettingsPanel() {
     setShowModal(false);
     fetchStatus();
   };
+
+  async function saveIgnorePatterns() {
+    if (ignoreText === null) return;
+    setIgnoreSaving(true);
+    setIgnoreSaved(false);
+    try {
+      const res = await fetch('/api/admin/settings', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ knowledgeIgnorePatterns: ignoreText }),
+      });
+      if (res.ok) setIgnoreSaved(true);
+    } finally {
+      setIgnoreSaving(false);
+    }
+  }
 
   return (
     <>
@@ -174,6 +196,35 @@ export default function SettingsPanel() {
                 </button>
               </div>
             )}
+            {ignoreText !== null && (
+              <div className="mb-3 rounded-lg border border-gray-200 px-3 py-2 dark:border-gray-700">
+                <p className="text-sm text-gray-700 dark:text-gray-300">Files ignored for knowledge provenance</p>
+                <p className="mb-2 text-xs text-gray-400 dark:text-gray-500">
+                  One per line. End a line with / for a directory name. These files never count as the source of a knowledge entry.
+                </p>
+                <textarea
+                  value={ignoreText}
+                  onChange={(e) => { setIgnoreText(e.target.value); setIgnoreSaved(false); }}
+                  rows={5}
+                  className="w-full rounded border border-gray-200 px-2 py-1 font-mono text-xs dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200"
+                />
+                <div className="mt-2 flex items-center gap-3">
+                  <button onClick={saveIgnorePatterns} disabled={ignoreSaving} className="rounded bg-blue-600 px-3 py-1 text-xs text-white disabled:opacity-50">
+                    {ignoreSaving ? 'Saving…' : 'Save'}
+                  </button>
+                  {ignoreSaved && <span className="text-xs text-green-600">Saved</span>}
+                </div>
+              </div>
+            )}
+            <Link
+              href="/admin/knowledge"
+              className="mb-2 flex items-center gap-2 rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-600 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800"
+            >
+              <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6M7 4h10a2 2 0 012 2v12a2 2 0 01-2 2H7a2 2 0 01-2-2V6a2 2 0 012-2z" />
+              </svg>
+              Knowledge Attention
+            </Link>
             <Link
               href="/admin/repos"
               className="flex items-center gap-2 rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-600 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800"

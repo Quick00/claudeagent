@@ -10,6 +10,7 @@ jest.mock('@/lib/prisma', () => ({
     message: { create: jest.fn() },
     flag: { updateMany: jest.fn() },
     repository: { findMany: jest.fn() },
+    appSetting: { findUnique: jest.fn(), upsert: jest.fn() },
     $transaction: jest.fn(),
   },
 }));
