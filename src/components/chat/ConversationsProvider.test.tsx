@@ -38,7 +38,7 @@ function Harness() {
     loadFailed,
     refresh,
     remove,
-    setTitle,
+    rename,
     pendingConversationId,
     beginNavigation,
   } = useConversations();
@@ -59,7 +59,7 @@ function Harness() {
           {`delete ${c.id}`}
         </Button>
       ))}
-      <Button onClick={() => setTitle('a', 'Renamed')}>rename a</Button>
+      <Button onClick={() => rename('a', 'Renamed')}>rename a</Button>
     </div>
   );
 }
@@ -208,14 +208,49 @@ describe('ConversationsProvider', () => {
     expect(screen.getByText('pending:none')).toBeInTheDocument();
   });
 
-  test('setTitle() renames a row in place without refetching', async () => {
-    mockFetch.mockResolvedValueOnce(jsonOk([{ id: 'a', title: 'First', updatedAt: '2026-01-01' }]));
+  test('rename() PATCHes the conversation and shows the new title', async () => {
+    const calls: { url: string; init?: RequestInit }[] = [];
+    mockFetch.mockImplementation(async (url: string, init?: RequestInit) => {
+      calls.push({ url, init });
+      if (init?.method === 'PATCH') {
+        return jsonOk({ id: 'a', title: 'Renamed', updatedAt: '2026-01-03' });
+      }
+      const renamed = calls.some((c) => c.init?.method === 'PATCH');
+      return jsonOk([
+        { id: 'a', title: renamed ? 'Renamed' : 'First', updatedAt: '2026-01-01' },
+      ]);
+    });
     const { user } = renderProvider();
     await screen.findByText('First');
 
     await user.click(screen.getByRole('button', { name: 'rename a' }));
 
     expect(await screen.findByText('Renamed')).toBeInTheDocument();
-    expect(mockFetch).toHaveBeenCalledTimes(1);
+    const patch = calls.find((c) => c.init?.method === 'PATCH');
+    expect(patch?.url).toBe('/api/conversations/a');
+    expect(JSON.parse(String(patch?.init?.body))).toEqual({ title: 'Renamed' });
+    // Invalidating the whole conversations area is what makes the open
+    // thread's header catch up, so the list must refetch afterwards.
+    await waitFor(() =>
+      expect(calls.filter((c) => c.url === '/api/conversations' && !c.init?.method).length)
+        .toBeGreaterThan(1),
+    );
+  });
+
+  test('rename() surfaces a server rejection instead of failing silently', async () => {
+    mockFetch.mockImplementation(async (url: string, init?: RequestInit) => {
+      if (init?.method === 'PATCH') {
+        return { ok: false, status: 400, text: async () => JSON.stringify({ error: 'bad' }) };
+      }
+      return jsonOk([{ id: 'a', title: 'First', updatedAt: '2026-01-01' }]);
+    });
+    const { user } = renderProvider();
+    await screen.findByText('First');
+
+    await user.click(screen.getByRole('button', { name: 'rename a' }));
+
+    // The row keeps its old title rather than optimistically lying.
+    await waitFor(() => expect(screen.getByText('First')).toBeInTheDocument());
+    expect(screen.queryByText('Renamed')).not.toBeInTheDocument();
   });
 });

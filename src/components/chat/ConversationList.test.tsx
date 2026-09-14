@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, jest, test } from '@jest/globals';
-import { screen, waitFor, within } from '@testing-library/react';
+import { fireEvent, screen, waitFor, within } from '@testing-library/react';
+import type { UserEvent } from '@testing-library/user-event';
 import { renderWithProviders } from '@/test/render';
 import { usePathname } from '@/test/mocks/next-navigation';
 import { SidebarProvider } from '@/components/ui/sidebar';
@@ -31,6 +32,12 @@ function serveRows(initial: Row[] = ROWS) {
       rows = rows.filter((r) => r.id !== id);
       return jsonOk({});
     }
+    if (init?.method === 'PATCH') {
+      const id = input.replace('/api/conversations/', '');
+      const { title } = JSON.parse(String(init.body));
+      rows = rows.map((r) => (r.id === id ? { ...r, title } : r));
+      return jsonOk(rows.find((r) => r.id === id));
+    }
     return jsonOk(rows);
   });
 }
@@ -43,6 +50,40 @@ function renderList(props: { notificationConvIds?: string[]; onNavigate?: () => 
       </ConversationsProvider>
     </SidebarProvider>,
   );
+}
+
+/**
+ * An instant that is late morning in Amsterdam (the timezone the app buckets
+ * in), `n` calendar days ago. Stepping whole days from a fixed UTC hour keeps
+ * the calendar day right across a DST change, and anchoring to Amsterdam
+ * rather than the test machine's zone keeps the fixtures stable in CI.
+ */
+function daysAgo(n: number): string {
+  const [y, m, d] = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Europe/Amsterdam',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  })
+    .format(new Date())
+    .split('-')
+    .map(Number);
+  return new Date(Date.UTC(y, m - 1, d, 10) - n * 86_400_000).toISOString();
+}
+
+const DATED_ROWS: Row[] = [
+  { id: 't', title: 'Asked this morning', updatedAt: daysAgo(0) },
+  { id: 'y', title: 'Asked yesterday', updatedAt: daysAgo(1) },
+  { id: 'w', title: 'Asked midweek', updatedAt: daysAgo(3) },
+  { id: 'm', title: 'Asked a few weeks back', updatedAt: daysAgo(20) },
+];
+
+/** The group box whose heading is `label`. */
+function group(label: string) {
+  const heading = screen.getByText(label);
+  const box = heading.closest('[data-slot="sidebar-group-content"]');
+  if (!box) throw new Error(`no group box around "${label}"`);
+  return within(box as HTMLElement);
 }
 
 describe('ConversationList', () => {
@@ -60,6 +101,48 @@ describe('ConversationList', () => {
     expect(screen.getByRole('link', { name: /Badge types/ })).toHaveAttribute('href', '/chat/b');
   });
 
+  test('groups conversations by recency and files each row under its heading', async () => {
+    serveRows(DATED_ROWS);
+    renderList();
+    await screen.findByRole('link', { name: /Asked this morning/ });
+
+    expect(group('Today').getByRole('link', { name: /Asked this morning/ })).toBeInTheDocument();
+    expect(group('Yesterday').getByRole('link', { name: /Asked yesterday/ })).toBeInTheDocument();
+    expect(
+      group('Previous 7 days').getByRole('link', { name: /Asked midweek/ }),
+    ).toBeInTheDocument();
+    expect(
+      group('Previous 30 days').getByRole('link', { name: /Asked a few weeks back/ }),
+    ).toBeInTheDocument();
+  });
+
+  test('shows no heading for a bucket that caught nothing', async () => {
+    serveRows([DATED_ROWS[0]]);
+    renderList();
+    await screen.findByRole('link', { name: /Asked this morning/ });
+
+    expect(screen.getByText('Today')).toBeInTheDocument();
+    for (const empty of ['Yesterday', 'Previous 7 days', 'Previous 30 days', 'Older']) {
+      expect(screen.queryByText(empty)).not.toBeInTheDocument();
+    }
+  });
+
+  test('keeps the groups while filtering, and drops headings that no longer match', async () => {
+    serveRows(DATED_ROWS);
+    const { user } = renderList();
+    await screen.findByRole('link', { name: /Asked this morning/ });
+
+    await user.type(screen.getByRole('searchbox', { name: /filter conversations/i }), 'asked a');
+
+    // The one surviving match keeps its date heading — with titles this
+    // similar it is often the only thing telling two matches apart.
+    expect(
+      group('Previous 30 days').getByRole('link', { name: /Asked a few weeks back/ }),
+    ).toBeInTheDocument();
+    expect(screen.queryByText('Today')).not.toBeInTheDocument();
+    expect(screen.queryByText('Yesterday')).not.toBeInTheDocument();
+  });
+
   test('marks the row matching the current pathname active', async () => {
     usePathname.mockReturnValue('/chat/b');
     renderList();
@@ -72,11 +155,119 @@ describe('ConversationList', () => {
     );
   });
 
+  /** Opens a row's ⋯ menu and returns its items. */
+  async function openRowMenu(user: UserEvent, rowTitle: RegExp) {
+    await user.click(screen.getByRole('button', { name: new RegExp(`Actions for .*${rowTitle.source}`) }));
+    return screen.findByRole('menu');
+  }
+
+  test('the actions menu opens without navigating the row', async () => {
+    const { user } = renderList();
+    await screen.findByRole('link', { name: /Badge types/ });
+    const before = window.location.pathname;
+
+    const menu = await openRowMenu(user, /Badge types/);
+
+    expect(within(menu).getByRole('menuitem', { name: /rename/i })).toBeInTheDocument();
+    expect(within(menu).getByRole('menuitem', { name: /delete/i })).toBeInTheDocument();
+    expect(window.location.pathname).toBe(before);
+  });
+
+  test('renames a conversation inline and PATCHes the new title', async () => {
+    const { user } = renderList();
+    await screen.findByRole('link', { name: /Badge types/ });
+
+    const menu = await openRowMenu(user, /Badge types/);
+    await user.click(within(menu).getByRole('menuitem', { name: /rename/i }));
+
+    const input = await screen.findByRole('textbox', { name: /rename badge types/i });
+    // While editing there is no anchor in the row at all, so nothing can
+    // navigate away mid-edit.
+    expect(screen.queryByRole('link', { name: /Badge types/ })).not.toBeInTheDocument();
+
+    await user.clear(input);
+    await user.type(input, 'Badge types explained{Enter}');
+
+    await waitFor(() =>
+      expect(mockFetch).toHaveBeenCalledWith(
+        '/api/conversations/b',
+        expect.objectContaining({ method: 'PATCH' }),
+      ),
+    );
+    const patch = mockFetch.mock.calls.find(([, i]) => (i as RequestInit)?.method === 'PATCH')!;
+    expect(JSON.parse(String((patch[1] as RequestInit).body))).toEqual({
+      title: 'Badge types explained',
+    });
+    await waitFor(() =>
+      expect(screen.getByRole('link', { name: /Badge types explained/ })).toBeInTheDocument(),
+    );
+  });
+
+  test('Escape abandons a rename without saving it', async () => {
+    const { user } = renderList();
+    await screen.findByRole('link', { name: /Badge types/ });
+
+    const menu = await openRowMenu(user, /Badge types/);
+    await user.click(within(menu).getByRole('menuitem', { name: /rename/i }));
+    const input = await screen.findByRole('textbox', { name: /rename badge types/i });
+    await user.clear(input);
+    await user.type(input, 'Something else{Escape}');
+
+    await waitFor(() =>
+      expect(screen.getByRole('link', { name: /Badge types/ })).toBeInTheDocument(),
+    );
+    expect(mockFetch).not.toHaveBeenCalledWith(
+      '/api/conversations/b',
+      expect.objectContaining({ method: 'PATCH' }),
+    );
+  });
+
+  test('a blur while the rename is still saving does not send it twice', async () => {
+    // Hold the PATCH open so the input can blur mid-flight, which is exactly
+    // when a second save would slip through.
+    let releasePatch!: () => void;
+    const patched = new Promise<void>((resolve) => {
+      releasePatch = resolve;
+    });
+    let rows = [...ROWS];
+    mockFetch.mockImplementation(async (input: string, init?: RequestInit) => {
+      if (init?.method === 'PATCH') {
+        await patched;
+        const { title } = JSON.parse(String(init.body));
+        rows = rows.map((r) => (r.id === 'b' ? { ...r, title } : r));
+        return jsonOk(rows.find((r) => r.id === 'b'));
+      }
+      return jsonOk(rows);
+    });
+
+    const { user } = renderList();
+    await screen.findByRole('link', { name: /Badge types/ });
+    const menu = await openRowMenu(user, /Badge types/);
+    await user.click(within(menu).getByRole('menuitem', { name: /rename/i }));
+    const input = await screen.findByRole('textbox', { name: /rename badge types/i });
+
+    await user.clear(input);
+    await user.type(input, 'Renamed once{Enter}');
+    // Submitting disables the input while the PATCH is open, and a browser
+    // blurs an element it has just disabled. jsdom does not, so fire the
+    // focusout React would actually receive.
+    fireEvent.focusOut(input);
+    releasePatch();
+
+    await waitFor(() =>
+      expect(screen.getByRole('link', { name: /Renamed once/ })).toBeInTheDocument(),
+    );
+    expect(
+      mockFetch.mock.calls.filter(([, i]) => (i as RequestInit)?.method === 'PATCH'),
+    ).toHaveLength(1);
+  });
+
   test('deletes only after the confirmation is accepted', async () => {
     const { user } = renderList();
     await screen.findByRole('link', { name: /Badge types/ });
 
-    await user.click(screen.getByRole('button', { name: /Delete .*Badge types/ }));
+    const menu = await openRowMenu(user, /Badge types/);
+    await user.click(within(menu).getByRole('menuitem', { name: /delete/i }));
 
     const dialog = await screen.findByRole('alertdialog');
     await user.click(within(dialog).getByRole('button', { name: /cancel/i }));
@@ -87,7 +278,8 @@ describe('ConversationList', () => {
     );
     expect(screen.getByRole('link', { name: /Badge types/ })).toBeInTheDocument();
 
-    await user.click(screen.getByRole('button', { name: /Delete .*Badge types/ }));
+    const reopenedMenu = await openRowMenu(user, /Badge types/);
+    await user.click(within(reopenedMenu).getByRole('menuitem', { name: /delete/i }));
     const reopened = await screen.findByRole('alertdialog');
     await user.click(within(reopened).getByRole('button', { name: /^delete$/i }));
 
