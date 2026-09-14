@@ -8,6 +8,11 @@ interface SignInInput {
   email: string;
   name: string;
   image?: string | null;
+  /**
+   * Force the account's role. Only the test-credentials provider passes this;
+   * the Google path must never set it, or signing in would be self-promotion.
+   */
+  role?: 'admin' | 'user';
 }
 
 /**
@@ -34,12 +39,14 @@ export async function applySignIn(
     update: {
       name: input.name,
       ...(input.image === undefined ? {} : { image: input.image }),
+      ...(input.role === undefined ? {} : { role: input.role }),
     },
     create: {
       email: input.email,
       name: input.name,
       image: input.image ?? null,
       status: decision.status,
+      ...(input.role === undefined ? {} : { role: input.role }),
     },
   });
 

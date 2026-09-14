@@ -126,3 +126,48 @@ describe('applySignIn', () => {
     );
   });
 });
+
+describe('applySignIn with an explicit role', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockNotify.mockResolvedValue(undefined);
+    mockGetRequireApproval.mockResolvedValue(false);
+    mockUpsert.mockImplementation(({ create }) => ({ id: 'u1', ...create }));
+  });
+
+  it('creates the account with that role', async () => {
+    mockFindUnique.mockResolvedValue(null);
+
+    await applySignIn({ ...account, role: 'admin' });
+
+    expect(mockUpsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create: expect.objectContaining({ role: 'admin' }),
+      }),
+    );
+  });
+
+  // Otherwise the first test-mode sign-in would be admin and every later one
+  // would silently stay on whatever role the row already had.
+  it('promotes an existing account to that role', async () => {
+    mockFindUnique.mockResolvedValue({ id: 'u1', status: 'APPROVED', role: 'user' });
+
+    await applySignIn({ ...account, role: 'admin' });
+
+    expect(mockUpsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        update: expect.objectContaining({ role: 'admin' }),
+      }),
+    );
+  });
+
+  it('leaves the role alone when none is given, so Google sign-ins cannot self-promote', async () => {
+    mockFindUnique.mockResolvedValue(null);
+
+    await applySignIn(account);
+
+    const call = mockUpsert.mock.calls[0][0];
+    expect(call.create).not.toHaveProperty('role');
+    expect(call.update).not.toHaveProperty('role');
+  });
+});

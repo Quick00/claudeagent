@@ -20,7 +20,10 @@ if (isTestMode) {
         const email = credentials?.email || 'test@example.com';
         const name = credentials?.name || 'Test User';
 
-        const { allowed, user } = await applySignIn({ email, name });
+        // Test mode exists so the app can be run locally without Google
+        // OAuth; an account that cannot reach /admin is not much use there.
+        // Gated on AUTH_TEST_MODE, which also replaces the real provider.
+        const { allowed, user } = await applySignIn({ email, name, role: 'admin' });
         if (!allowed || !user) return null;
 
         return { id: user.id, email: user.email, name: user.name };
