@@ -77,6 +77,14 @@ export default function LinkClaudeModal({ open, onOpenChange, onLinked }: LinkCl
     }
   };
 
+  // Closing the dialog — Cancel, Escape, or an overlay click — drops the
+  // pasted token from state rather than leaving a live credential sitting in
+  // memory (and ready to repopulate the textarea) until the next link flow.
+  const handleOpenChange = (next: boolean) => {
+    if (!next) setToken('');
+    onOpenChange(next);
+  };
+
   const handleSubmit = async () => {
     const cleaned = token.replace(/\s+/g, '');
     if (!cleaned) return;
@@ -139,8 +147,8 @@ export default function LinkClaudeModal({ open, onOpenChange, onLinked }: LinkCl
             press <Kbd>Enter</Kbd>.
           </p>
         </div>
-        <div className="mt-3 flex items-center justify-between rounded-md bg-foreground px-3 py-2">
-          <code className="break-all text-sm text-background">{macInstallCommand}</code>
+        <div className="mt-3 flex min-w-0 items-center justify-between gap-2 rounded-md bg-foreground px-3 py-2">
+          <code className="min-w-0 flex-1 break-all text-sm text-background">{macInstallCommand}</code>
           <Button
             variant="ghost"
             size="icon-sm"
@@ -170,8 +178,8 @@ export default function LinkClaudeModal({ open, onOpenChange, onLinked }: LinkCl
             <Kbd>⌘</Kbd> + <Kbd>V</Kbd>), and press <Kbd>Enter</Kbd>.
           </p>
         </div>
-        <div className="mt-3 flex items-center justify-between rounded-md bg-foreground px-3 py-2">
-          <code className="break-all text-sm text-background">{macInstallCommand}</code>
+        <div className="mt-3 flex min-w-0 items-center justify-between gap-2 rounded-md bg-foreground px-3 py-2">
+          <code className="min-w-0 flex-1 break-all text-sm text-background">{macInstallCommand}</code>
           <Button
             variant="ghost"
             size="icon-sm"
@@ -190,8 +198,8 @@ export default function LinkClaudeModal({ open, onOpenChange, onLinked }: LinkCl
     );
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-lg">
+    <Dialog open={open} onOpenChange={handleOpenChange}>
+      <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle>Link your Claude account</DialogTitle>
           <DialogDescription>
@@ -200,8 +208,8 @@ export default function LinkClaudeModal({ open, onOpenChange, onLinked }: LinkCl
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-4">
-          <div className="rounded-lg bg-muted p-4">
+        <div className="min-w-0 space-y-4">
+          <div className="min-w-0 rounded-lg bg-muted p-4">
             <h3 className="mb-2 text-sm font-semibold">Step 1: Install Claude and get your token</h3>
             <ToggleGroup
               type="single"
@@ -220,7 +228,7 @@ export default function LinkClaudeModal({ open, onOpenChange, onLinked }: LinkCl
             {installSteps}
           </div>
 
-          <div className="rounded-lg bg-muted p-4">
+          <div className="min-w-0 rounded-lg bg-muted p-4">
             <h3 className="mb-2 text-sm font-semibold">Step 2: Paste your token</h3>
             <p className="mb-2 text-sm text-muted-foreground">
               Copy the token from your terminal and paste it below:
@@ -230,13 +238,13 @@ export default function LinkClaudeModal({ open, onOpenChange, onLinked }: LinkCl
               onChange={(e) => setToken(e.target.value)}
               placeholder="Paste your Claude token here..."
               rows={3}
-              className="resize-none font-mono"
+              className="w-full resize-none break-all font-mono"
             />
           </div>
         </div>
 
         <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>
+          <Button variant="outline" onClick={() => handleOpenChange(false)}>
             Cancel
           </Button>
           <Button onClick={handleSubmit} disabled={saving || !token.replace(/\s+/g, '')}>

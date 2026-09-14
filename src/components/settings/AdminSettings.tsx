@@ -2,8 +2,10 @@
 
 import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
+import { PageHeader } from '@/components/shared/PageHeader';
 import { Button } from '@/components/ui/button';
-import { Field, FieldDescription, FieldLabel } from '@/components/ui/field';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Label } from '@/components/ui/label';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
@@ -81,52 +83,64 @@ export default function AdminSettings() {
 
   if (data === null) {
     return (
-      <div className="space-y-4">
-        <Skeleton className="h-16 w-full" />
-        <Skeleton className="h-40 w-full" />
+      <div className="max-w-2xl space-y-6 p-6">
+        <PageHeader title="Admin Settings" description="Account approval and knowledge provenance." />
+        <Skeleton className="h-24 w-full" />
+        <Skeleton className="h-48 w-full" />
       </div>
     );
   }
 
   return (
-    <div className="space-y-6">
-      <Field orientation="horizontal" className="rounded-lg border border-border p-3">
-        <FieldLabel htmlFor="require-approval" className="flex-col items-start gap-0.5">
-          <span className="text-sm">Require approval for new accounts</span>
-          <FieldDescription>
-            New sign-ups wait for an admin before they can use the app.
-          </FieldDescription>
-        </FieldLabel>
-        <Switch
-          id="require-approval"
-          checked={data.requireUserApproval}
-          onCheckedChange={toggleRequireApproval}
-          disabled={savingApproval}
-          aria-label="Require approval for new accounts"
-        />
-      </Field>
+    <div className="max-w-2xl space-y-6 p-6">
+      <PageHeader title="Admin Settings" description="Account approval and knowledge provenance." />
 
-      <div className="rounded-lg border border-border p-3">
-        <h3 className="text-sm">Files ignored for knowledge provenance</h3>
-        <p className="mb-2 text-xs text-muted-foreground">
-          One per line. End a line with / for a directory name. These files never count as the source
-          of a knowledge entry.
-        </p>
-        <Textarea
-          value={ignoreText}
-          onChange={(e) => {
-            setIgnoreText(e.target.value);
-            setIgnoreDirty(true);
-          }}
-          rows={5}
-          className="font-mono text-xs"
-        />
-        <div className="mt-2">
-          <Button size="sm" onClick={saveIgnorePatterns} disabled={ignoreSaving || !ignoreDirty}>
-            {ignoreSaving ? 'Saving…' : 'Save'}
-          </Button>
-        </div>
-      </div>
+      <Card>
+        <CardHeader>
+          <CardTitle>Account approval</CardTitle>
+          <CardDescription>New sign-ups wait for an admin before they can use the app.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="flex items-center justify-between gap-3">
+            <Label htmlFor="require-approval" className="text-sm font-normal">
+              Require approval for new accounts
+            </Label>
+            <Switch
+              id="require-approval"
+              checked={data.requireUserApproval}
+              onCheckedChange={toggleRequireApproval}
+              disabled={savingApproval}
+              aria-label="Require approval for new accounts"
+            />
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Knowledge provenance</CardTitle>
+          <CardDescription>
+            Files ignored when attributing a knowledge entry to its source. One per line — end a
+            line with / for a directory name.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <Textarea
+            value={ignoreText}
+            onChange={(e) => {
+              setIgnoreText(e.target.value);
+              setIgnoreDirty(true);
+            }}
+            rows={5}
+            className="font-mono text-xs"
+          />
+          <div className="mt-2">
+            <Button size="sm" onClick={saveIgnorePatterns} disabled={ignoreSaving || !ignoreDirty}>
+              {ignoreSaving ? 'Saving…' : 'Save'}
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
     </div>
   );
 }

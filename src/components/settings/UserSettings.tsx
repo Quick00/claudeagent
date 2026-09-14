@@ -4,7 +4,9 @@ import { useEffect, useState } from 'react';
 import { useSession } from 'next-auth/react';
 import { useTheme } from 'next-themes';
 import { Circle, CircleCheck, Laptop, Moon, Sun } from 'lucide-react';
+import { PageHeader } from '@/components/shared/PageHeader';
 import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import LinkClaudeModal from '@/components/LinkClaudeModal';
@@ -52,72 +54,84 @@ export default function UserSettings() {
   };
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h3 className="mb-1 text-sm font-medium">App Account</h3>
-        <p className="text-sm text-muted-foreground">{session?.user?.email}</p>
-      </div>
+    <div className="max-w-2xl space-y-6 p-6">
+      <PageHeader title="Settings" description="Manage your account and appearance." />
 
-      <div className="border-t border-border pt-4">
-        <h3 className="mb-3 text-sm font-medium">Claude Account</h3>
+      <Card>
+        <CardHeader>
+          <CardTitle>App Account</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <p className="text-sm text-muted-foreground">{session?.user?.email}</p>
+        </CardContent>
+      </Card>
 
-        {claudeStatus === null ? (
-          <Skeleton className="h-16 w-full" />
-        ) : claudeStatus.linked ? (
-          <div className="space-y-3">
-            <div className="flex items-center gap-2">
-              <CircleCheck className="size-4 text-success" />
-              <span className="text-sm">Connected</span>
-              {claudeStatus.email && (
-                <span className="text-sm text-muted-foreground">({claudeStatus.email})</span>
-              )}
+      <Card>
+        <CardHeader>
+          <CardTitle>Claude Account</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {claudeStatus === null ? (
+            <Skeleton className="h-16 w-full" />
+          ) : claudeStatus.linked ? (
+            <div className="space-y-3">
+              <div className="flex items-center gap-2">
+                <CircleCheck className="size-4 text-success" />
+                <span className="text-sm">Connected</span>
+                {claudeStatus.email && (
+                  <span className="text-sm text-muted-foreground">({claudeStatus.email})</span>
+                )}
+              </div>
+              <Button variant="destructive" size="sm" onClick={handleUnlink} disabled={unlinking}>
+                {unlinking ? 'Unlinking…' : 'Unlink Claude Account'}
+              </Button>
             </div>
-            <Button variant="destructive" size="sm" onClick={handleUnlink} disabled={unlinking}>
-              {unlinking ? 'Unlinking…' : 'Unlink Claude Account'}
-            </Button>
-          </div>
-        ) : (
-          <div className="space-y-3">
-            <div className="flex items-center gap-2">
-              <Circle className="size-4 text-muted-foreground" />
-              <span className="text-sm text-muted-foreground">Not connected</span>
+          ) : (
+            <div className="space-y-3">
+              <div className="flex items-center gap-2">
+                <Circle className="size-4 text-muted-foreground" />
+                <span className="text-sm text-muted-foreground">Not connected</span>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Link your Claude account to start asking questions. Requires a Claude Max, Pro, or
+                Team subscription.
+              </p>
+              <Button size="sm" onClick={() => setModalOpen(true)}>
+                Link Claude Account
+              </Button>
             </div>
-            <p className="text-xs text-muted-foreground">
-              Link your Claude account to start asking questions. Requires a Claude Max, Pro, or Team
-              subscription.
-            </p>
-            <Button size="sm" onClick={() => setModalOpen(true)}>
-              Link Claude Account
-            </Button>
-          </div>
-        )}
-      </div>
+          )}
+        </CardContent>
+      </Card>
 
-      <div className="border-t border-border pt-4">
-        <h3 className="mb-3 text-sm font-medium">Appearance</h3>
-        <ToggleGroup
-          type="single"
-          variant="outline"
-          value={theme ?? 'system'}
-          onValueChange={(value) => {
-            if (value) setTheme(value);
-          }}
-          className="w-full"
-        >
-          <ToggleGroupItem value="system" aria-label="System" className="flex-1 flex-col gap-1.5 py-3">
-            <Laptop className="size-5" />
-            System
-          </ToggleGroupItem>
-          <ToggleGroupItem value="light" aria-label="Light" className="flex-1 flex-col gap-1.5 py-3">
-            <Sun className="size-5" />
-            Light
-          </ToggleGroupItem>
-          <ToggleGroupItem value="dark" aria-label="Dark" className="flex-1 flex-col gap-1.5 py-3">
-            <Moon className="size-5" />
-            Dark
-          </ToggleGroupItem>
-        </ToggleGroup>
-      </div>
+      <Card>
+        <CardHeader>
+          <CardTitle>Appearance</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <ToggleGroup
+            type="single"
+            variant="outline"
+            value={theme ?? 'system'}
+            onValueChange={(value) => {
+              if (value) setTheme(value);
+            }}
+          >
+            <ToggleGroupItem value="system" aria-label="System" className="w-24 flex-col gap-1.5 py-3">
+              <Laptop className="size-5" />
+              System
+            </ToggleGroupItem>
+            <ToggleGroupItem value="light" aria-label="Light" className="w-24 flex-col gap-1.5 py-3">
+              <Sun className="size-5" />
+              Light
+            </ToggleGroupItem>
+            <ToggleGroupItem value="dark" aria-label="Dark" className="w-24 flex-col gap-1.5 py-3">
+              <Moon className="size-5" />
+              Dark
+            </ToggleGroupItem>
+          </ToggleGroup>
+        </CardContent>
+      </Card>
 
       <LinkClaudeModal open={modalOpen} onOpenChange={setModalOpen} onLinked={handleLinked} />
     </div>
