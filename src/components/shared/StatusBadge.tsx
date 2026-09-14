@@ -24,7 +24,7 @@ const MAPS = {
   },
   flag: {
     PENDING: { label: 'Pending', variant: 'destructive' },
-    RESOLVED: { label: 'Resolved', variant: 'success' },
+    RESPONDED: { label: 'Responded', variant: 'success' },
   },
   knowledgeKind: {
     pinned: { label: 'Pinned rule', variant: 'warning' },

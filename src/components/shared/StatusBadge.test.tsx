@@ -29,12 +29,14 @@ describe('StatusBadge', () => {
     expect(screen.getByText('Done')).toHaveAttribute('data-variant', 'success');
   });
 
-  test('renders an open flag as destructive and a resolved one as success', () => {
+  // Flag.status is PENDING -> RESPONDED in prisma/schema.prisma; there is no
+  // RESOLVED value, so mapping one would silently render the raw string.
+  test('renders an open flag as destructive and a responded one as success', () => {
     const { rerender } = render(<StatusBadge kind="flag" value="PENDING" />);
     expect(screen.getByText('Pending')).toHaveAttribute('data-variant', 'destructive');
 
-    rerender(<StatusBadge kind="flag" value="RESOLVED" />);
-    expect(screen.getByText('Resolved')).toHaveAttribute('data-variant', 'success');
+    rerender(<StatusBadge kind="flag" value="RESPONDED" />);
+    expect(screen.getByText('Responded')).toHaveAttribute('data-variant', 'success');
   });
 
   test('marks a pinned knowledge entry as warning so an admin sees it is human-owned', () => {
