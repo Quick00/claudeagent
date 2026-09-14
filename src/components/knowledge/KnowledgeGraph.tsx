@@ -301,7 +301,7 @@ export default function KnowledgeGraph() {
       </div>
 
       {selectedNode && (
-        <div className="absolute right-0 top-0 z-20 flex h-full w-96 flex-col border-l border-border bg-card shadow-lg">
+        <div className="absolute inset-0 z-20 flex w-full flex-col border-border bg-card shadow-lg sm:inset-y-0 sm:right-0 sm:left-auto sm:w-96 sm:border-l">
           <div className="flex shrink-0 items-center justify-between gap-2 border-b border-border px-4 py-3">
             {selectedNode.type === 'topic' ? (
               <Badge variant="outline">Topic</Badge>
