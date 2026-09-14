@@ -1,7 +1,23 @@
 'use client';
 
 import { useState } from 'react';
-import { createPortal } from 'react-dom';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { toast } from 'sonner';
+import { Check, Copy } from 'lucide-react';
+import { apiFetch, jsonBody } from '@/lib/api';
+import { qk } from '@/lib/query-keys';
+import { Button } from '@/components/ui/button';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { Kbd } from '@/components/ui/kbd';
+import { Textarea } from '@/components/ui/textarea';
+import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 
 type DetectedOs = 'mac' | 'windows' | 'linux';
 
@@ -14,16 +30,30 @@ function detectOs(): DetectedOs {
 }
 
 interface LinkClaudeModalProps {
-  onClose: () => void;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
   onLinked: () => void;
 }
 
-export default function LinkClaudeModal({ onClose, onLinked }: LinkClaudeModalProps) {
+export default function LinkClaudeModal({ open, onOpenChange, onLinked }: LinkClaudeModalProps) {
+  const queryClient = useQueryClient();
   const [token, setToken] = useState('');
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [os, setOs] = useState<DetectedOs>(() => detectOs());
-  const [copied, setCopied] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+
+  const linkMutation = useMutation({
+    mutationFn: (cleanedToken: string) =>
+      apiFetch('/api/auth/claude/link', jsonBody('POST', { token: cleanedToken })),
+    onSuccess: () => {
+      toast.success('Claude account linked');
+      setToken('');
+      queryClient.invalidateQueries({ queryKey: qk.claude.status() });
+      onLinked();
+    },
+    onError: (err) => {
+      toast.error(err instanceof Error ? err.message : 'Something went wrong');
+    },
+  });
 
   const downloadHref = '/install/install-claude-windows.bat';
   const downloadFilename = 'install-claude.bat';
@@ -33,15 +63,15 @@ export default function LinkClaudeModal({ onClose, onLinked }: LinkClaudeModalPr
     return `curl -fsSL ${base}/install/install-mac.sh | bash`;
   })();
 
-  const copyToClipboard = async (text: string, key: string) => {
+  const copyToClipboard = async (text: string) => {
     try {
       if (navigator.clipboard?.writeText) {
         await navigator.clipboard.writeText(text);
       } else {
         throw new Error('clipboard unavailable');
       }
-      setCopied(key);
-      setTimeout(() => setCopied(null), 2000);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
     } catch {
       // Fallback for non-secure contexts (HTTP on LAN): use a temporary
       // textarea + document.execCommand('copy'). execCommand is deprecated
@@ -54,182 +84,172 @@ export default function LinkClaudeModal({ onClose, onLinked }: LinkClaudeModalPr
       textarea.select();
       try {
         document.execCommand('copy');
-        setCopied(key);
-        setTimeout(() => setCopied(null), 2000);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
       } catch {
-        setCopied(`${key}:failed`);
-        setTimeout(() => setCopied(null), 2500);
+        toast.error('Could not copy — select the command manually');
       } finally {
         document.body.removeChild(textarea);
       }
     }
   };
 
-  const handleSubmit = async () => {
-    const cleaned = token.replace(/\s+/g, '');
-    if (!cleaned) return;
-
-    setSaving(true);
-    setError(null);
-
-    try {
-      const res = await fetch('/api/auth/claude/link', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ token: cleaned }),
-      });
-
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        throw new Error(data.error || 'Failed to save token');
-      }
-
-      onLinked();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Something went wrong');
-    } finally {
-      setSaving(false);
+  // Closing the dialog — Cancel, Escape, or an overlay click — drops the
+  // pasted token from state rather than leaving a live credential sitting in
+  // memory (and ready to repopulate the textarea) until the next link flow.
+  const handleOpenChange = (next: boolean) => {
+    if (!next) {
+      setToken('');
+      linkMutation.reset();
     }
+    onOpenChange(next);
   };
 
-  return createPortal(
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={onClose}>
-      <div
-        className="mx-4 w-full max-w-lg rounded-xl bg-white p-6 shadow-xl dark:bg-gray-900"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="mb-4 flex items-center justify-between">
-          <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Link your Claude account</h2>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300">&times;</button>
+  const handleSubmit = () => {
+    const cleaned = token.replace(/\s+/g, '');
+    if (!cleaned) return;
+    linkMutation.mutate(cleaned);
+  };
+
+  const installSteps =
+    os === 'windows' ? (
+      <>
+        <Button asChild className="w-full">
+          <a href={downloadHref} download={downloadFilename}>
+            Download installer for Windows
+          </a>
+        </Button>
+        <div className="mt-3 space-y-2 text-xs text-muted-foreground">
+          <p>
+            1. Open the downloaded <code className="font-mono">install-claude.bat</code> file.
+          </p>
+          <p>
+            2. If Windows shows <b>&ldquo;Windows protected your PC&rdquo;</b>, click <b>More info</b>,
+            then <b>Run anyway</b>.
+          </p>
+          <p>
+            3. A command window opens and installs Claude (and Git for Windows, if missing). A browser
+            opens for you to log in. When finished, a long token is printed in the command window —
+            copy it and paste it below.
+          </p>
         </div>
-
-        <p className="mb-4 text-sm text-gray-500 dark:text-gray-400">
-          To use this app, you need a Claude subscription (Max, Pro, or Team) and a setup token.
-          Follow the steps below to generate one.
+      </>
+    ) : os === 'linux' ? (
+      <>
+        <div className="space-y-2 text-sm">
+          <p>
+            <b>1.</b> Open a terminal on your computer.
+          </p>
+          <p>
+            <b>2.</b> Click the <b>Copy</b> button below, paste the command into the terminal, and
+            press <Kbd>Enter</Kbd>.
+          </p>
+        </div>
+        <div className="mt-3 flex min-w-0 items-center justify-between gap-2 rounded-md bg-foreground px-3 py-2">
+          <code className="min-w-0 flex-1 break-all text-sm text-background">{macInstallCommand}</code>
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            className="ml-2 shrink-0 text-background hover:bg-background/10 hover:text-background"
+            onClick={() => copyToClipboard(macInstallCommand)}
+            aria-label="Copy install command"
+          >
+            {copied ? <Check /> : <Copy />}
+          </Button>
+        </div>
+        <p className="mt-3 text-xs text-muted-foreground">
+          <b>3.</b> A browser window will open for you to log in with your Claude account. After you
+          authorize, a long token is printed in the terminal window — copy it and paste it below.
         </p>
+      </>
+    ) : (
+      <>
+        <div className="space-y-2 text-sm">
+          <p>
+            <b>1.</b> Press <Kbd>⌘</Kbd> + <Kbd>Space</Kbd> on your keyboard to open Spotlight.
+          </p>
+          <p>
+            <b>2.</b> Type <b>Terminal</b> and press <Kbd>Enter</Kbd>. A terminal window will open.
+          </p>
+          <p>
+            <b>3.</b> Click the <b>Copy</b> button below, paste the command into the terminal (
+            <Kbd>⌘</Kbd> + <Kbd>V</Kbd>), and press <Kbd>Enter</Kbd>.
+          </p>
+        </div>
+        <div className="mt-3 flex min-w-0 items-center justify-between gap-2 rounded-md bg-foreground px-3 py-2">
+          <code className="min-w-0 flex-1 break-all text-sm text-background">{macInstallCommand}</code>
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            className="ml-2 shrink-0 text-background hover:bg-background/10 hover:text-background"
+            onClick={() => copyToClipboard(macInstallCommand)}
+            aria-label="Copy install command"
+          >
+            {copied ? <Check /> : <Copy />}
+          </Button>
+        </div>
+        <p className="mt-3 text-xs text-muted-foreground">
+          <b>4.</b> A browser window will open for you to log in with your Claude account. After you
+          authorize, a long token is printed in the terminal window — copy it and paste it below.
+        </p>
+      </>
+    );
 
-        <div className="mb-5 space-y-4">
-          <div className="rounded-lg bg-gray-50 p-4 dark:bg-gray-800">
-            <h3 className="mb-2 text-sm font-semibold text-gray-800 dark:text-gray-200">
-              Step 1: Install Claude and get your token
-            </h3>
-            <div className="mb-3 inline-flex rounded-md border border-gray-200 bg-white p-0.5 text-xs dark:border-gray-700 dark:bg-gray-900">
-              {(['mac', 'windows'] as const).map((option) => (
-                <button
-                  key={option}
-                  type="button"
-                  onClick={() => setOs(option)}
-                  className={`rounded px-3 py-1 font-medium transition ${
-                    os === option
-                      ? 'bg-blue-600 text-white'
-                      : 'text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-200'
-                  }`}
-                >
-                  {option === 'mac' ? 'macOS' : 'Windows'}
-                </button>
-              ))}
-            </div>
+  return (
+    <Dialog open={open} onOpenChange={handleOpenChange}>
+      <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-2xl">
+        <DialogHeader>
+          <DialogTitle>Link your Claude account</DialogTitle>
+          <DialogDescription>
+            To use this app, you need a Claude subscription (Max, Pro, or Team) and a setup token.
+            Follow the steps below to generate one.
+          </DialogDescription>
+        </DialogHeader>
 
-            {os === 'windows' ? (
-              <>
-                <a
-                  href={downloadHref}
-                  download={downloadFilename}
-                  className="block w-full rounded-lg bg-blue-600 px-4 py-3 text-center text-sm font-semibold text-white hover:bg-blue-700"
-                >
-                  Download installer for Windows
-                </a>
+        <div className="min-w-0 space-y-4">
+          <div className="min-w-0 rounded-lg bg-muted p-4">
+            <h3 className="mb-2 text-sm font-semibold">Step 1: Install Claude and get your token</h3>
+            <ToggleGroup
+              type="single"
+              variant="outline"
+              spacing={0}
+              value={os === 'linux' ? undefined : os}
+              onValueChange={(value) => {
+                if (value) setOs(value as DetectedOs);
+              }}
+              className="mb-3 text-xs"
+            >
+              <ToggleGroupItem value="mac">macOS</ToggleGroupItem>
+              <ToggleGroupItem value="windows">Windows</ToggleGroupItem>
+            </ToggleGroup>
 
-                <div className="mt-3 space-y-2 text-xs text-gray-500 dark:text-gray-400">
-                  <p>1. Open the downloaded <code className="font-mono">install-claude.bat</code> file.</p>
-                  <p>2. If Windows shows <b>&ldquo;Windows protected your PC&rdquo;</b>, click <b>More info</b>, then <b>Run anyway</b>.</p>
-                  <p>3. A command window opens and installs Claude (and Git for Windows, if missing). A browser opens for you to log in. When finished, a long token is printed in the command window &mdash; copy it and paste it below.</p>
-                </div>
-              </>
-            ) : os === 'linux' ? (
-              <>
-                <div className="space-y-2 text-sm text-gray-700 dark:text-gray-300">
-                  <p><b>1.</b> Open a terminal on your computer.</p>
-                  <p><b>2.</b> Click the <b>Copy</b> button below, paste the command into the terminal, and press <kbd className="rounded border border-gray-300 bg-gray-100 px-1.5 py-0.5 font-mono text-xs dark:border-gray-600 dark:bg-gray-800">Enter</kbd>.</p>
-                </div>
-
-                <div className="mt-3 flex items-center justify-between rounded-md bg-gray-900 px-3 py-2">
-                  <code className="text-sm text-green-400 break-all">{macInstallCommand}</code>
-                  <button
-                    onClick={() => copyToClipboard(macInstallCommand, 'install')}
-                    className="ml-2 shrink-0 text-xs text-gray-400 hover:text-white"
-                  >
-                    {copied === 'install' ? 'Copied!' : copied === 'install:failed' ? 'Select manually' : 'Copy'}
-                  </button>
-                </div>
-
-                <p className="mt-3 text-xs text-gray-500 dark:text-gray-400">
-                  <b>3.</b> A browser window will open for you to log in with your Claude account. After you authorize, a long token is printed in the terminal window — copy it and paste it below.
-                </p>
-              </>
-            ) : (
-              <>
-                <div className="space-y-2 text-sm text-gray-700 dark:text-gray-300">
-                  <p><b>1.</b> Press <kbd className="rounded border border-gray-300 bg-gray-100 px-1.5 py-0.5 font-mono text-xs dark:border-gray-600 dark:bg-gray-800">⌘</kbd> + <kbd className="rounded border border-gray-300 bg-gray-100 px-1.5 py-0.5 font-mono text-xs dark:border-gray-600 dark:bg-gray-800">Space</kbd> on your keyboard to open Spotlight.</p>
-                  <p><b>2.</b> Type <b>Terminal</b> and press <kbd className="rounded border border-gray-300 bg-gray-100 px-1.5 py-0.5 font-mono text-xs dark:border-gray-600 dark:bg-gray-800">Enter</kbd>. A terminal window will open.</p>
-                  <p><b>3.</b> Click the <b>Copy</b> button below, paste the command into the terminal (<kbd className="rounded border border-gray-300 bg-gray-100 px-1.5 py-0.5 font-mono text-xs dark:border-gray-600 dark:bg-gray-800">⌘</kbd> + <kbd className="rounded border border-gray-300 bg-gray-100 px-1.5 py-0.5 font-mono text-xs dark:border-gray-600 dark:bg-gray-800">V</kbd>), and press <kbd className="rounded border border-gray-300 bg-gray-100 px-1.5 py-0.5 font-mono text-xs dark:border-gray-600 dark:bg-gray-800">Enter</kbd>.</p>
-                </div>
-
-                <div className="mt-3 flex items-center justify-between rounded-md bg-gray-900 px-3 py-2">
-                  <code className="text-sm text-green-400 break-all">{macInstallCommand}</code>
-                  <button
-                    onClick={() => copyToClipboard(macInstallCommand, 'install')}
-                    className="ml-2 shrink-0 text-xs text-gray-400 hover:text-white"
-                  >
-                    {copied === 'install' ? 'Copied!' : copied === 'install:failed' ? 'Select manually' : 'Copy'}
-                  </button>
-                </div>
-
-                <p className="mt-3 text-xs text-gray-500 dark:text-gray-400">
-                  <b>4.</b> A browser window will open for you to log in with your Claude account. After you authorize, a long token is printed in the terminal window — copy it and paste it below.
-                </p>
-              </>
-            )}
+            {installSteps}
           </div>
 
-          <div className="rounded-lg bg-gray-50 p-4 dark:bg-gray-800">
-            <h3 className="mb-2 text-sm font-semibold text-gray-800 dark:text-gray-200">Step 2: Paste your token</h3>
-            <p className="mb-2 text-sm text-gray-600 dark:text-gray-400">
+          <div className="min-w-0 rounded-lg bg-muted p-4">
+            <h3 className="mb-2 text-sm font-semibold">Step 2: Paste your token</h3>
+            <p className="mb-2 text-sm text-muted-foreground">
               Copy the token from your terminal and paste it below:
             </p>
-            <textarea
+            <Textarea
               value={token}
               onChange={(e) => setToken(e.target.value)}
               placeholder="Paste your Claude token here..."
               rows={3}
-              className="w-full resize-none rounded-lg border border-gray-300 px-3 py-2 text-sm font-mono focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 dark:focus:border-blue-400"
+              className="w-full resize-none break-all font-mono"
             />
           </div>
         </div>
 
-        {error && (
-          <div className="mb-4 rounded-lg bg-red-50 p-3 text-sm text-red-700 dark:bg-red-950 dark:text-red-300">
-            {error}
-          </div>
-        )}
-
-        <div className="flex justify-end gap-3">
-          <button
-            onClick={onClose}
-            className="rounded-lg border border-gray-300 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-800"
-          >
+        <DialogFooter>
+          <Button variant="outline" onClick={() => handleOpenChange(false)}>
             Cancel
-          </button>
-          <button
-            onClick={handleSubmit}
-            disabled={saving || !token.replace(/\s+/g, '')}
-            className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:bg-gray-300 disabled:text-gray-500 disabled:cursor-not-allowed dark:disabled:bg-gray-700 dark:disabled:text-gray-400"
-          >
-            {saving ? 'Saving...' : 'Link Account'}
-          </button>
-        </div>
-      </div>
-    </div>,
-    document.body
+          </Button>
+          <Button onClick={handleSubmit} disabled={linkMutation.isPending || !token.replace(/\s+/g, '')}>
+            {linkMutation.isPending ? 'Saving...' : 'Link Account'}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
