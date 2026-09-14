@@ -1,12 +1,16 @@
 'use client';
 
 import { useEffect, useState, useRef, useCallback, useMemo } from 'react';
-import Link from 'next/link';
 import ForceGraph2D, { type ForceGraphMethods } from 'react-force-graph-2d';
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
 import { useTheme } from 'next-themes';
+import { X } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { Skeleton } from '@/components/ui/skeleton';
+import { MarkdownContent } from '@/components/shared/MarkdownContent';
+import { EmptyState } from '@/components/shared/EmptyState';
 import { formatDateTime } from '@/lib/format-date';
+import { cn } from '@/lib/utils';
 
 interface GraphNode {
   id: string;
@@ -37,6 +41,9 @@ interface KnowledgeEntry {
   updatedAt: string;
 }
 
+// Category swatches are data-driven colour coding for the canvas and the
+// legend dots, not decorative chrome — they stay as literal colour values
+// rather than Tailwind palette classes.
 const CATEGORY_COLORS: Record<string, string> = {
   topic: '#3b82f6',
   terminology: '#8b5cf6',
@@ -52,6 +59,26 @@ const CATEGORY_LABELS: Record<string, string> = {
   developer: 'Developer',
 };
 
+/** Measures `ref`'s content box with a ResizeObserver, guarding a zero-size first paint. */
+function useElementSize<T extends HTMLElement>() {
+  const ref = useRef<T>(null);
+  const [size, setSize] = useState({ width: 0, height: 0 });
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+
+    const update = () => setSize({ width: el.clientWidth, height: el.clientHeight });
+    update();
+
+    const observer = new ResizeObserver(() => update());
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+
+  return { ref, size };
+}
+
 export default function KnowledgeGraph() {
   const [allGraphData, setAllGraphData] = useState<GraphData>({ nodes: [], links: [] });
   const [selectedNode, setSelectedNode] = useState<GraphNode | null>(null);
@@ -60,6 +87,7 @@ export default function KnowledgeGraph() {
   const [availableCategories, setAvailableCategories] = useState<string[]>([]);
   const { resolvedTheme: theme } = useTheme();
   const graphRef = useRef<ForceGraphMethods<GraphNode> | undefined>(undefined);
+  const { ref: containerRef, size } = useElementSize<HTMLDivElement>();
 
   useEffect(() => {
     Promise.all([
@@ -181,119 +209,107 @@ export default function KnowledgeGraph() {
         })
       : [];
 
+  const entryCount = graphData.nodes.filter((n) => n.type === 'entry').length;
+  const topicCount = graphData.nodes.filter((n) => n.type === 'topic').length;
+  const canMeasure = size.width > 0 && size.height > 0;
+
   return (
-    <div className="relative h-screen">
-      <div className="h-full bg-gray-50 dark:bg-gray-900">
-        <div className="absolute left-4 top-4 z-10 flex items-center gap-4">
-          <Link
-            href="/"
-            className="rounded-lg bg-white px-3 py-2 text-sm font-medium text-gray-700 shadow hover:bg-gray-100 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
-          >
-            &larr; Back to Chat
-          </Link>
-          <h1 className="text-lg font-semibold text-gray-800 dark:text-gray-100">Knowledge Map</h1>
-          <span className="text-sm text-gray-500 dark:text-gray-400">
-            {graphData.nodes.filter((n) => n.type === 'entry').length} pages,{' '}
-            {graphData.nodes.filter((n) => n.type === 'topic').length} topics
-          </span>
+    <div className="relative h-full min-h-0">
+      <div ref={containerRef} className="relative h-full min-h-0 bg-background">
+        <div className="absolute left-4 top-4 z-10 flex items-center gap-2 rounded-lg bg-card px-3 py-2 text-sm text-muted-foreground shadow-xs ring-1 ring-border">
+          {entryCount} pages, {topicCount} topics
         </div>
 
-        <div className="absolute bottom-4 left-4 z-10 flex gap-2 rounded-lg bg-white p-3 shadow dark:bg-gray-800">
-          {availableCategories.map((cat) => {
-            const hidden = hiddenCategories.has(cat);
-            return (
-              <button
-                key={cat}
-                onClick={() => toggleCategory(cat)}
-                className={`flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs transition-opacity ${
-                  hidden ? 'opacity-40' : ''
-                }`}
-              >
-                <span
-                  className="inline-block h-3 w-3 rounded-full"
-                  style={{ backgroundColor: CATEGORY_COLORS[cat] || '#6b7280' }}
-                />
-                <span className="text-gray-600 dark:text-gray-300">
+        {availableCategories.length > 0 && (
+          <div className="absolute bottom-4 left-4 z-10 flex flex-wrap gap-1 rounded-lg bg-card p-2 shadow-xs ring-1 ring-border">
+            {availableCategories.map((cat) => {
+              const hidden = hiddenCategories.has(cat);
+              return (
+                <Button
+                  key={cat}
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  aria-pressed={!hidden}
+                  onClick={() => toggleCategory(cat)}
+                  className={cn('gap-1.5', hidden && 'opacity-40')}
+                >
+                  <span
+                    className="inline-block size-3 rounded-full"
+                    style={{ backgroundColor: CATEGORY_COLORS[cat] || '#6b7280' }}
+                  />
                   {CATEGORY_LABELS[cat] || cat.replace('_', ' ')}
-                </span>
-              </button>
-            );
-          })}
-        </div>
+                </Button>
+              );
+            })}
+          </div>
+        )}
 
         {graphData.nodes.length > 0 ? (
-          <ForceGraph2D
-            ref={graphRef}
-            graphData={graphData}
-            nodeCanvasObject={nodeCanvasObject}
-            onNodeClick={handleNodeClick}
-            linkColor={() => theme === 'dark' ? '#4b5563' : '#d1d5db'}
-            linkWidth={1.5}
-            nodePointerAreaPaint={(node: GraphNode & { x?: number; y?: number }, color: string, ctx: CanvasRenderingContext2D) => {
-              ctx.beginPath();
-              ctx.arc(node.x!, node.y!, Math.max(getRadius(node), 10), 0, 2 * Math.PI);
-              ctx.fillStyle = color;
-              ctx.fill();
-            }}
-            cooldownTicks={100}
-            d3AlphaDecay={0.02}
-            d3VelocityDecay={0.3}
-          />
+          canMeasure ? (
+            <ForceGraph2D
+              ref={graphRef}
+              width={size.width}
+              height={size.height}
+              graphData={graphData}
+              nodeCanvasObject={nodeCanvasObject}
+              onNodeClick={handleNodeClick}
+              linkColor={() => (theme === 'dark' ? '#4b5563' : '#d1d5db')}
+              linkWidth={1.5}
+              nodePointerAreaPaint={(node: GraphNode & { x?: number; y?: number }, color: string, ctx: CanvasRenderingContext2D) => {
+                ctx.beginPath();
+                ctx.arc(node.x!, node.y!, Math.max(getRadius(node), 10), 0, 2 * Math.PI);
+                ctx.fillStyle = color;
+                ctx.fill();
+              }}
+              cooldownTicks={100}
+              d3AlphaDecay={0.02}
+              d3VelocityDecay={0.3}
+            />
+          ) : (
+            <Skeleton className="size-full rounded-none" aria-hidden />
+          )
         ) : (
-          <div className="flex h-full items-center justify-center text-gray-400 dark:text-gray-500">
-            <div className="text-center">
-              <p className="mb-2 text-lg">No knowledge entries yet</p>
-              <p className="text-sm">
-                Start asking questions in the chat — Claude will build the
-                knowledge map automatically
-              </p>
-            </div>
-          </div>
+          <EmptyState
+            className="h-full"
+            title="No knowledge entries yet"
+            description="Start asking questions in the chat — Claude will build the knowledge map automatically"
+          />
         )}
       </div>
 
       {selectedNode && (
-        <div className="absolute right-0 top-0 z-20 h-full w-96 overflow-y-auto border-l border-gray-200 bg-white p-6 shadow-lg dark:border-gray-700 dark:bg-gray-800">
-          <button
+        <div className="absolute right-0 top-0 z-20 h-full w-96 overflow-y-auto border-l border-border bg-card p-6 shadow-lg">
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
             onClick={() => setSelectedNode(null)}
-            className="mb-4 text-sm text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300"
+            className="mb-4 -ml-2 text-muted-foreground"
           >
-            &times; Close
-          </button>
+            <X /> Close
+          </Button>
 
           {selectedNode.type === 'topic' ? (
             <>
-              <div className="mb-1 text-xs font-medium uppercase text-blue-500">
-                Topic
-              </div>
-              <h2 className="mb-4 text-xl font-bold text-gray-900 dark:text-gray-100">
-                {selectedNode.label}
-              </h2>
-              <div className="text-sm text-gray-500 dark:text-gray-400">
+              <div className="mb-1 text-xs font-medium uppercase text-primary">Topic</div>
+              <h2 className="mb-4 text-xl font-bold text-foreground">{selectedNode.label}</h2>
+              <div className="text-sm text-muted-foreground">
                 {connectedEntries.length} related entries
               </div>
               <div className="mt-4 space-y-3">
                 {connectedEntries.map((entry) => (
-                  <div
-                    key={entry.id}
-                    className="rounded-lg border border-gray-100 p-3 dark:border-gray-700"
-                  >
+                  <div key={entry.id} className="rounded-lg border border-border p-3">
                     <div
                       className="mb-1 text-xs font-medium uppercase"
-                      style={{
-                        color: CATEGORY_COLORS[entry.category] || '#6b7280',
-                      }}
+                      style={{ color: CATEGORY_COLORS[entry.category] || '#6b7280' }}
                     >
                       {entry.category.replace('_', ' ')}
                     </div>
                     {entry.subject && (
-                      <div className="mb-1 text-sm font-semibold text-gray-800 dark:text-gray-200">
-                        {entry.subject}
-                      </div>
+                      <div className="mb-1 text-sm font-semibold text-foreground">{entry.subject}</div>
                     )}
-                    <div className="prose prose-sm max-w-none text-gray-700 prose-headings:mb-1 prose-headings:mt-2 prose-p:my-1 prose-ol:my-1 prose-ul:my-1 prose-li:my-0 prose-pre:bg-gray-800 prose-pre:text-gray-100 prose-code:text-pink-600 dark:prose-invert dark:text-gray-300 dark:prose-pre:bg-gray-900">
-                      <ReactMarkdown remarkPlugins={[remarkGfm]}>{entry.content}</ReactMarkdown>
-                    </div>
+                    <MarkdownContent content={entry.content} density="compact" />
                   </div>
                 ))}
               </div>
@@ -302,33 +318,24 @@ export default function KnowledgeGraph() {
             <>
               <div
                 className="mb-1 text-xs font-medium uppercase"
-                style={{
-                  color: CATEGORY_COLORS[selectedEntry.category] || '#6b7280',
-                }}
+                style={{ color: CATEGORY_COLORS[selectedEntry.category] || '#6b7280' }}
               >
                 {selectedEntry.category.replace('_', ' ')}
               </div>
               {selectedEntry.subject && (
-                <h2 className="mb-2 text-lg font-bold text-gray-900 dark:text-gray-100">
-                  {selectedEntry.subject}
-                </h2>
+                <h2 className="mb-2 text-lg font-bold text-foreground">{selectedEntry.subject}</h2>
               )}
-              <div className="prose prose-sm mb-4 max-w-none leading-relaxed text-gray-800 prose-headings:mb-1 prose-headings:mt-2 prose-p:my-1 prose-ol:my-1 prose-ul:my-1 prose-li:my-0 prose-pre:bg-gray-800 prose-pre:text-gray-100 prose-code:text-pink-600 dark:prose-invert dark:text-gray-200 dark:prose-pre:bg-gray-900">
-                <ReactMarkdown remarkPlugins={[remarkGfm]}>{selectedEntry.content}</ReactMarkdown>
-              </div>
+              <MarkdownContent content={selectedEntry.content} density="compact" className="mb-4" />
               {selectedEntry.tags && (
                 <div className="mb-4 flex flex-wrap gap-1.5">
                   {selectedEntry.tags.split(',').map((tag: string) => (
-                    <span
-                      key={tag}
-                      className="rounded-full bg-blue-50 px-2.5 py-0.5 text-xs font-medium text-blue-600 dark:bg-blue-900/30 dark:text-blue-400"
-                    >
+                    <Badge key={tag} variant="secondary">
                       {tag.trim()}
-                    </span>
+                    </Badge>
                   ))}
                 </div>
               )}
-              <div className="text-xs text-gray-400">
+              <div className="text-xs text-muted-foreground">
                 Updated {formatDateTime(selectedEntry.updatedAt)}
               </div>
             </>
