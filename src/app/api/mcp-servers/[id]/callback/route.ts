@@ -6,7 +6,7 @@ import { completeMcpConnect } from '@/lib/mcp-connections';
  * own browser still carries their session cookie — `requireApprovedUser`
  * guards it the same as any other route.
  */
-export async function GET(request: Request) {
+export async function GET(request: Request, _context: { params: Promise<{ id: string }> }) {
   const auth = await requireApprovedUser();
   if (!auth.ok) return auth.response;
 
