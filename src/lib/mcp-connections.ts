@@ -11,7 +11,8 @@ import {
   type McpAuthContext,
 } from '@/lib/mcp-oauth';
 import { mcpCallbackUrl, reRegisterMcpServerClient } from '@/lib/mcp-servers-admin';
-import type { McpServer } from '@prisma/client';
+import { createSafeFetch } from '@/lib/mcp-url-safety';
+import type { McpServer, Prisma } from '@prisma/client';
 
 export interface SessionMcpEntry {
   name: string;
@@ -65,7 +66,8 @@ export async function listMcpServersForUser(userId: string) {
   return servers.map((server) => {
     const connection = byServerId.get(server.id);
     return {
-      ...server,
+      id: server.id,
+      name: server.name,
       connectionStatus: connection ? (connection.status as 'CONNECTED' | 'ERROR') : ('NOT_CONNECTED' as const),
       lastError: connection?.lastError ?? null,
     };
@@ -148,13 +150,21 @@ export async function disconnectMcpServer(userId: string, serverId: string): Pro
   });
   if (!connection) return;
 
-  if (connection.mcpServer.revocationEndpoint && connection.accessToken) {
+  const tokenToRevoke = connection.refreshToken ?? connection.accessToken;
+  if (connection.mcpServer.revocationEndpoint && tokenToRevoke) {
     try {
-      await fetch(connection.mcpServer.revocationEndpoint, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: new URLSearchParams({ token: decrypt(connection.accessToken) }),
+      const { client_id, client_secret } = clientInformationFrom(connection.mcpServer);
+      const body = new URLSearchParams({
+        token: decrypt(tokenToRevoke),
+        token_type_hint: connection.refreshToken ? 'refresh_token' : 'access_token',
       });
+      const headers: Record<string, string> = { 'Content-Type': 'application/x-www-form-urlencoded' };
+      if (client_secret) {
+        headers.Authorization = `Basic ${Buffer.from(`${client_id}:${client_secret}`).toString('base64')}`;
+      } else {
+        body.set('client_id', client_id);
+      }
+      await createSafeFetch()(connection.mcpServer.revocationEndpoint, { method: 'POST', headers, body });
     } catch (err) {
       console.error(`[mcp-connections] Revocation failed for ${connection.mcpServer.name}:`, (err as Error).message);
     }
@@ -170,84 +180,123 @@ function isFreshEnough(expiresAt: Date | null): boolean {
 type RefreshResult = { ok: true; accessToken: string } | { ok: false; error: Error };
 
 /**
+ * Thrown out of the refresh transaction (never caught inside it) when the
+ * server rejected our stored DCR client and needs re-registering. Carries
+ * the server row so the caller can re-register it once the transaction's
+ * lock has been released.
+ */
+class NeedsReRegistrationError extends Error {
+  constructor(public readonly server: McpServer) {
+    super(`${server.name} needs client re-registration`);
+  }
+}
+
+/**
+ * Re-checks freshness under the row's `SELECT ... FOR UPDATE` lock and, if
+ * still stale, refreshes and persists the new tokens. `serverOverride` is
+ * passed on the retry after re-registration, so a second `InvalidClientError`
+ * from the freshly-registered client is reported rather than looping.
+ */
+async function runRefreshInTransaction(
+  tx: Prisma.TransactionClient,
+  connectionId: string,
+  serverOverride?: McpServer,
+): Promise<string> {
+  const rows = await tx.$queryRaw<Array<{
+    id: string;
+    accessToken: string | null;
+    refreshToken: string | null;
+    expiresAt: Date | null;
+    mcpServerId: string;
+  }>>`
+    SELECT id, "accessToken", "refreshToken", "expiresAt", "mcpServerId" FROM "McpServerConnection" WHERE id = ${connectionId} FOR UPDATE
+  `;
+  const row = rows[0];
+  if (!row) throw new Error('connection no longer exists');
+
+  // Re-check under the lock: a concurrent transaction holding this same
+  // row may have already refreshed it while this one waited its turn.
+  if (!row.refreshToken || isFreshEnough(row.expiresAt)) {
+    if (!row.accessToken) throw new Error('no usable token for this connection');
+    return decrypt(row.accessToken);
+  }
+
+  const server = serverOverride ?? (await tx.mcpServer.findUniqueOrThrow({ where: { id: row.mcpServerId } }));
+  const refreshToken = decrypt(row.refreshToken);
+  const doRefresh = () =>
+    refreshTokens(
+      server.authorizationServerUrl,
+      authContextFromServer(server).metadata,
+      clientInformationFrom(server),
+      refreshToken,
+      server.resource,
+    );
+
+  let tokens;
+  try {
+    tokens = await doRefresh();
+  } catch (err) {
+    if (!serverOverride && err instanceof InvalidClientError && server.registrationMode === 'DYNAMIC') {
+      // The server rejected our stored client — DCR credentials can expire
+      // or be revoked independently of any single user's token. Signal the
+      // caller to re-register once outside this transaction, rather than
+      // every user's connection failing the same way until an admin
+      // manually re-adds the server. Nothing has been written yet, so
+      // letting this transaction roll back is safe.
+      throw new NeedsReRegistrationError(server);
+    }
+    // Includes InvalidGrantError, an InvalidClientError with no
+    // re-registration available (a MANUAL server, or a retry after one
+    // already happened), and plain network failures — classified by the
+    // caller once the transaction has unwound.
+    throw err;
+  }
+
+  await tx.mcpServerConnection.update({
+    where: { id: connectionId },
+    data: {
+      accessToken: encrypt(tokens.access_token),
+      refreshToken: tokens.refresh_token ? encrypt(tokens.refresh_token) : row.refreshToken,
+      expiresAt: tokens.expires_in ? new Date(Date.now() + tokens.expires_in * 1000) : null,
+      status: 'CONNECTED',
+      lastError: null,
+    },
+  });
+  return tokens.access_token;
+}
+
+/**
  * Refreshes and persists a connection's tokens under a `SELECT ... FOR
  * UPDATE` row lock, so two sessions for the same user can't both use the
  * same refresh token — some servers rotate and invalidate it on use, which
  * would otherwise fail whichever request lost the race. The lock is held
- * for the refresh HTTP call (plus, rarely, one re-registration and a second
- * attempt); at this app's scale — occasional refreshes, not a high-throughput
- * API — that's a fine trade for correctness over a lease-based scheme, but it
- * does need a longer-than-default transaction timeout.
+ * only for the refresh HTTP call itself; at this app's scale — occasional
+ * refreshes, not a high-throughput API — that's a fine trade for correctness
+ * over a lease-based scheme, but it does need a longer-than-default
+ * transaction timeout.
  *
- * A status write for a server-rejected credential happens strictly *after*
- * this transaction settles, never inside the callback that's about to throw
- * — a write made there would be rolled back along with everything else in
- * that transaction.
+ * Re-registering a DCR client happens in a second, separate transaction:
+ * the row lock from the first attempt is released before the (slow, external)
+ * re-registration call runs, and re-acquired afterwards to retry. A status
+ * write for a server-rejected credential, and the re-registration write
+ * itself, both happen strictly *outside* any transaction that's about to
+ * throw — a write made inside a callback that then throws would be rolled
+ * back along with everything else in it.
  */
 async function refreshAndPersist(connectionId: string): Promise<RefreshResult> {
   try {
-    const accessToken = await prisma.$transaction(async (tx) => {
-      const rows = await tx.$queryRaw<Array<{
-        id: string;
-        accessToken: string | null;
-        refreshToken: string | null;
-        expiresAt: Date | null;
-        mcpServerId: string;
-      }>>`
-        SELECT id, "accessToken", "refreshToken", "expiresAt", "mcpServerId" FROM "McpServerConnection" WHERE id = ${connectionId} FOR UPDATE
-      `;
-      const row = rows[0];
-      if (!row) throw new Error('connection no longer exists');
-
-      // Re-check under the lock: a concurrent transaction holding this same
-      // row may have already refreshed it while this one waited its turn.
-      if (!row.refreshToken || isFreshEnough(row.expiresAt)) {
-        if (!row.accessToken) throw new Error('no usable token for this connection');
-        return decrypt(row.accessToken);
-      }
-
-      let server = await tx.mcpServer.findUniqueOrThrow({ where: { id: row.mcpServerId } });
-      const refreshToken = decrypt(row.refreshToken);
-      const doRefresh = () =>
-        refreshTokens(
-          server.authorizationServerUrl,
-          authContextFromServer(server).metadata,
-          clientInformationFrom(server),
-          refreshToken,
-          server.resource,
-        );
-
-      let tokens;
-      try {
-        tokens = await doRefresh();
-      } catch (err) {
-        if (err instanceof InvalidClientError && server.registrationMode === 'DYNAMIC') {
-          // The server rejected our stored client — DCR credentials can
-          // expire or be revoked independently of any single user's token.
-          // Re-register once and retry, rather than every user's connection
-          // failing the same way until an admin manually re-adds the server.
-          server = await reRegisterMcpServerClient(server);
-          tokens = await doRefresh();
-        } else {
-          // Includes InvalidGrantError, an InvalidClientError on a MANUAL
-          // server (nothing to re-register), and plain network failures —
-          // classified by the caller once the transaction has unwound.
-          throw err;
-        }
-      }
-
-      await tx.mcpServerConnection.update({
-        where: { id: connectionId },
-        data: {
-          accessToken: encrypt(tokens.access_token),
-          refreshToken: tokens.refresh_token ? encrypt(tokens.refresh_token) : row.refreshToken,
-          expiresAt: tokens.expires_in ? new Date(Date.now() + tokens.expires_in * 1000) : null,
-          status: 'CONNECTED',
-          lastError: null,
-        },
+    let accessToken: string;
+    try {
+      accessToken = await prisma.$transaction((tx) => runRefreshInTransaction(tx, connectionId), {
+        timeout: REFRESH_LOCK_TIMEOUT_MS,
       });
-      return tokens.access_token;
-    }, { timeout: REFRESH_LOCK_TIMEOUT_MS });
+    } catch (err) {
+      if (!(err instanceof NeedsReRegistrationError)) throw err;
+      const server = await reRegisterMcpServerClient(err.server);
+      accessToken = await prisma.$transaction((tx) => runRefreshInTransaction(tx, connectionId, server), {
+        timeout: REFRESH_LOCK_TIMEOUT_MS,
+      });
+    }
 
     return { ok: true, accessToken };
   } catch (err) {
@@ -265,6 +314,15 @@ async function refreshAndPersist(connectionId: string): Promise<RefreshResult> {
   }
 }
 
+function decryptAccessToken(accessToken: string | null): RefreshResult {
+  try {
+    if (!accessToken) throw new Error('connection has no access token');
+    return { ok: true, accessToken: decrypt(accessToken) };
+  } catch (err) {
+    return { ok: false, error: err as Error };
+  }
+}
+
 export async function getUsableConnectionsForSession(userId: string): Promise<{ entries: SessionMcpEntry[]; dropped: DroppedServer[] }> {
   const connections = await prisma.mcpServerConnection.findMany({
     where: { userId, status: 'CONNECTED', mcpServer: { enabled: true } },
@@ -276,7 +334,7 @@ export async function getUsableConnectionsForSession(userId: string): Promise<{ 
 
   for (const connection of connections) {
     const result: RefreshResult = isFreshEnough(connection.expiresAt)
-      ? { ok: true, accessToken: decrypt(connection.accessToken!) }
+      ? decryptAccessToken(connection.accessToken)
       : await refreshAndPersist(connection.id);
 
     if (result.ok) {

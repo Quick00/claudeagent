@@ -1,6 +1,7 @@
 import { prisma } from '@/lib/prisma';
 import * as mcpOauth from '@/lib/mcp-oauth';
 import * as mcpServersAdmin from '@/lib/mcp-servers-admin';
+import { createSafeFetch } from '@/lib/mcp-url-safety';
 
 jest.mock('@/lib/prisma', () => ({
   prisma: {
@@ -23,6 +24,7 @@ jest.mock('@/lib/mcp-servers-admin', () => ({
 }));
 jest.mock('@/lib/crypto', () => ({ encrypt: (s: string) => `enc:${s}`, decrypt: (s: string) => s.replace(/^enc:/, '') }));
 jest.mock('@/lib/config', () => ({ config: { mcpTokenRefreshMarginMs: 600000 } }));
+jest.mock('@/lib/mcp-url-safety', () => ({ createSafeFetch: jest.fn() }));
 
 const prismaMockTx = {
   $queryRaw: jest.fn(),
@@ -32,6 +34,8 @@ const prismaMockTx = {
 
 const mockRefresh = mcpOauth.refreshTokens as jest.Mock;
 const mockReRegister = mcpServersAdmin.reRegisterMcpServerClient as jest.Mock;
+const mockCreateSafeFetch = createSafeFetch as jest.Mock;
+const mockSafeFetch = jest.fn();
 
 const SERVER = {
   id: 'srv-1',
@@ -55,7 +59,11 @@ const SERVER = {
 // before and after the row lock is (simulated as) acquired.
 const NEAR_EXPIRY = new Date(Date.now() + 60 * 1000);
 
-beforeEach(() => jest.clearAllMocks());
+beforeEach(() => {
+  jest.clearAllMocks();
+  mockCreateSafeFetch.mockReturnValue(mockSafeFetch);
+  mockSafeFetch.mockResolvedValue({ ok: true });
+});
 
 describe('getUsableConnectionsForSession', () => {
   it('uses a still-valid access token without refreshing', async () => {
@@ -202,6 +210,9 @@ describe('getUsableConnectionsForSession', () => {
     (prisma.mcpServerConnection.findMany as jest.Mock).mockResolvedValue([
       { id: 'conn-1', accessToken: 'enc:at-old', refreshToken: 'enc:rt-1', expiresAt: NEAR_EXPIRY, mcpServer: SERVER },
     ]);
+    // Both the failed first attempt and the retry after re-registration
+    // read the row via a fresh `SELECT ... FOR UPDATE` (two transactions),
+    // so the mock returns the same still-stale row both times.
     prismaMockTx.$queryRaw.mockResolvedValue([
       { id: 'conn-1', accessToken: 'enc:at-old', refreshToken: 'enc:rt-1', expiresAt: NEAR_EXPIRY, mcpServerId: 'srv-1' },
     ]);
@@ -217,6 +228,80 @@ describe('getUsableConnectionsForSession', () => {
     expect(mockReRegister).toHaveBeenCalledWith(SERVER);
     expect(entries).toEqual([{ name: 'sentry', transport: 'HTTP', url: SERVER.serverUrl, accessToken: 'at-after-reregister' }]);
     expect(dropped).toEqual([]);
+    // The lock is released before re-registration and re-acquired for the
+    // retry, so this scenario runs two separate transactions rather than
+    // nesting the re-registration call inside the first one's lock.
+    expect((prisma.$transaction as jest.Mock).mock.calls.length).toBe(2);
+  });
+
+  it('drops the server, without retrying, when re-registration itself fails', async () => {
+    const { InvalidClientError } = mcpOauth;
+    (prisma.mcpServerConnection.findMany as jest.Mock).mockResolvedValue([
+      { id: 'conn-1', accessToken: 'enc:at-old', refreshToken: 'enc:rt-1', expiresAt: NEAR_EXPIRY, mcpServer: SERVER },
+    ]);
+    prismaMockTx.$queryRaw.mockResolvedValue([
+      { id: 'conn-1', accessToken: 'enc:at-old', refreshToken: 'enc:rt-1', expiresAt: NEAR_EXPIRY, mcpServerId: 'srv-1' },
+    ]);
+    prismaMockTx.mcpServer.findUniqueOrThrow.mockResolvedValue(SERVER);
+    mockRefresh.mockRejectedValue(new InvalidClientError('client not found'));
+    mockReRegister.mockRejectedValue(new Error('discovery unreachable'));
+
+    const { getUsableConnectionsForSession } = await import('@/lib/mcp-connections');
+    const { entries, dropped } = await getUsableConnectionsForSession('u1');
+
+    expect(entries).toEqual([]);
+    expect(dropped).toEqual([{ name: 'sentry', reason: 'discovery unreachable' }]);
+    // Re-registration itself threw, so there's no retried refresh and thus
+    // only the first transaction ran.
+    expect((prisma.$transaction as jest.Mock).mock.calls.length).toBe(1);
+  });
+
+  it('lands a decrypt failure on an already-fresh token in `dropped` instead of throwing', async () => {
+    (prisma.mcpServerConnection.findMany as jest.Mock).mockResolvedValue([
+      {
+        id: 'conn-1',
+        accessToken: 'not-encrypted-garbage',
+        refreshToken: 'enc:rt-1',
+        expiresAt: new Date(Date.now() + 20 * 60 * 1000),
+        mcpServer: SERVER,
+      },
+    ]);
+    const cryptoMock = jest.requireMock('@/lib/crypto') as { decrypt: (s: string) => string };
+    const realDecrypt = cryptoMock.decrypt;
+    cryptoMock.decrypt = jest.fn((s: string) => {
+      if (s === 'not-encrypted-garbage') throw new Error('unable to decrypt: bad tag');
+      return realDecrypt(s);
+    });
+
+    try {
+      const { getUsableConnectionsForSession } = await import('@/lib/mcp-connections');
+      const { entries, dropped } = await getUsableConnectionsForSession('u1');
+
+      expect(entries).toEqual([]);
+      expect(dropped).toEqual([{ name: 'sentry', reason: 'unable to decrypt: bad tag' }]);
+      expect(mockRefresh).not.toHaveBeenCalled();
+    } finally {
+      cryptoMock.decrypt = realDecrypt;
+    }
+  });
+
+  it('lands a null access token on an already-fresh connection in `dropped` instead of throwing', async () => {
+    (prisma.mcpServerConnection.findMany as jest.Mock).mockResolvedValue([
+      {
+        id: 'conn-1',
+        accessToken: null,
+        refreshToken: 'enc:rt-1',
+        expiresAt: new Date(Date.now() + 20 * 60 * 1000),
+        mcpServer: SERVER,
+      },
+    ]);
+
+    const { getUsableConnectionsForSession } = await import('@/lib/mcp-connections');
+    const { entries, dropped } = await getUsableConnectionsForSession('u1');
+
+    expect(entries).toEqual([]);
+    expect(dropped).toEqual([{ name: 'sentry', reason: 'connection has no access token' }]);
+    expect(mockRefresh).not.toHaveBeenCalled();
   });
 });
 
@@ -293,6 +378,62 @@ describe('disconnectMcpServer', () => {
     });
     const { disconnectMcpServer } = await import('@/lib/mcp-connections');
     await disconnectMcpServer('u1', 'srv-1');
+    expect(prisma.mcpServerConnection.delete).toHaveBeenCalledWith({ where: { userId_mcpServerId: { userId: 'u1', mcpServerId: 'srv-1' } } });
+    expect(mockSafeFetch).not.toHaveBeenCalled();
+  });
+
+  it('revokes the refresh token (not the access token) via createSafeFetch, authenticated with the confidential client', async () => {
+    (prisma.mcpServerConnection.findUnique as jest.Mock).mockResolvedValue({
+      id: 'conn-1',
+      accessToken: 'enc:at-1',
+      refreshToken: 'enc:rt-1',
+      mcpServer: SERVER,
+    });
+    const { disconnectMcpServer } = await import('@/lib/mcp-connections');
+    await disconnectMcpServer('u1', 'srv-1');
+
+    expect(mockCreateSafeFetch).toHaveBeenCalled();
+    expect(mockSafeFetch).toHaveBeenCalledTimes(1);
+    const [url, init] = mockSafeFetch.mock.calls[0];
+    expect(url).toBe(SERVER.revocationEndpoint);
+    expect(init.method).toBe('POST');
+    expect(init.headers.Authorization).toBe(`Basic ${Buffer.from('client-1:secret-1').toString('base64')}`);
+    const body = init.body as URLSearchParams;
+    expect(body.get('token')).toBe('rt-1');
+    expect(body.get('token_type_hint')).toBe('refresh_token');
+    expect(prisma.mcpServerConnection.delete).toHaveBeenCalled();
+  });
+
+  it('falls back to revoking the access token, with client_id in the body for a public client', async () => {
+    (prisma.mcpServerConnection.findUnique as jest.Mock).mockResolvedValue({
+      id: 'conn-1',
+      accessToken: 'enc:at-1',
+      refreshToken: null,
+      mcpServer: { ...SERVER, clientSecret: null },
+    });
+    const { disconnectMcpServer } = await import('@/lib/mcp-connections');
+    await disconnectMcpServer('u1', 'srv-1');
+
+    const [, init] = mockSafeFetch.mock.calls[0];
+    expect(init.headers.Authorization).toBeUndefined();
+    const body = init.body as URLSearchParams;
+    expect(body.get('token')).toBe('at-1');
+    expect(body.get('token_type_hint')).toBe('access_token');
+    expect(body.get('client_id')).toBe('client-1');
+  });
+
+  it('still deletes the local connection when revocation fails', async () => {
+    (prisma.mcpServerConnection.findUnique as jest.Mock).mockResolvedValue({
+      id: 'conn-1',
+      accessToken: 'enc:at-1',
+      refreshToken: 'enc:rt-1',
+      mcpServer: SERVER,
+    });
+    mockSafeFetch.mockRejectedValue(new Error('revocation endpoint unreachable'));
+
+    const { disconnectMcpServer } = await import('@/lib/mcp-connections');
+    await disconnectMcpServer('u1', 'srv-1');
+
     expect(prisma.mcpServerConnection.delete).toHaveBeenCalledWith({ where: { userId_mcpServerId: { userId: 'u1', mcpServerId: 'srv-1' } } });
   });
 });
