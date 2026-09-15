@@ -24,7 +24,7 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Textarea } from '@/components/ui/textarea';
+import { MarkdownEditor } from '@/components/shared/MarkdownEditor';
 import { useConfirm } from '@/hooks/use-confirm';
 import { useDeferredSkeleton } from '@/hooks/use-deferred-skeleton';
 import { ApiError, apiFetch, jsonBody } from '@/lib/api';
@@ -430,15 +430,16 @@ function EntryForm({ initial, onSubmit, onCancel }: {
       </Field>
       <Field>
         <FieldLabel htmlFor="entry-content">Content</FieldLabel>
-        <Textarea
+        <MarkdownEditor
           id="entry-content"
-          rows={5}
-          // `field-sizing-content` grows to fit, so a long entry needs a ceiling.
-          className="max-h-[40vh]"
-          placeholder="Content (plain language)"
+          aria-label="Content"
+          blocks
           value={values.content}
-          onChange={(e) => setValues({ ...values, content: e.target.value })}
-          required
+          onChange={(content) => setValues({ ...values, content })}
+          placeholder="Content (plain language)"
+          // Entries run long, so the writing area scrolls instead of pushing
+          // the dialog past the viewport.
+          editorClassName="min-h-[8rem] max-h-[40vh] overflow-y-auto"
         />
       </Field>
       <Field>
@@ -460,7 +461,11 @@ function EntryForm({ initial, onSubmit, onCancel }: {
       </Field>
       <DialogFooter>
         <Button type="button" variant="ghost" onClick={onCancel}>Cancel</Button>
-        <Button type="submit" disabled={saving}>{saving ? 'Saving…' : 'Save'}</Button>
+        {/* The content editor is a contenteditable, so `required` can't carry
+            the empty check the way it did for the old textarea. */}
+        <Button type="submit" disabled={saving || !values.subject.trim() || !values.content.trim()}>
+          {saving ? 'Saving…' : 'Save'}
+        </Button>
       </DialogFooter>
     </form>
   );

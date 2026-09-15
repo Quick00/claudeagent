@@ -3,22 +3,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useMutation } from '@tanstack/react-query';
 import { useSession } from 'next-auth/react';
-import { useEditor, EditorContent } from '@tiptap/react';
-import StarterKit from '@tiptap/starter-kit';
-import TiptapLink from '@tiptap/extension-link';
-import Placeholder from '@tiptap/extension-placeholder';
-import { Markdown } from 'tiptap-markdown';
 import { apiFetch, jsonBody } from '@/lib/api';
 import {
   ArrowLeft,
-  Bold,
   Bug,
   CircleCheck,
   Image as ImageIcon,
-  Italic,
   Lightbulb,
-  Link as LinkIcon,
-  List,
   MessageSquarePlus,
   X,
 } from 'lucide-react';
@@ -32,10 +23,8 @@ import {
   DialogTrigger,
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { Toggle } from '@/components/ui/toggle';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
-import { markdownProseClass } from '@/components/shared/MarkdownContent';
+import { MarkdownEditor } from '@/components/shared/MarkdownEditor';
 
 type FeedbackType = 'FEATURE_REQUEST' | 'BUG';
 type Step = 'type' | 'form';
@@ -77,8 +66,6 @@ export default function FeedbackModal({ open: openProp, onOpenChange: onOpenChan
   const [uploading, setUploading] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [linkPopoverOpen, setLinkPopoverOpen] = useState(false);
-  const [linkUrl, setLinkUrl] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const feedbackMutation = useMutation({
@@ -86,27 +73,6 @@ export default function FeedbackModal({ open: openProp, onOpenChange: onOpenChan
       apiFetch('/api/feedback', jsonBody('POST', payload)),
     onSuccess: () => setSubmitted(true),
     onError: (err) => setError(err instanceof Error ? err.message : 'Failed to submit feedback'),
-  });
-
-  const onEditorUpdate = useCallback(({ editor: e }: { editor: ReturnType<typeof useEditor> }) => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    if (e) setDescription((e.storage as any).markdown.getMarkdown());
-  }, []);
-
-  const editor = useEditor({
-    extensions: [
-      StarterKit.configure({ heading: false, codeBlock: false, code: false, blockquote: false, horizontalRule: false }),
-      TiptapLink.configure({ openOnClick: false }),
-      Placeholder.configure({ placeholder: 'Describe your request' }),
-      Markdown,
-    ],
-    editorProps: {
-      attributes: {
-        class: 'outline-none min-h-[5rem] max-h-40 overflow-y-auto px-3 py-2',
-      },
-    },
-    onUpdate: onEditorUpdate,
-    immediatelyRender: false,
   });
 
   const reset = useCallback(() => {
@@ -126,7 +92,6 @@ export default function FeedbackModal({ open: openProp, onOpenChange: onOpenChan
   useEffect(() => {
     if (open) {
       reset();
-      editor?.commands.clearContent();
       feedbackMutation.reset();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -198,21 +163,6 @@ export default function FeedbackModal({ open: openProp, onOpenChange: onOpenChan
       description: description.trim(),
       imageId: image?.id || undefined,
     });
-  };
-
-  const openLink = () => {
-    setLinkUrl(editor?.getAttributes('link').href ?? '');
-    setLinkPopoverOpen(true);
-  };
-
-  const applyLink = () => {
-    const url = linkUrl.trim();
-    if (url) {
-      editor?.chain().focus().extendMarkRange('link').setLink({ href: url }).run();
-    } else {
-      editor?.chain().focus().extendMarkRange('link').unsetLink().run();
-    }
-    setLinkPopoverOpen(false);
   };
 
   return (
@@ -290,108 +240,38 @@ export default function FeedbackModal({ open: openProp, onOpenChange: onOpenChan
                 className="mt-4 mb-3"
               />
 
-              <div className="mb-3 rounded-md border border-input focus-within:border-ring focus-within:ring-3 focus-within:ring-ring/50">
-                <div className="flex items-center gap-0.5 border-b border-border px-2 py-1">
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Toggle
-                        size="sm"
-                        aria-label="Bold"
-                        pressed={editor?.isActive('bold') ?? false}
-                        onPressedChange={() => editor?.chain().focus().toggleBold().run()}
-                      >
-                        <Bold />
-                      </Toggle>
-                    </TooltipTrigger>
-                    <TooltipContent>Bold</TooltipContent>
-                  </Tooltip>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Toggle
-                        size="sm"
-                        aria-label="Italic"
-                        pressed={editor?.isActive('italic') ?? false}
-                        onPressedChange={() => editor?.chain().focus().toggleItalic().run()}
-                      >
-                        <Italic />
-                      </Toggle>
-                    </TooltipTrigger>
-                    <TooltipContent>Italic</TooltipContent>
-                  </Tooltip>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Toggle
-                        size="sm"
-                        aria-label="Bullet list"
-                        pressed={editor?.isActive('bulletList') ?? false}
-                        onPressedChange={() => editor?.chain().focus().toggleBulletList().run()}
-                      >
-                        <List />
-                      </Toggle>
-                    </TooltipTrigger>
-                    <TooltipContent>List</TooltipContent>
-                  </Tooltip>
-                  <Popover open={linkPopoverOpen} onOpenChange={setLinkPopoverOpen}>
+              <MarkdownEditor
+                className="mb-3"
+                value={description}
+                onChange={setDescription}
+                placeholder="Describe your request"
+                toolbarExtra={
+                  <>
                     <Tooltip>
                       <TooltipTrigger asChild>
-                        <PopoverTrigger asChild>
-                          <Toggle
-                            size="sm"
-                            aria-label="Link"
-                            pressed={editor?.isActive('link') ?? false}
-                            onPressedChange={openLink}
-                          >
-                            <LinkIcon />
-                          </Toggle>
-                        </PopoverTrigger>
-                      </TooltipTrigger>
-                      <TooltipContent>Link</TooltipContent>
-                    </Tooltip>
-                    <PopoverContent className="w-64">
-                      <div className="flex items-center gap-2">
-                        <Input
-                          autoFocus
-                          value={linkUrl}
-                          placeholder="https://example.com"
-                          onChange={(e) => setLinkUrl(e.target.value)}
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter') {
-                              e.preventDefault();
-                              applyLink();
-                            }
-                          }}
-                        />
-                        <Button size="sm" onClick={applyLink}>
-                          Apply
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon-sm"
+                          aria-label="Upload image"
+                          disabled={uploading || status !== 'authenticated'}
+                          onClick={() => fileInputRef.current?.click()}
+                        >
+                          <ImageIcon />
                         </Button>
-                      </div>
-                    </PopoverContent>
-                  </Popover>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon-sm"
-                        aria-label="Upload image"
-                        disabled={uploading || status !== 'authenticated'}
-                        onClick={() => fileInputRef.current?.click()}
-                      >
-                        <ImageIcon />
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent>Upload image</TooltipContent>
-                  </Tooltip>
-                  <input
-                    ref={fileInputRef}
-                    type="file"
-                    accept="image/jpeg,image/png,image/gif,image/webp"
-                    onChange={handleUpload}
-                    className="hidden"
-                  />
-                </div>
-                <EditorContent editor={editor} className={markdownProseClass('compact')} />
-              </div>
+                      </TooltipTrigger>
+                      <TooltipContent>Upload image</TooltipContent>
+                    </Tooltip>
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept="image/jpeg,image/png,image/gif,image/webp"
+                      onChange={handleUpload}
+                      className="hidden"
+                    />
+                  </>
+                }
+              />
 
               {image && (
                 <div className="mb-3 flex items-center gap-2 rounded-md border border-border px-3 py-2 text-sm">

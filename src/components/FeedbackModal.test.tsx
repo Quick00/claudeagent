@@ -23,30 +23,44 @@ jest.mock('@tiptap/react', () => {
   }
 
   return {
+    // The real `useEditor` hands back one stable instance for the life of the
+    // component; the mock has to as well, or the markdown the user typed is
+    // forgotten on the next render.
     useEditor: (config: { onUpdate?: (arg: unknown) => void }) => {
-      const editor: Record<string, unknown> = {
-        isActive: () => false,
-        getAttributes: () => ({ href: '' }),
-        chain,
-        commands: { clearContent: jest.fn() },
-        storage: { markdown: { getMarkdown: () => '' } },
-      };
-      editor.__onUpdate = config?.onUpdate;
-      return editor;
+      const ref = ReactActual.useRef<Record<string, unknown> | null>(null);
+      if (!ref.current) {
+        let markdown = '';
+        ref.current = {
+          isActive: () => false,
+          getAttributes: () => ({ href: '' }),
+          chain,
+          commands: {
+            clearContent: jest.fn(),
+            setContent: (content: string) => {
+              markdown = content;
+            },
+          },
+          storage: { markdown: { getMarkdown: () => markdown } },
+          __setMarkdown: (next: string) => {
+            markdown = next;
+          },
+        };
+      }
+      ref.current.__onUpdate = config?.onUpdate;
+      return ref.current;
     },
     EditorContent: ({
       editor,
       className,
     }: {
-      editor: { storage: { markdown: { getMarkdown: () => string } }; __onUpdate?: (arg: unknown) => void };
+      editor: { __setMarkdown: (next: string) => void; __onUpdate?: (arg: unknown) => void };
       className?: string;
     }) =>
       ReactActual.createElement('textarea', {
         'data-testid': 'description-editor',
         className,
         onChange: (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-          const value = e.target.value;
-          editor.storage.markdown.getMarkdown = () => value;
+          editor.__setMarkdown(e.target.value);
           editor.__onUpdate?.({ editor });
         },
       }),
