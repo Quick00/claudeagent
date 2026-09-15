@@ -1,28 +1,15 @@
-import { describe, it, expect, beforeEach, jest } from '@jest/globals';
+import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
 import type { ChildProcess } from 'child_process';
 import { EventEmitter } from 'events';
+import { mkdtempSync, readFileSync, rmSync } from 'fs';
+import { tmpdir } from 'os';
+import path from 'path';
 
-// Mock child_process
 const mockSpawn = jest.fn();
 jest.mock('child_process', () => ({
   spawn: (...args: unknown[]) => mockSpawn(...args),
 }));
 
-jest.mock('fs', () => ({
-  mkdirSync: jest.fn(),
-}));
-
-// Mock fs
-jest.mock('fs', () => ({
-  mkdirSync: jest.fn(),
-}));
-
-// Mock fs
-jest.mock('fs', () => ({
-  mkdirSync: jest.fn(),
-}));
-
-// Mock config
 jest.mock('@/lib/config', () => ({
   config: {
     repoPath: '/mock/eventinsight',
@@ -32,6 +19,10 @@ jest.mock('@/lib/config', () => ({
     systemPrompt: 'Test prompt',
     claudeDisallowedTools: ['Bash', 'Task', 'Write', 'Edit', 'NotebookEdit', 'WebFetch', 'WebSearch'],
   },
+}));
+
+jest.mock('@/lib/mcp-connections', () => ({
+  getUsableConnectionsForSession: jest.fn().mockResolvedValue({ entries: [], dropped: [] }),
 }));
 
 function createMockProcess(): ChildProcess {
@@ -46,19 +37,26 @@ function createMockProcess(): ChildProcess {
 
 describe('SessionManager', () => {
   let SessionManager: typeof import('@/lib/session-manager').SessionManager;
+  let sessionsDir: string;
 
   beforeEach(async () => {
     jest.resetModules();
     mockSpawn.mockReset();
+    sessionsDir = mkdtempSync(path.join(tmpdir(), 'session-manager-test-'));
+    process.env.SESSIONS_DIR = sessionsDir;
     const mod = await import('@/lib/session-manager');
     SessionManager = mod.SessionManager;
   });
 
-  it('spawns a new claude process for a new conversation', () => {
+  afterEach(() => {
+    rmSync(sessionsDir, { recursive: true, force: true });
+  });
+
+  it('spawns a new claude process for a new conversation', async () => {
     mockSpawn.mockReturnValue(createMockProcess());
 
     const manager = new SessionManager();
-    manager.startSession('msg-1', 'Hello', '', 'test-token', 'user-1', ['/mock/repo']);
+    await manager.startSession('msg-1', 'Hello', '', 'test-token', 'user-1', ['/mock/repo']);
 
     expect(mockSpawn).toHaveBeenCalledTimes(1);
     const args = mockSpawn.mock.calls[0];
@@ -70,11 +68,11 @@ describe('SessionManager', () => {
     expect(args[1]).toContain('/mock/repo');
   });
 
-  it('uses --resume for existing sessions', () => {
+  it('uses --resume for existing sessions', async () => {
     mockSpawn.mockReturnValue(createMockProcess());
 
     const manager = new SessionManager();
-    manager.resumeSession('msg-2', 'session-abc', 'Follow up', 'test-token', 'user-1');
+    await manager.resumeSession('msg-2', 'session-abc', 'Follow up', 'test-token', 'user-1');
 
     expect(mockSpawn).toHaveBeenCalledTimes(1);
     const args = mockSpawn.mock.calls[0];
@@ -89,25 +87,27 @@ describe('SessionManager', () => {
 
     const manager = new SessionManager();
 
-    // Start 2 sessions (the max)
-    manager.startSession('msg-1', 'Hello 1', '', 'test-token', 'user-1', ['/mock/repo']);
-    manager.startSession('msg-2', 'Hello 2', '', 'test-token', 'user-1', ['/mock/repo']);
+    // Start 2 sessions (the max) — awaited, since building the MCP config
+    // (even from a mock resolving immediately) still yields a microtask.
+    await manager.startSession('msg-1', 'Hello 1', '', 'test-token', 'user-1', ['/mock/repo']);
+    await manager.startSession('msg-2', 'Hello 2', '', 'test-token', 'user-1', ['/mock/repo']);
 
     expect(mockSpawn).toHaveBeenCalledTimes(2);
     expect(manager.queueSize).toBe(0);
 
-    // Third should be queued
-    manager.startSession('msg-3', 'Hello 3', '', 'test-token', 'user-1', ['/mock/repo']);
+    // Third should be queued rather than spawned immediately — not awaited
+    // yet, since it won't resolve until a slot frees up.
+    const queued = manager.startSession('msg-3', 'Hello 3', '', 'test-token', 'user-1', ['/mock/repo']);
+    await new Promise((resolve) => setTimeout(resolve, 10));
     expect(manager.queueSize).toBe(1);
 
     // Complete first process — queued one should start
     procs[0].emit('close', 0);
-
-    // Allow microtask queue to flush
-    await new Promise(resolve => setTimeout(resolve, 10));
+    await new Promise((resolve) => setTimeout(resolve, 10));
 
     expect(mockSpawn).toHaveBeenCalledTimes(3);
     expect(manager.queueSize).toBe(0);
+    await queued;
   });
 
   it('rejects queued requests when killAll clears the queue, instead of hanging the caller', async () => {
@@ -118,9 +118,10 @@ describe('SessionManager', () => {
     mockSpawn.mockImplementation(() => procs[spawnIndex++]);
 
     const manager = new SessionManager();
-    manager.startSession('msg-1', 'Hello 1', '', 'test-token', 'user-1', ['/mock/repo'], 'k1');
-    manager.startSession('msg-2', 'Hello 2', '', 'test-token', 'user-1', ['/mock/repo'], 'k2');
-    const queued = manager.startSession('msg-3', 'Hello 3', '', 'test-token', 'user-1', ['/mock/repo'], 'k3') as Promise<ChildProcess>;
+    await manager.startSession('msg-1', 'Hello 1', '', 'test-token', 'user-1', ['/mock/repo'], 'k1');
+    await manager.startSession('msg-2', 'Hello 2', '', 'test-token', 'user-1', ['/mock/repo'], 'k2');
+    const queued = manager.startSession('msg-3', 'Hello 3', '', 'test-token', 'user-1', ['/mock/repo'], 'k3');
+    await new Promise((resolve) => setTimeout(resolve, 10));
     expect(manager.queueSize).toBe(1);
 
     manager.killAll();
@@ -136,36 +137,37 @@ describe('SessionManager', () => {
       .mockImplementationOnce(() => { throw new Error('spawn ENOENT'); });
 
     const manager = new SessionManager();
-    manager.startSession('msg-1', 'Hello 1', '', 'test-token', 'user-1', ['/mock/repo'], 'k1');
-    manager.startSession('msg-2', 'Hello 2', '', 'test-token', 'user-1', ['/mock/repo'], 'k2');
-    const queued = manager.startSession('msg-3', 'Hello 3', '', 'test-token', 'user-1', ['/mock/repo'], 'k3') as Promise<ChildProcess>;
+    await manager.startSession('msg-1', 'Hello 1', '', 'test-token', 'user-1', ['/mock/repo'], 'k1');
+    await manager.startSession('msg-2', 'Hello 2', '', 'test-token', 'user-1', ['/mock/repo'], 'k2');
+    const queued = manager.startSession('msg-3', 'Hello 3', '', 'test-token', 'user-1', ['/mock/repo'], 'k3');
+    await new Promise((resolve) => setTimeout(resolve, 10));
 
     first.emit('close', 0);
 
     await expect(queued).rejects.toThrow('spawn ENOENT');
   });
 
-  it('tells the MCP server which verification run it serves, and nothing when there is none', () => {
+  it('tells the MCP server which verification run it serves, and nothing when there is none', async () => {
     mockSpawn.mockReturnValue(createMockProcess());
     const manager = new SessionManager();
 
-    manager.startSession('msg-1', 'Hi', '', 'tok', 'user-1', ['/mock/repo'], 'key-1');
+    await manager.startSession('msg-1', 'Hi', '', 'tok', 'user-1', ['/mock/repo'], 'key-1');
     const chatArgs = mockSpawn.mock.calls[0][1] as string[];
-    const chatMcp = JSON.parse(chatArgs[chatArgs.indexOf('--mcp-config') + 1]);
+    const chatMcp = JSON.parse(readFileSync(chatArgs[chatArgs.indexOf('--mcp-config') + 1], 'utf8'));
     expect(chatMcp.mcpServers.knowledge.env.VERIFICATION_RUN_ID).toBe('');
 
-    manager.startSession('msg-2', 'Hi', '', 'tok', 'user-1', ['/mock/repo'], 'verify-run-9', 'run-9');
+    await manager.startSession('msg-2', 'Hi', '', 'tok', 'user-1', ['/mock/repo'], 'verify-run-9', 'run-9');
     const verifyArgs = mockSpawn.mock.calls[1][1] as string[];
-    const verifyMcp = JSON.parse(verifyArgs[verifyArgs.indexOf('--mcp-config') + 1]);
+    const verifyMcp = JSON.parse(readFileSync(verifyArgs[verifyArgs.indexOf('--mcp-config') + 1], 'utf8'));
     expect(verifyMcp.mcpServers.knowledge.env.VERIFICATION_RUN_ID).toBe('run-9');
   });
 
-  it('cleans up process on close', () => {
+  it('cleans up process on close', async () => {
     const proc = createMockProcess();
     mockSpawn.mockReturnValue(proc);
 
     const manager = new SessionManager();
-    manager.startSession('msg-1', 'Hello', '', 'test-token', 'user-1', ['/mock/repo']);
+    await manager.startSession('msg-1', 'Hello', '', 'test-token', 'user-1', ['/mock/repo']);
 
     expect(manager.activeCount).toBe(1);
 
