@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
 import type { ChildProcess } from 'child_process';
 import { EventEmitter } from 'events';
-import { mkdtempSync, readFileSync, rmSync } from 'fs';
+import { mkdtempSync, readFileSync, rmSync, existsSync, readdirSync } from 'fs';
 import { tmpdir } from 'os';
 import path from 'path';
 
@@ -124,10 +124,35 @@ describe('SessionManager', () => {
     await new Promise((resolve) => setTimeout(resolve, 10));
     expect(manager.queueSize).toBe(1);
 
+    // Collect config file paths before killAll (3 sessions = 3 config files)
+    const configDir = path.join(sessionsDir, 'user-1', 'mcp-config');
+    const configFiles = readdirSync(configDir).map((f) => path.join(configDir, f));
+    expect(configFiles.length).toBe(3);
+
+    // Find which config files were used in the successful spawns
+    const spawnedConfigFiles = new Set<string>();
+    for (let i = 0; i < 2 && i < mockSpawn.mock.calls.length; i++) {
+      const args = mockSpawn.mock.calls[i][1] as string[];
+      const configIdx = args.indexOf('--mcp-config');
+      if (configIdx >= 0) {
+        spawnedConfigFiles.add(args[configIdx + 1]);
+      }
+    }
+    // The queued config file is the one NOT used in a successful spawn call
+    const queuedConfigFile = configFiles.find((f) => !spawnedConfigFiles.has(f));
+    expect(queuedConfigFile).toBeDefined();
+
     manager.killAll();
 
     await expect(queued).rejects.toThrow(/queue was cleared/);
     expect(manager.queueSize).toBe(0);
+
+    // unlink is async, so wait a bit for cleanup to complete
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    // The queued request's config file should be deleted by killAll.
+    // The active processes' config files are cleaned up by their close handlers.
+    expect(existsSync(queuedConfigFile!)).toBe(false);
   });
 
   it('rejects a queued request whose spawn throws when its turn comes', async () => {
@@ -142,9 +167,33 @@ describe('SessionManager', () => {
     const queued = manager.startSession('msg-3', 'Hello 3', '', 'test-token', 'user-1', ['/mock/repo'], 'k3');
     await new Promise((resolve) => setTimeout(resolve, 10));
 
+    // Collect config file paths before the failing spawn (3 sessions = 3 config files)
+    const configDir = path.join(sessionsDir, 'user-1', 'mcp-config');
+    const configFiles = readdirSync(configDir).map((f) => path.join(configDir, f));
+    expect(configFiles.length).toBe(3);
+
+    // Find which config files were used in the successful spawns (first 2 calls)
+    const spawnedConfigFiles = new Set<string>();
+    for (let i = 0; i < 2 && i < mockSpawn.mock.calls.length; i++) {
+      const args = mockSpawn.mock.calls[i][1] as string[];
+      const configIdx = args.indexOf('--mcp-config');
+      if (configIdx >= 0) {
+        spawnedConfigFiles.add(args[configIdx + 1]);
+      }
+    }
+    // The queued config file is the one NOT used in a successful spawn call
+    const queuedConfigFile = configFiles.find((f) => !spawnedConfigFiles.has(f));
+    expect(queuedConfigFile).toBeDefined();
+
     first.emit('close', 0);
 
     await expect(queued).rejects.toThrow('spawn ENOENT');
+
+    // unlink is async, so wait a bit for cleanup to complete
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    // The queued request's config file should be cleaned up by processQueue's catch block
+    expect(existsSync(queuedConfigFile!)).toBe(false);
   });
 
   it('tells the MCP server which verification run it serves, and nothing when there is none', async () => {

@@ -13,6 +13,10 @@ interface DroppedServer {
   reason: string;
 }
 
+function cleanupConfigFile(configPath: string): void {
+  unlink(configPath, () => {});
+}
+
 /**
  * Builds the per-user MCP config and writes it to a private file: the CLI's
  * argv is logged, and an inline `--mcp-config` JSON string would put every
@@ -152,13 +156,19 @@ export class SessionManager {
     const dropped = this.queue;
     this.queue = [];
     for (const q of dropped) {
+      cleanupConfigFile(q.configPath);
       q.reject(new Error('session queue was cleared before this request could start'));
     }
   }
 
   private spawnOrQueue(requestId: string, args: string[], message: string, claudeToken: string, userId: string, configPath: string): Promise<ChildProcess> {
     if (this.activeProcesses.size < config.maxConcurrentSessions) {
-      return Promise.resolve(this.doSpawn(requestId, args, message, claudeToken, userId, configPath));
+      try {
+        return Promise.resolve(this.doSpawn(requestId, args, message, claudeToken, userId, configPath));
+      } catch (err) {
+        cleanupConfigFile(configPath);
+        throw err;
+      }
     }
 
     return new Promise<ChildProcess>((resolve, reject) => {
@@ -190,19 +200,17 @@ export class SessionManager {
     proc.stdin!.write(message);
     proc.stdin!.end();
 
-    const cleanupConfig = () => unlink(configPath, () => {});
-
     proc.on('close', (code, signal) => {
       console.log(`[session-manager] Process closed (pid=${proc.pid}, code=${code}, signal=${signal}, requestId=${requestId})`);
       this.activeProcesses.delete(requestId);
-      cleanupConfig();
+      cleanupConfigFile(configPath);
       this.processQueue();
     });
 
     proc.on('error', (err) => {
       console.error(`[session-manager] Process error (pid=${proc.pid}, requestId=${requestId}):`, err.message);
       this.activeProcesses.delete(requestId);
-      cleanupConfig();
+      cleanupConfigFile(configPath);
       this.processQueue();
     });
 
@@ -219,6 +227,7 @@ export class SessionManager {
       next.resolve(this.doSpawn(requestId, next.args, next.message, next.claudeToken, next.userId, next.configPath));
     } catch (err) {
       // A spawn that throws must reach the caller; otherwise it waits forever.
+      cleanupConfigFile(next.configPath);
       next.reject(err instanceof Error ? err : new Error(String(err)));
     }
   }
