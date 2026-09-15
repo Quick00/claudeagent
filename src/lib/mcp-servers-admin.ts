@@ -54,7 +54,7 @@ export async function registerMcpServer(input: {
   let clientId: string | null = null;
   let clientSecret: string | null = null;
   let clientSecretExpiresAt: Date | null = null;
-  let registrationAccessToken: string | null = null;
+  const registrationAccessToken: string | null = null;
   let registrationMode: 'DYNAMIC' | 'MANUAL' = 'MANUAL';
 
   if (discovered.registrationEndpoint) {
