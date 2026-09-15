@@ -53,6 +53,11 @@ function authContextFromServer(server: McpServer): McpAuthContext {
       token_endpoint: server.tokenEndpoint,
       revocation_endpoint: server.revocationEndpoint ?? undefined,
       response_types_supported: ['code'],
+      // Without this the SDK's `selectClientAuthMethod` sees no supported
+      // methods and defaults a confidential client to `client_secret_basic`,
+      // so a server that wants `client_secret_post` rejects every token
+      // request with `invalid_client`.
+      token_endpoint_auth_methods_supported: server.tokenEndpointAuthMethod ? [server.tokenEndpointAuthMethod] : undefined,
     },
   };
 }
@@ -164,7 +169,10 @@ export async function disconnectMcpServer(userId: string, serverId: string): Pro
       } else {
         body.set('client_id', client_id);
       }
-      await createSafeFetch()(connection.mcpServer.revocationEndpoint, { method: 'POST', headers, body });
+      const res = await createSafeFetch()(connection.mcpServer.revocationEndpoint, { method: 'POST', headers, body });
+      // A rejected revocation answers with a status, not a thrown error, so
+      // without this an upstream token that is still live reads as revoked.
+      if (!res.ok) throw new Error(`revocation endpoint returned ${res.status}`);
     } catch (err) {
       console.error(`[mcp-connections] Revocation failed for ${connection.mcpServer.name}:`, (err as Error).message);
     }
@@ -188,6 +196,18 @@ type RefreshResult = { ok: true; accessToken: string } | { ok: false; error: Err
 class NeedsReRegistrationError extends Error {
   constructor(public readonly server: McpServer) {
     super(`${server.name} needs client re-registration`);
+  }
+}
+
+/**
+ * Thrown when a connection's access token is past its expiry and the server
+ * never issued a refresh token. Classified alongside the OAuth rejections so
+ * the connection is marked `ERROR` and offers "Reconnect" in Settings, rather
+ * than handing back the expired token on every turn forever.
+ */
+class NoRefreshTokenError extends Error {
+  constructor() {
+    super('access token expired and no refresh token is available to renew it');
   }
 }
 
@@ -216,10 +236,11 @@ async function runRefreshInTransaction(
 
   // Re-check under the lock: a concurrent transaction holding this same
   // row may have already refreshed it while this one waited its turn.
-  if (!row.refreshToken || isFreshEnough(row.expiresAt)) {
+  if (isFreshEnough(row.expiresAt)) {
     if (!row.accessToken) throw new Error('no usable token for this connection');
     return decrypt(row.accessToken);
   }
+  if (!row.refreshToken) throw new NoRefreshTokenError();
 
   const server = serverOverride ?? (await tx.mcpServer.findUniqueOrThrow({ where: { id: row.mcpServerId } }));
   const refreshToken = decrypt(row.refreshToken);
@@ -300,7 +321,7 @@ async function refreshAndPersist(connectionId: string): Promise<RefreshResult> {
 
     return { ok: true, accessToken };
   } catch (err) {
-    if (err instanceof InvalidGrantError || err instanceof InvalidClientError) {
+    if (err instanceof InvalidGrantError || err instanceof InvalidClientError || err instanceof NoRefreshTokenError) {
       try {
         await prisma.mcpServerConnection.update({
           where: { id: connectionId },

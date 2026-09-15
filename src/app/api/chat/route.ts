@@ -284,6 +284,9 @@ export async function POST(request: Request) {
               attachProcess(retryProc, retryCount + 1);
             }).catch((err) => {
               console.error('[chat] Failed to acquire retry process:', err.message);
+              // The config was built before acquisition failed, so this
+              // request has an entry waiting to be read exactly once.
+              sessionManager.takeDroppedServers(retryRequestId);
               sink.send(JSON.stringify({
                 type: 'error',
                 content: 'Failed to retry Claude process. Please try again.',
@@ -376,6 +379,9 @@ export async function POST(request: Request) {
       attachProcess(proc, 0);
     }).catch((err) => {
       console.error('[chat] Failed to acquire process:', err.message);
+      // The config was built before acquisition failed, so this request has
+      // an entry waiting to be read exactly once.
+      sessionManager.takeDroppedServers(requestId);
       sink.send(JSON.stringify({
         type: 'error',
         content: 'Failed to start Claude process. Please try again.',

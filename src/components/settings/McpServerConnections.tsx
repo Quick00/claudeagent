@@ -1,5 +1,7 @@
 'use client';
 
+import { useEffect } from 'react';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { Circle, CircleCheck, CircleAlert } from 'lucide-react';
@@ -19,6 +21,26 @@ interface McpServer {
 
 export default function McpServerConnections() {
   const queryClient = useQueryClient();
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+
+  /**
+   * A connect that fails at the authorization server comes back as a redirect
+   * to this page carrying `mcp_error`. The param is dropped again once shown,
+   * so a refresh does not repeat an error the user has already read. It goes
+   * through the toast as text, never as markup — it is a message relayed from
+   * a third-party server.
+   */
+  const connectError = searchParams.get('mcp_error');
+  useEffect(() => {
+    if (!connectError) return;
+    toast.error(connectError);
+    const remaining = new URLSearchParams(searchParams.toString());
+    remaining.delete('mcp_error');
+    const query = remaining.toString();
+    router.replace(query ? `${pathname}?${query}` : pathname);
+  }, [connectError, pathname, router, searchParams]);
 
   const { data: servers = [], isPending, isError } = useQuery({
     queryKey: qk.mcpServers.userList(),

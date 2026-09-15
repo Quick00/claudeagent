@@ -1,5 +1,7 @@
 import { jest } from '@jest/globals';
-import { screen } from '@testing-library/react';
+import { screen, waitFor } from '@testing-library/react';
+import { toast } from 'sonner';
+import { mockRouter, useSearchParams } from '@/test/mocks/next-navigation';
 import { renderWithProviders } from '@/test/render';
 
 type Server = { id: string; name: string; connectionStatus: 'CONNECTED' | 'ERROR' | 'NOT_CONNECTED'; lastError: string | null };
@@ -32,6 +34,11 @@ const { navigateTo } = require('@/lib/navigate') as typeof import('@/lib/navigat
 const McpServerConnections = (require('./McpServerConnections') as typeof import('./McpServerConnections')).default;
 
 describe('McpServerConnections', () => {
+  // `jest.clearAllMocks` in the global setup wipes calls but keeps a
+  // `mockReturnValue`, so an override here would otherwise follow the suite
+  // into every later test in this file.
+  beforeEach(() => useSearchParams.mockReturnValue(new URLSearchParams()));
+
   test('shows each server with its connection status', async () => {
     global.fetch = fetchMock([
       { id: 's1', name: 'sentry', connectionStatus: 'CONNECTED', lastError: null },
@@ -63,5 +70,30 @@ describe('McpServerConnections', () => {
     await user.click(await screen.findByRole('button', { name: 'Connect' }));
 
     expect(navigateTo).toHaveBeenCalledWith('https://auth.example.com/authorize');
+  });
+
+  test('reports a failed connect from the callback redirect and clears the param', async () => {
+    global.fetch = fetchMock([{ id: 's1', name: 'sentry', connectionStatus: 'NOT_CONNECTED', lastError: null }]) as unknown as typeof fetch;
+    useSearchParams.mockReturnValue(new URLSearchParams('tab=connections&mcp_error=authorization+request+expired'));
+    const toastError = jest.spyOn(toast, 'error').mockReturnValue('');
+
+    renderWithProviders(<McpServerConnections />);
+
+    await waitFor(() => expect(toastError).toHaveBeenCalledWith('authorization request expired'));
+    // Only `mcp_error` goes; anything else the page was using stays put.
+    expect(mockRouter.replace).toHaveBeenCalledWith('/?tab=connections');
+    toastError.mockRestore();
+  });
+
+  test('says nothing when the page was not reached from a failed connect', async () => {
+    global.fetch = fetchMock([{ id: 's1', name: 'sentry', connectionStatus: 'CONNECTED', lastError: null }]) as unknown as typeof fetch;
+    const toastError = jest.spyOn(toast, 'error').mockReturnValue('');
+
+    renderWithProviders(<McpServerConnections />);
+    await screen.findByText('sentry');
+
+    expect(toastError).not.toHaveBeenCalled();
+    expect(mockRouter.replace).not.toHaveBeenCalled();
+    toastError.mockRestore();
   });
 });

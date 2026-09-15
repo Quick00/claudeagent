@@ -256,6 +256,45 @@ describe('getUsableConnectionsForSession', () => {
     expect((prisma.$transaction as jest.Mock).mock.calls.length).toBe(1);
   });
 
+  it('flips status to ERROR for an expired connection the server never gave a refresh token for', async () => {
+    const EXPIRED = new Date(Date.now() - 60 * 1000);
+    (prisma.mcpServerConnection.findMany as jest.Mock).mockResolvedValue([
+      { id: 'conn-1', accessToken: 'enc:at-expired', refreshToken: null, expiresAt: EXPIRED, mcpServer: SERVER },
+    ]);
+    prismaMockTx.$queryRaw.mockResolvedValue([
+      { id: 'conn-1', accessToken: 'enc:at-expired', refreshToken: null, expiresAt: EXPIRED, mcpServerId: 'srv-1' },
+    ]);
+
+    const { getUsableConnectionsForSession } = await import('@/lib/mcp-connections');
+    const { entries, dropped } = await getUsableConnectionsForSession('u1');
+
+    // Handing back the expired token instead would keep the connection
+    // reading as "Connected" in Settings while failing every single turn,
+    // with no way for the user to see why or to re-authorize.
+    expect(entries).toEqual([]);
+    expect(dropped).toEqual([
+      { name: 'sentry', reason: 'access token expired and no refresh token is available to renew it' },
+    ]);
+    expect(mockRefresh).not.toHaveBeenCalled();
+    expect(prisma.mcpServerConnection.update).toHaveBeenCalledWith({
+      where: { id: 'conn-1' },
+      data: { status: 'ERROR', lastError: 'access token expired and no refresh token is available to renew it' },
+    });
+  });
+
+  it('keeps using a never-expiring connection that has no refresh token', async () => {
+    (prisma.mcpServerConnection.findMany as jest.Mock).mockResolvedValue([
+      { id: 'conn-1', accessToken: 'enc:at-eternal', refreshToken: null, expiresAt: null, mcpServer: SERVER },
+    ]);
+
+    const { getUsableConnectionsForSession } = await import('@/lib/mcp-connections');
+    const { entries, dropped } = await getUsableConnectionsForSession('u1');
+
+    expect(entries).toEqual([{ name: 'sentry', transport: 'HTTP', url: SERVER.serverUrl, accessToken: 'at-eternal' }]);
+    expect(dropped).toEqual([]);
+    expect(prisma.mcpServerConnection.update).not.toHaveBeenCalled();
+  });
+
   it('lands a decrypt failure on an already-fresh token in `dropped` instead of throwing', async () => {
     (prisma.mcpServerConnection.findMany as jest.Mock).mockResolvedValue([
       {
@@ -420,6 +459,29 @@ describe('disconnectMcpServer', () => {
     expect(body.get('token')).toBe('at-1');
     expect(body.get('token_type_hint')).toBe('access_token');
     expect(body.get('client_id')).toBe('client-1');
+  });
+
+  it('logs a rejected revocation rather than reading a 401 as success', async () => {
+    (prisma.mcpServerConnection.findUnique as jest.Mock).mockResolvedValue({
+      id: 'conn-1',
+      accessToken: 'enc:at-1',
+      refreshToken: 'enc:rt-1',
+      mcpServer: SERVER,
+    });
+    mockSafeFetch.mockResolvedValue({ ok: false, status: 401 });
+    const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+
+    try {
+      const { disconnectMcpServer } = await import('@/lib/mcp-connections');
+      await disconnectMcpServer('u1', 'srv-1');
+
+      expect(errorSpy.mock.calls.map((c) => c.join(' ')).join('\n')).toContain('revocation endpoint returned 401');
+      // The local row goes either way — an upstream token we cannot revoke is
+      // no reason to keep a connection the user asked to remove.
+      expect(prisma.mcpServerConnection.delete).toHaveBeenCalled();
+    } finally {
+      errorSpy.mockRestore();
+    }
   });
 
   it('still deletes the local connection when revocation fails', async () => {

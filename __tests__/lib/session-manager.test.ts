@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
 import type { ChildProcess } from 'child_process';
 import { EventEmitter } from 'events';
-import { mkdtempSync, readFileSync, rmSync, existsSync, readdirSync } from 'fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync, existsSync, readdirSync } from 'fs';
 import { tmpdir } from 'os';
 import path from 'path';
 
@@ -209,6 +209,27 @@ describe('SessionManager', () => {
     const verifyArgs = mockSpawn.mock.calls[1][1] as string[];
     const verifyMcp = JSON.parse(readFileSync(verifyArgs[verifyArgs.indexOf('--mcp-config') + 1], 'utf8'));
     expect(verifyMcp.mcpServers.knowledge.env.VERIFICATION_RUN_ID).toBe('run-9');
+  });
+
+  it('deletes MCP config files left behind by a previous instance when the module loads', async () => {
+    // A config file survives only when its process died without running any
+    // cleanup handler — a SIGKILL or a container restart. In production
+    // SESSIONS_DIR is a persistent volume, so the plaintext bearer tokens in
+    // it would otherwise stay on disk indefinitely.
+    const strayDir = path.join(sessionsDir, 'user-gone', 'mcp-config');
+    mkdirSync(strayDir, { recursive: true });
+    writeFileSync(path.join(strayDir, 'abandoned.json'), '{"mcpServers":{}}');
+    // A file where a user directory belongs: rmSync on a path through it
+    // raises ENOTDIR, which must not stop the sweep reaching anything else.
+    writeFileSync(path.join(sessionsDir, 'not-a-directory'), 'x');
+    const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
+
+    jest.resetModules();
+    await import('@/lib/session-manager');
+
+    expect(existsSync(strayDir)).toBe(false);
+    expect(existsSync(path.join(sessionsDir, 'user-gone'))).toBe(true);
+    warnSpy.mockRestore();
   });
 
   it('cleans up process on close', async () => {

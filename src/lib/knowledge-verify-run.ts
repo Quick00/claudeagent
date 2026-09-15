@@ -294,6 +294,13 @@ export async function startTier2(
     fallbackReason = message;
   } finally {
     provenanceCollector.end(key);
+    // A verification run has no chat stream to post a notice to, but the
+    // session manager hands its dropped servers out exactly once — left
+    // unread they sit in its map for the lifetime of the process.
+    const dropped = sessionManager.takeDroppedServers(`verify-${run.id}`);
+    if (dropped.length > 0) {
+      console.warn(`[knowledge-verify] MCP servers unavailable for this run: ${dropped.map((d) => d.name).join(', ')}`);
+    }
   }
 
   const durationMs = Date.now() - startedAt;

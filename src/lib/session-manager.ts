@@ -1,5 +1,5 @@
 import { spawn, ChildProcess } from 'child_process';
-import { mkdirSync, writeFileSync, unlink } from 'fs';
+import { mkdirSync, writeFileSync, unlink, readdirSync, rmSync } from 'fs';
 import { randomUUID } from 'crypto';
 import path from 'path';
 import { config } from '@/lib/config';
@@ -16,6 +16,32 @@ interface DroppedServer {
 function cleanupConfigFile(configPath: string): void {
   unlink(configPath, () => {});
 }
+
+/**
+ * Deletes every `mcp-config` directory under `SESSIONS_DIR`. The files in
+ * them hold bearer tokens in plaintext and are unlinked when their process
+ * ends — but a SIGKILL or a container restart never runs that handler, and
+ * `SESSIONS_DIR` is a persistent volume in production. This runs once at
+ * import, when no process is tracked yet, so nothing it finds is still in
+ * use; every later config file is written fresh under a random name.
+ */
+function sweepOrphanedConfigDirs(): void {
+  try {
+    for (const userDir of readdirSync(SESSIONS_DIR)) {
+      try {
+        rmSync(path.join(SESSIONS_DIR, userDir, 'mcp-config'), { recursive: true, force: true });
+      } catch (err) {
+        // A stray file where a user directory belongs makes this ENOTDIR,
+        // which `force` does not cover. Skip it; the rest still gets swept.
+        console.warn(`[session-manager] Could not sweep MCP config for ${userDir}:`, (err as Error).message);
+      }
+    }
+  } catch {
+    // No SESSIONS_DIR yet — nothing has ever been written there.
+  }
+}
+
+sweepOrphanedConfigDirs();
 
 /**
  * Builds the per-user MCP config and writes it to a private file: the CLI's
