@@ -372,3 +372,17 @@ export async function getUsableConnectionsForSession(userId: string): Promise<{ 
 
   return { entries, dropped };
 }
+
+/**
+ * Records a status the Claude CLI reported for a live MCP connection (not
+ * one this app dropped itself — see `dropped` above for that path) onto
+ * `lastError`, so it surfaces in Settings without needing prod log access.
+ */
+export async function recordMcpServerStatus(userId: string, serverName: string, status: string): Promise<void> {
+  const server = await prisma.mcpServer.findUnique({ where: { name: serverName }, select: { id: true } });
+  if (!server) return;
+  await prisma.mcpServerConnection.updateMany({
+    where: { userId, mcpServerId: server.id },
+    data: { lastError: `Claude reported this connection as "${status}" during a chat turn` },
+  });
+}

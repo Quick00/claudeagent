@@ -10,6 +10,7 @@ import { provenanceCollector } from '@/lib/provenance-collector';
 import { getKnowledgeIgnoreLists } from '@/lib/settings';
 import path from 'path';
 import { attachClaudeProcess, createSseResponse } from '@/lib/claude-process-stream';
+import { recordMcpServerStatus } from '@/lib/mcp-connections';
 import { NextResponse } from 'next/server';
 
 const MAX_RETRIES = 2;
@@ -227,6 +228,10 @@ export async function POST(request: Request) {
           for (const server of servers) {
             if (server.name === 'knowledge') continue; // never surfaced to the user
             if (server.status === 'failed' || server.status === 'needs-auth') {
+              console.error(`[chat] MCP server "${server.name}" reported status "${server.status}" (userId=${userId})`);
+              recordMcpServerStatus(userId, server.name, server.status).catch((err) => {
+                console.error(`[chat] Failed to record MCP server status for "${server.name}":`, err.message);
+              });
               notifyServerDrop(server.name, `${server.name} is unavailable this turn — reconnect it in Settings.`);
             }
           }

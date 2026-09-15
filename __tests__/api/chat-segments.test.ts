@@ -9,6 +9,7 @@ import { POST } from '@/app/api/chat/route';
 import { prisma } from '@/lib/prisma';
 import { sessionManager } from '@/lib/session-manager';
 import { requireApprovedUser } from '@/lib/api-auth';
+import { recordMcpServerStatus } from '@/lib/mcp-connections';
 import { drainSse } from '../helpers/sse';
 
 jest.mock('@/lib/api-auth', () => ({ requireApprovedUser: jest.fn() }));
@@ -23,6 +24,7 @@ jest.mock('@/lib/prisma', () => ({
 jest.mock('@/lib/session-manager', () => ({
   sessionManager: { startSession: jest.fn(), resumeSession: jest.fn(), takeDroppedServers: jest.fn() },
 }));
+jest.mock('@/lib/mcp-connections', () => ({ recordMcpServerStatus: jest.fn(async () => undefined) }));
 jest.mock('@/lib/crypto', () => ({ decrypt: (s: string) => `dec(${s})` }));
 jest.mock('@/lib/knowledge-context', () => ({
   retrieveKnowledge: jest.fn(async () => []),
@@ -41,10 +43,15 @@ const mockMsgCreate = prisma.message.create as jest.Mock;
 const mockMsgCreateMany = prisma.message.createMany as jest.Mock;
 const mockResume = sessionManager.resumeSession as jest.Mock;
 const mockDropped = sessionManager.takeDroppedServers as jest.Mock;
+const mockRecordStatus = recordMcpServerStatus as jest.Mock;
 
-// The route logs each close by design; keep the suite output clean.
+// The route logs each close, and a failed/needs-auth MCP status, by design; keep the suite output clean.
 const consoleLog = jest.spyOn(console, 'log').mockImplementation(() => {});
-afterAll(() => consoleLog.mockRestore());
+const consoleError = jest.spyOn(console, 'error').mockImplementation(() => {});
+afterAll(() => {
+  consoleLog.mockRestore();
+  consoleError.mockRestore();
+});
 
 function fakeChild() {
   const proc = new EventEmitter() as EventEmitter & {
@@ -238,6 +245,7 @@ describe('POST /api/chat — one assistant row per text segment', () => {
     const events = await runTurn(initLine([{ name: 'sentry', status: 'failed' }]) + textLine('Answer.'));
 
     expect(events).toContainEqual(expect.objectContaining({ type: 'mcp_server_notice', server: 'sentry' }));
+    expect(mockRecordStatus).toHaveBeenCalledWith('u1', 'sentry', 'failed');
   });
 
   it('does not notice the knowledge server or a healthy connection', async () => {

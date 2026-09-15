@@ -6,7 +6,7 @@ import { createSafeFetch } from '@/lib/mcp-url-safety';
 jest.mock('@/lib/prisma', () => ({
   prisma: {
     mcpServer: { findUnique: jest.fn(), findUniqueOrThrow: jest.fn() },
-    mcpServerConnection: { findMany: jest.fn(), findUnique: jest.fn(), upsert: jest.fn(), update: jest.fn(), delete: jest.fn() },
+    mcpServerConnection: { findMany: jest.fn(), findUnique: jest.fn(), upsert: jest.fn(), update: jest.fn(), updateMany: jest.fn(), delete: jest.fn() },
     mcpOAuthState: { create: jest.fn(), findUnique: jest.fn(), delete: jest.fn() },
     $transaction: jest.fn((fn: (tx: unknown) => unknown) => fn(prismaMockTx)),
   },
@@ -497,5 +497,29 @@ describe('disconnectMcpServer', () => {
     await disconnectMcpServer('u1', 'srv-1');
 
     expect(prisma.mcpServerConnection.delete).toHaveBeenCalledWith({ where: { userId_mcpServerId: { userId: 'u1', mcpServerId: 'srv-1' } } });
+  });
+});
+
+describe('recordMcpServerStatus', () => {
+  it('writes the reported status onto the connection lastError', async () => {
+    (prisma.mcpServer.findUnique as jest.Mock).mockResolvedValue({ id: 'srv-1' });
+
+    const { recordMcpServerStatus } = await import('@/lib/mcp-connections');
+    await recordMcpServerStatus('u1', 'sentry', 'needs-auth');
+
+    expect(prisma.mcpServer.findUnique).toHaveBeenCalledWith({ where: { name: 'sentry' }, select: { id: true } });
+    expect(prisma.mcpServerConnection.updateMany).toHaveBeenCalledWith({
+      where: { userId: 'u1', mcpServerId: 'srv-1' },
+      data: { lastError: expect.stringContaining('needs-auth') },
+    });
+  });
+
+  it('does nothing when the server name is unknown', async () => {
+    (prisma.mcpServer.findUnique as jest.Mock).mockResolvedValue(null);
+
+    const { recordMcpServerStatus } = await import('@/lib/mcp-connections');
+    await recordMcpServerStatus('u1', 'ghost', 'failed');
+
+    expect(prisma.mcpServerConnection.updateMany).not.toHaveBeenCalled();
   });
 });
