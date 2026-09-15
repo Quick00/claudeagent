@@ -2,12 +2,12 @@ name: Build and publish image
 
 on:
   push:
-    # Verify runs on every branch; the image build/push is gated to main below.
-    branches: ['**']
+    branches: [main]
+  pull_request:
   workflow_dispatch:
 
 jobs:
-  # Gate: lint, tests, and a compile check — on every branch.
+  # Gate: lint, tests, and a compile check — on pull requests and pushes to main.
   verify:
     runs-on: ubuntu-latest
     steps:
