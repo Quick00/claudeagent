@@ -45,6 +45,19 @@ describe('mcp-url-safety', () => {
       mockLookup.mockResolvedValue([{ address: '93.184.216.34', family: 4 }]);
       await expect(assertSafeMcpUrl('https://mcp.example.com/mcp')).resolves.toBeUndefined();
     });
+
+    it('rejects an IPv4-mapped IPv6 address embedding a private address', async () => {
+      await expect(assertSafeMcpUrl('https://[::ffff:10.0.0.1]/mcp')).rejects.toThrow('private address');
+      await expect(assertSafeMcpUrl('https://[::ffff:192.168.1.1]/mcp')).rejects.toThrow('private address');
+    });
+
+    it('rejects the unspecified IPv6 address ::', async () => {
+      await expect(assertSafeMcpUrl('https://[::]/mcp')).rejects.toThrow('private address');
+    });
+
+    it('allows a literal public IPv6 address', async () => {
+      await expect(assertSafeMcpUrl('https://[2606:4700:4700::1111]/mcp')).resolves.toBeUndefined();
+    });
   });
 
   describe('ALLOW_LOCAL_MCP_SERVERS', () => {

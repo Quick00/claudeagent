@@ -1,5 +1,6 @@
 import { lookup } from 'dns/promises';
 import { isIP } from 'net';
+import * as ipaddr from 'ipaddr.js';
 
 function isPrivateIPv4(address: string): boolean {
   const parts = address.split('.').map(Number);
@@ -13,16 +14,23 @@ function isPrivateIPv4(address: string): boolean {
 }
 
 function isPrivateIPv6(address: string): boolean {
-  const lower = address.toLowerCase();
-  return (
-    lower === '::1' ||
-    lower.startsWith('fc') ||
-    lower.startsWith('fd') ||
-    lower.startsWith('fe8') ||
-    lower.startsWith('fe9') ||
-    lower.startsWith('fea') ||
-    lower.startsWith('feb')
-  );
+  try {
+    const parsed = ipaddr.parse(address);
+    if (parsed.kind() !== 'ipv6') return false;
+    const ipv6 = parsed as ipaddr.IPv6;
+    if (ipv6.isIPv4MappedAddress()) {
+      return isPrivateIPv4(ipv6.toIPv4Address().toString());
+    }
+    // Default-deny: only a normal globally-routable ('unicast') IPv6 address
+    // is treated as public. Every other range name ipaddr.js reports —
+    // loopback, linkLocal, uniqueLocal, unspecified, multicast, 6to4,
+    // teredo, reserved, and any future range this covers — counts as
+    // private, since an SSRF guard should fail closed on anything it
+    // doesn't specifically recognize as safe.
+    return parsed.range() !== 'unicast';
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -59,7 +67,12 @@ export async function assertSafeMcpUrl(input: string | URL): Promise<void> {
     throw new Error(`${url} must use https`);
   }
 
-  const hostname = url.hostname.toLowerCase();
+  let hostname = url.hostname.toLowerCase();
+  // Strip brackets from IPv6 literal addresses (Node's URL parser keeps them)
+  if (hostname.startsWith('[') && hostname.endsWith(']')) {
+    hostname = hostname.slice(1, -1);
+  }
+
   if (hostname === 'localhost' || hostname.endsWith('.local')) {
     throw new Error(`${url} resolves to a local address, which is not allowed`);
   }
