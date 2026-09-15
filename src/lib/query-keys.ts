@@ -42,6 +42,11 @@ export const qk = {
     list: () => [...qk.repos.all, 'list'] as const,
     gitlabSearch: (q: string) => [...qk.repos.all, 'gitlab-search', q] as const,
   },
+  mcpServers: {
+    all: ['mcp-servers'] as const,
+    adminList: () => [...qk.mcpServers.all, 'admin-list'] as const,
+    userList: () => [...qk.mcpServers.all, 'user-list'] as const,
+  },
   knowledge: {
     all: ['knowledge'] as const,
     attention: () => [...qk.knowledge.all, 'attention'] as const,
