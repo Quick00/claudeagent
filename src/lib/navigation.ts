@@ -16,6 +16,7 @@ export const ROUTES = {
   adminFlags: '/admin/flags',
   adminFeedback: '/admin/feedback',
   adminRepos: '/admin/repos',
+  adminMcpServers: '/admin/mcp-servers',
   adminKnowledge: '/admin/knowledge',
   adminSettings: '/admin/settings',
   settings: '/settings',
@@ -37,6 +38,7 @@ export type ChildIconKey =
   | 'flags'
   | 'feedback'
   | 'repos'
+  | 'mcpServers'
   | 'knowledge'
   | 'settings';
 
@@ -93,6 +95,7 @@ export const SECTIONS: Section[] = [
         badge: 'pendingFeedback',
       },
       { label: 'Repositories', href: ROUTES.adminRepos, icon: 'repos' },
+      { label: 'MCP Servers', href: ROUTES.adminMcpServers, icon: 'mcpServers' },
       { label: 'Knowledge', href: ROUTES.adminKnowledge, icon: 'knowledge' },
       { label: 'Settings', href: ROUTES.adminSettings, icon: 'settings' },
     ],

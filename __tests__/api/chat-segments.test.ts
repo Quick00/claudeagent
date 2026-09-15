@@ -9,6 +9,7 @@ import { POST } from '@/app/api/chat/route';
 import { prisma } from '@/lib/prisma';
 import { sessionManager } from '@/lib/session-manager';
 import { requireApprovedUser } from '@/lib/api-auth';
+import { recordMcpServerStatus } from '@/lib/mcp-connections';
 import { drainSse } from '../helpers/sse';
 
 jest.mock('@/lib/api-auth', () => ({ requireApprovedUser: jest.fn() }));
@@ -21,8 +22,9 @@ jest.mock('@/lib/prisma', () => ({
   },
 }));
 jest.mock('@/lib/session-manager', () => ({
-  sessionManager: { startSession: jest.fn(), resumeSession: jest.fn() },
+  sessionManager: { startSession: jest.fn(), resumeSession: jest.fn(), takeDroppedServers: jest.fn() },
 }));
+jest.mock('@/lib/mcp-connections', () => ({ recordMcpServerStatus: jest.fn(async () => undefined) }));
 jest.mock('@/lib/crypto', () => ({ decrypt: (s: string) => `dec(${s})` }));
 jest.mock('@/lib/knowledge-context', () => ({
   retrieveKnowledge: jest.fn(async () => []),
@@ -40,10 +42,16 @@ const mockConvFind = prisma.conversation.findFirst as jest.Mock;
 const mockMsgCreate = prisma.message.create as jest.Mock;
 const mockMsgCreateMany = prisma.message.createMany as jest.Mock;
 const mockResume = sessionManager.resumeSession as jest.Mock;
+const mockDropped = sessionManager.takeDroppedServers as jest.Mock;
+const mockRecordStatus = recordMcpServerStatus as jest.Mock;
 
-// The route logs each close by design; keep the suite output clean.
+// The route logs each close, and a failed/needs-auth MCP status, by design; keep the suite output clean.
 const consoleLog = jest.spyOn(console, 'log').mockImplementation(() => {});
-afterAll(() => consoleLog.mockRestore());
+const consoleError = jest.spyOn(console, 'error').mockImplementation(() => {});
+afterAll(() => {
+  consoleLog.mockRestore();
+  consoleError.mockRestore();
+});
 
 function fakeChild() {
   const proc = new EventEmitter() as EventEmitter & {
@@ -85,6 +93,10 @@ const toolLines = (name: string) =>
   JSON.stringify({ type: 'assistant', message: { content: [{ type: 'tool_use', name }] } }) +
   '\n';
 
+/** The CLI's init event, listing each configured MCP server's connection state. */
+const initLine = (servers: Array<{ name: string; status: string }>) =>
+  JSON.stringify({ type: 'system', subtype: 'init', mcp_servers: servers }) + '\n';
+
 const USER_MESSAGE_AT = new Date('2026-01-01T10:00:00.000Z');
 
 /**
@@ -93,7 +105,7 @@ const USER_MESSAGE_AT = new Date('2026-01-01T10:00:00.000Z');
  */
 async function runTurn(lines: string) {
   const proc = fakeChild();
-  mockResume.mockReturnValue(proc);
+  mockResume.mockResolvedValue(proc);
 
   const res = await POST(
     new Request('http://x', {
@@ -132,6 +144,7 @@ describe('POST /api/chat — one assistant row per text segment', () => {
     mockConvFind.mockResolvedValue({ id: 'conv-1', claudeSessionId: 'sess-1' });
     mockMsgCreate.mockResolvedValue({ id: 'um1', createdAt: USER_MESSAGE_AT });
     mockMsgCreateMany.mockResolvedValue({ count: 1 });
+    mockDropped.mockReturnValue([]);
   });
 
   it('writes one row when no tool interrupts the answer', async () => {
@@ -212,5 +225,37 @@ describe('POST /api/chat — one assistant row per text segment', () => {
 
     expect(mockMsgCreateMany).not.toHaveBeenCalled();
     expect(events.some((e) => e.type === 'done')).toBe(true);
+  });
+
+  it('emits an mcp_server_notice frame for a server dropped before the session started', async () => {
+    mockDropped.mockReturnValueOnce([{ name: 'sentry', reason: 'refresh token revoked' }]);
+
+    const events = await runTurn(textLine('Answer.'));
+
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        type: 'mcp_server_notice',
+        server: 'sentry',
+        message: expect.stringContaining('refresh token revoked'),
+      }),
+    );
+  });
+
+  it('emits an mcp_server_notice frame when a server fails mid-session per the init event', async () => {
+    const events = await runTurn(initLine([{ name: 'sentry', status: 'failed' }]) + textLine('Answer.'));
+
+    expect(events).toContainEqual(expect.objectContaining({ type: 'mcp_server_notice', server: 'sentry' }));
+    expect(mockRecordStatus).toHaveBeenCalledWith('u1', 'sentry', 'failed');
+  });
+
+  it('does not notice the knowledge server or a healthy connection', async () => {
+    const events = await runTurn(
+      initLine([
+        { name: 'knowledge', status: 'failed' },
+        { name: 'sentry', status: 'connected' },
+      ]) + textLine('Answer.'),
+    );
+
+    expect(events.filter((e) => e.type === 'mcp_server_notice')).toHaveLength(0);
   });
 });

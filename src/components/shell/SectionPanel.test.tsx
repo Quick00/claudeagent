@@ -58,7 +58,7 @@ describe('SectionPanel', () => {
     renderPanel();
 
     const links = screen.getAllByRole('link');
-    expect(links).toHaveLength(7);
+    expect(links).toHaveLength(8);
     for (const link of links) {
       expect(link.querySelector('svg')).toBeInTheDocument();
     }

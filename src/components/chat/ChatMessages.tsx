@@ -14,6 +14,7 @@ type ChatMessagesProps = {
   messages: Message[];
   streamingSegments: string[];
   toolStatus: string | null;
+  mcpNotice: string | null;
   isLoading: boolean;
   onSendSuggestion: (message: string) => void;
   flags: Flag[];
@@ -53,6 +54,7 @@ export function ChatMessages({
   messages,
   streamingSegments,
   toolStatus,
+  mcpNotice,
   isLoading,
   onSendSuggestion,
   flags,
@@ -65,7 +67,7 @@ export function ChatMessages({
   // live answer grows — it is the reference that changes, not the contents.
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages, streamingSegments, toolStatus, isLoading]);
+  }, [messages, streamingSegments, toolStatus, mcpNotice, isLoading]);
 
   // Recent conversation titles make better starter chips than the canned list.
   const recentQuestions = useMemo(
@@ -79,7 +81,13 @@ export function ChatMessages({
 
   const timeline = useMemo(() => buildTimeline(messages, flags), [messages, flags]);
 
-  if (messages.length === 0 && streamingSegments.length === 0 && !toolStatus && !isLoading) {
+  if (
+    messages.length === 0 &&
+    streamingSegments.length === 0 &&
+    !toolStatus &&
+    !mcpNotice &&
+    !isLoading
+  ) {
     const rest = [...new Set(recentQuestions.length > 0 ? recentQuestions : DEFAULT_SUGGESTIONS)]
       .filter((q) => !PINNED_SUGGESTIONS.includes(q))
       .slice(0, Math.max(0, 4 - PINNED_SUGGESTIONS.length));
@@ -170,6 +178,12 @@ export function ChatMessages({
             <MessageBubble role="assistant" content={content} />
           </div>
         ))}
+
+        {mcpNotice && (
+          <div className="px-4 py-2 text-xs text-muted-foreground" role="status">
+            {mcpNotice}
+          </div>
+        )}
 
         {(showThinking || toolStatus) && (
           <div className="flex items-center gap-3 px-4 py-3">

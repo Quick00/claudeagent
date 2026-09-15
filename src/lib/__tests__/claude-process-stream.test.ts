@@ -53,3 +53,41 @@ describe('attachClaudeProcess tool inputs', () => {
     expect(inputs).toEqual([]);
   });
 });
+
+describe('attachClaudeProcess MCP server status', () => {
+  it('calls onMcpServerStatus when the init system event lists MCP server states', () => {
+    const onMcpServerStatus = jest.fn();
+    const proc = fakeProcess();
+    attachClaudeProcess(proc, { onMcpServerStatus });
+
+    proc.stdout.emit(
+      'data',
+      Buffer.from(
+        JSON.stringify({
+          type: 'system',
+          subtype: 'init',
+          session_id: 'sess-1',
+          mcp_servers: [
+            { name: 'knowledge', status: 'connected' },
+            { name: 'sentry', status: 'failed' },
+          ],
+        }) + '\n',
+      ),
+    );
+
+    expect(onMcpServerStatus).toHaveBeenCalledWith([
+      { name: 'knowledge', status: 'connected' },
+      { name: 'sentry', status: 'failed' },
+    ]);
+  });
+
+  it('does not call onMcpServerStatus for a system event with no mcp_servers field', () => {
+    const onMcpServerStatus = jest.fn();
+    const proc = fakeProcess();
+    attachClaudeProcess(proc, { onMcpServerStatus });
+
+    proc.stdout.emit('data', Buffer.from(JSON.stringify({ type: 'system', session_id: 'sess-1' }) + '\n'));
+
+    expect(onMcpServerStatus).not.toHaveBeenCalled();
+  });
+});
