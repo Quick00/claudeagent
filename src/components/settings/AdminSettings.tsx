@@ -104,7 +104,7 @@ export default function AdminSettings() {
   if (!data) {
     if (settingsQuery.isError) {
       return (
-        <PageContainer width="form">
+        <PageContainer>
           <PageHeader title="Admin Settings" description="Account approval and knowledge provenance." />
           <EmptyState title="Couldn't load settings" description="Try refreshing the page." />
         </PageContainer>
@@ -112,7 +112,7 @@ export default function AdminSettings() {
     }
     if (!showSkeleton) return null;
     return (
-      <PageContainer width="form">
+      <PageContainer>
         <PageHeader title="Admin Settings" description="Account approval and knowledge provenance." />
         <Skeleton className="h-24 w-full" />
         <Skeleton className="h-48 w-full" />
@@ -121,7 +121,7 @@ export default function AdminSettings() {
   }
 
   return (
-    <PageContainer width="form">
+    <PageContainer>
       <RiseIn delay={0}>
         <PageHeader title="Admin Settings" description="Account approval and knowledge provenance." />
       </RiseIn>

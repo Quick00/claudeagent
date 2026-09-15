@@ -433,6 +433,8 @@ function EntryForm({ initial, onSubmit, onCancel }: {
         <Textarea
           id="entry-content"
           rows={5}
+          // `field-sizing-content` grows to fit, so a long entry needs a ceiling.
+          className="max-h-[40vh]"
           placeholder="Content (plain language)"
           value={values.content}
           onChange={(e) => setValues({ ...values, content: e.target.value })}
