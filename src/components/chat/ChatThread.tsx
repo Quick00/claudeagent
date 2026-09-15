@@ -24,6 +24,7 @@ export function ChatThread({ initialConversationId }: { initialConversationId: s
     messages,
     streamingSegments,
     toolStatus,
+    mcpNotice,
     isLoading,
     initialLoading,
     claudeLinked,
@@ -97,6 +98,7 @@ export function ChatThread({ initialConversationId }: { initialConversationId: s
         messages={messages}
         streamingSegments={streamingSegments}
         toolStatus={toolStatus}
+        mcpNotice={mcpNotice}
         isLoading={isLoading}
         onSendSuggestion={send}
         flags={flags}
