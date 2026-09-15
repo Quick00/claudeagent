@@ -12,6 +12,7 @@ export const qk = {
     all: ['conversations'] as const,
     list: () => [...qk.conversations.all, 'list'] as const,
     detail: (id: string) => [...qk.conversations.all, 'detail', id] as const,
+    adminList: () => [...qk.conversations.all, 'admin-list'] as const,
   },
   claude: {
     all: ['claude'] as const,

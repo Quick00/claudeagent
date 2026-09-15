@@ -20,6 +20,7 @@ describe('ROUTES', () => {
     expect(ROUTES.knowledgeMap).toBe('/knowledge/map');
     expect(ROUTES.knowledgeDashboard).toBe('/knowledge/dashboard');
     expect(ROUTES.adminUsers).toBe('/admin/users');
+    expect(ROUTES.adminConversations).toBe('/admin/conversations');
     expect(ROUTES.settings).toBe('/settings');
   });
 });
@@ -32,6 +33,7 @@ describe('sectionIdForPathname', () => {
     ['/knowledge/dashboard', 'knowledge'],
     ['/admin/users', 'admin'],
     ['/admin/flags', 'admin'],
+    ['/admin/conversations', 'admin'],
     ['/settings', 'settings'],
   ])('maps %s to the %s section', (pathname, expected) => {
     expect(sectionIdForPathname(pathname)).toBe(expected);
@@ -88,6 +90,15 @@ describe('SECTIONS', () => {
     const admin = SECTIONS.find((s) => s.id === 'admin');
     const badges = admin?.children?.map((c) => c.badge).filter(Boolean);
     expect(badges).toEqual(expect.arrayContaining(['pendingFlags', 'pendingFeedback']));
+  });
+
+  test('admin lists conversations as a child page', () => {
+    const admin = SECTIONS.find((s) => s.id === 'admin');
+    expect(admin?.children).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ label: 'Conversations', href: '/admin/conversations' }),
+      ]),
+    );
   });
 
   test('settings has no child navigation', () => {

@@ -20,6 +20,7 @@ All components are React client components (`'use client'`).
 - `AdminUsersPanel.tsx` — Admin panel for listing users, managing roles, and approving or rejecting accounts. Pending accounts sort first.
 - `AdminFlagsPanel.tsx` — Admin panel for reviewing and responding to user flags.
 - `AdminFeedbackPanel.tsx` — Admin panel for reviewing feedback posts and updating status (TODO → IN_PROGRESS → DONE).
+- `AdminConversationsPanel.tsx` — Admin page listing every conversation across all users (title, owner, message count, last activity), with a search box over titles and people and a dropdown filter by owner. Both filters run over the fetched list, like the flags and feedback panels; rows link to `/chat/[id]`.
 - `AdminUserConversationsPanel.tsx` — Admin panel showing a user's conversations with ability to view and send messages.
 - `DialogOverlay.tsx` — Reusable modal/dialog overlay wrapper.
 - `ThemeProvider.tsx` — Dark/light mode provider.

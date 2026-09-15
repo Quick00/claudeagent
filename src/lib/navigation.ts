@@ -12,6 +12,7 @@ export const ROUTES = {
   knowledgeMap: '/knowledge/map',
   knowledgeDashboard: '/knowledge/dashboard',
   adminUsers: '/admin/users',
+  adminConversations: '/admin/conversations',
   adminFlags: '/admin/flags',
   adminFeedback: '/admin/feedback',
   adminRepos: '/admin/repos',
@@ -32,6 +33,7 @@ export type ChildIconKey =
   | 'map'
   | 'dashboard'
   | 'users'
+  | 'conversations'
   | 'flags'
   | 'feedback'
   | 'repos'
@@ -82,6 +84,7 @@ export const SECTIONS: Section[] = [
     placement: 'top',
     children: [
       { label: 'Users', href: ROUTES.adminUsers, icon: 'users' },
+      { label: 'Conversations', href: ROUTES.adminConversations, icon: 'conversations' },
       { label: 'Flags', href: ROUTES.adminFlags, icon: 'flags', badge: 'pendingFlags' },
       {
         label: 'Feedback',

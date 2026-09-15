@@ -5,6 +5,7 @@ Next.js 16 App Router directory.
 ## Structure
 
 - `api/` — Server-side API route handlers (REST endpoints)
+- `admin/conversations/` — Every conversation across all users, with search and an owner filter. Rows link into `/chat/[id]`, which is already where an admin reads and replies — this page is a way in, not a second viewer.
 - `admin/repos/` — Admin repository management page
 - `admin/knowledge/` — Admin attention page: stale, unverified, pinned, reviews, syncs; edit / pin / unpin / retire / verify. Pinned entries have their own tab because they are always fresh and so appear in no other one; without it, pinning would hide an entry from the panel for good.
 - `conversation/[id]/` — Individual conversation view
@@ -17,7 +18,7 @@ Next.js 16 App Router directory.
 - `layout.tsx` — Root layout with Providers wrapper
 - `page.tsx` — Home page (chat interface)
 
-Admin panels for users, flags, feedback, and settings are sidebar modals in `src/components/`, not separate pages.
+Every admin area is a page under `(shell)/admin/`, each a one-line wrapper around a panel component in `src/components/admin/`.
 
 ## API Route Patterns
 
