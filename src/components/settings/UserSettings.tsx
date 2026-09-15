@@ -15,6 +15,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import LinkClaudeModal from '@/components/LinkClaudeModal';
+import McpServerConnections from '@/components/settings/McpServerConnections';
 
 type ClaudeStatus = { linked: boolean; email: string | null };
 
@@ -129,6 +130,8 @@ export default function UserSettings() {
           )}
         </CardContent>
       </Card>
+
+      <McpServerConnections />
 
       <Card>
         <CardHeader>
