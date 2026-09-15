@@ -53,6 +53,22 @@ describe('SectionPanel', () => {
     expect(screen.getByRole('link', { name: 'Map' })).toHaveAttribute('data-active', 'false');
   });
 
+  test('gives every sub-nav link an icon without changing its name', () => {
+    (usePathname as jest.Mock).mockReturnValue('/admin/users');
+    renderPanel();
+
+    const links = screen.getAllByRole('link');
+    expect(links).toHaveLength(6);
+    for (const link of links) {
+      expect(link.querySelector('svg')).toBeInTheDocument();
+    }
+    // The glyph is decorative: the label alone still names the link.
+    expect(screen.getByRole('link', { name: 'Knowledge' })).toHaveAttribute(
+      'href',
+      '/admin/knowledge',
+    );
+  });
+
   test('renders nothing for a section with no panel', () => {
     (usePathname as jest.Mock).mockReturnValue('/settings');
     renderPanel();

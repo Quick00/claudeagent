@@ -1,16 +1,18 @@
 'use client';
 
 import type { ComponentType } from 'react';
-import { MessageSquare, Network, Settings, ShieldCheck, type LucideIcon } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 import { SECTIONS, sectionIdForPathname, type Section, type SectionId } from '@/lib/navigation';
+import { SECTION_ICONS } from './icons';
 import { AdminPanel } from './panels/AdminPanel';
 import { ChatPanel } from './panels/ChatPanel';
 import { KnowledgePanel } from './panels/KnowledgePanel';
 
 /**
  * The client half of the section registry. `@/lib/navigation` stays pure so
- * server layouts and node tests can import it; the icons and panel bodies that
- * can only exist in the browser are keyed by `SectionId` here.
+ * server layouts and node tests can import it; the panel bodies that can only
+ * exist in the browser are keyed by `SectionId` here, paired with the glyphs
+ * from `./icons`.
  */
 export type PanelProps = {
   section: Section;
@@ -25,10 +27,10 @@ export type SectionUi = {
 };
 
 export const SECTION_UI: Record<SectionId, SectionUi> = {
-  chat: { icon: MessageSquare, Panel: ChatPanel },
-  knowledge: { icon: Network, Panel: KnowledgePanel },
-  admin: { icon: ShieldCheck, Panel: AdminPanel },
-  settings: { icon: Settings },
+  chat: { icon: SECTION_ICONS.chat, Panel: ChatPanel },
+  knowledge: { icon: SECTION_ICONS.knowledge, Panel: KnowledgePanel },
+  admin: { icon: SECTION_ICONS.admin, Panel: AdminPanel },
+  settings: { icon: SECTION_ICONS.settings },
 };
 
 /**

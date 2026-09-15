@@ -27,9 +27,21 @@ export type SectionId = 'chat' | 'knowledge' | 'admin' | 'settings';
 /** Counters `NotificationsProvider` exposes and section children can badge. */
 export type BadgeKey = 'pendingFlags' | 'pendingFeedback';
 
+/** Which glyph a child renders; resolved to a component in `shell/icons.ts`. */
+export type ChildIconKey =
+  | 'map'
+  | 'dashboard'
+  | 'users'
+  | 'flags'
+  | 'feedback'
+  | 'repos'
+  | 'knowledge'
+  | 'settings';
+
 export type SectionChild = {
   label: string;
   href: string;
+  icon: ChildIconKey;
   badge?: BadgeKey;
 };
 
@@ -58,8 +70,8 @@ export const SECTIONS: Section[] = [
     adminOnly: false,
     placement: 'top',
     children: [
-      { label: 'Map', href: ROUTES.knowledgeMap },
-      { label: 'Dashboard', href: ROUTES.knowledgeDashboard },
+      { label: 'Map', href: ROUTES.knowledgeMap, icon: 'map' },
+      { label: 'Dashboard', href: ROUTES.knowledgeDashboard, icon: 'dashboard' },
     ],
   },
   {
@@ -69,12 +81,17 @@ export const SECTIONS: Section[] = [
     adminOnly: true,
     placement: 'top',
     children: [
-      { label: 'Users', href: ROUTES.adminUsers },
-      { label: 'Flags', href: ROUTES.adminFlags, badge: 'pendingFlags' },
-      { label: 'Feedback', href: ROUTES.adminFeedback, badge: 'pendingFeedback' },
-      { label: 'Repositories', href: ROUTES.adminRepos },
-      { label: 'Knowledge', href: ROUTES.adminKnowledge },
-      { label: 'Settings', href: ROUTES.adminSettings },
+      { label: 'Users', href: ROUTES.adminUsers, icon: 'users' },
+      { label: 'Flags', href: ROUTES.adminFlags, icon: 'flags', badge: 'pendingFlags' },
+      {
+        label: 'Feedback',
+        href: ROUTES.adminFeedback,
+        icon: 'feedback',
+        badge: 'pendingFeedback',
+      },
+      { label: 'Repositories', href: ROUTES.adminRepos, icon: 'repos' },
+      { label: 'Knowledge', href: ROUTES.adminKnowledge, icon: 'knowledge' },
+      { label: 'Settings', href: ROUTES.adminSettings, icon: 'settings' },
     ],
   },
   {
