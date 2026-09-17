@@ -320,6 +320,22 @@ async function runRefreshInTransaction(
  * throw — a write made inside a callback that then throws would be rolled
  * back along with everything else in it.
  */
+/**
+ * Flips a connection to ERROR so Settings shows "Reconnect" instead of
+ * "Connected". Best-effort: the caller already has the real error to report
+ * via `dropped`.
+ */
+async function markConnectionError(connectionId: string, message: string): Promise<void> {
+  try {
+    await prisma.mcpServerConnection.update({
+      where: { id: connectionId },
+      data: { status: 'ERROR', lastError: message },
+    });
+  } catch {
+    // Nothing further to do: the drop is reported either way.
+  }
+}
+
 async function refreshAndPersist(connectionId: string): Promise<RefreshResult> {
   try {
     let accessToken: string;
@@ -338,24 +354,25 @@ async function refreshAndPersist(connectionId: string): Promise<RefreshResult> {
     return { ok: true, accessToken };
   } catch (err) {
     if (err instanceof InvalidGrantError || err instanceof InvalidClientError || err instanceof NoRefreshTokenError) {
-      try {
-        await prisma.mcpServerConnection.update({
-          where: { id: connectionId },
-          data: { status: 'ERROR', lastError: (err as Error).message },
-        });
-      } catch {
-        // Best-effort: the caller already has the real error to report via `dropped`.
-      }
+      await markConnectionError(connectionId, (err as Error).message);
     }
     return { ok: false, error: err as Error };
   }
 }
 
-function decryptAccessToken(accessToken: string | null): RefreshResult {
+/**
+ * A stored token this app cannot read back — a rotated `TOKEN_ENCRYPTION_KEY`,
+ * a truncated value — is as dead as one the server rejected, and no refresh
+ * runs on this path to notice it. Marking ERROR here is what puts "Reconnect"
+ * in front of the user; otherwise Settings keeps saying "Connected" while
+ * every turn silently drops the server.
+ */
+async function decryptAccessToken(connectionId: string, accessToken: string | null): Promise<RefreshResult> {
   try {
     if (!accessToken) throw new Error('connection has no access token');
     return { ok: true, accessToken: decrypt(accessToken) };
   } catch (err) {
+    await markConnectionError(connectionId, (err as Error).message);
     return { ok: false, error: err as Error };
   }
 }
@@ -371,7 +388,7 @@ export async function getUsableConnectionsForSession(userId: string): Promise<{ 
 
   for (const connection of connections) {
     const result: RefreshResult = isFreshEnough(connection.expiresAt)
-      ? decryptAccessToken(connection.accessToken)
+      ? await decryptAccessToken(connection.id, connection.accessToken)
       : await refreshAndPersist(connection.id);
 
     if (result.ok) {

@@ -319,6 +319,12 @@ describe('getUsableConnectionsForSession', () => {
       expect(entries).toEqual([]);
       expect(dropped).toEqual([{ name: 'sentry', reason: 'unable to decrypt: bad tag' }]);
       expect(mockRefresh).not.toHaveBeenCalled();
+      // No refresh runs on this path, so this is the only thing that can put
+      // "Reconnect" in front of the user instead of a permanent "Connected".
+      expect(prisma.mcpServerConnection.update).toHaveBeenCalledWith({
+        where: { id: 'conn-1' },
+        data: { status: 'ERROR', lastError: 'unable to decrypt: bad tag' },
+      });
     } finally {
       cryptoMock.decrypt = realDecrypt;
     }

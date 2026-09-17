@@ -113,12 +113,18 @@ export async function assertSafeMcpUrl(input: string | URL): Promise<void> {
  * 'manual'`): a 303, or a 301/302 answering a POST, becomes a bodiless GET
  * (RFC 9110 §15.4), and a hop to a different origin loses `Authorization`.
  *
- * The second rule is what keeps a linked server's token or registration
- * endpoint from answering with one 302 and collecting this app's client
- * secret plus the user's refresh token or authorization code at an origin of
- * its choosing — `assertSafeMcpUrl` only checks the target is public https.
- * Platform `fetch` already strips the header on a cross-origin redirect;
- * before this the wrapper regressed that.
+ * Those two rules keep a linked server's token or registration endpoint from
+ * answering with one redirect and collecting this app's credentials at an
+ * origin of its choosing — `assertSafeMcpUrl` only checks the target is
+ * public https, which an attacker's host satisfies.
+ *
+ * A 307 or 308 keeps the method and body by definition, and dropping the
+ * header is not enough there: an OAuth request body carries `client_secret`
+ * under `client_secret_post`, the refresh token, or the authorization code
+ * and its PKCE verifier. Such a hop is refused rather than followed with the
+ * body stripped, which would only reach the real endpoint as an
+ * unauthenticated request and fail further away from the cause. A server
+ * moving an endpoint publishes the new URL in its metadata.
  */
 function rewriteForRedirect(init: RequestInit | undefined, status: number, from: URL, to: URL): RequestInit {
   const headers = new Headers(init?.headers);
@@ -132,6 +138,9 @@ function rewriteForRedirect(init: RequestInit | undefined, status: number, from:
     }
   }
   if (from.origin !== to.origin) {
+    if (body != null && (status === 307 || status === 308)) {
+      throw new Error(`${from} redirected a request body to ${to.origin}, which is not allowed`);
+    }
     headers.delete('authorization');
   }
   return { ...init, method, body, headers };

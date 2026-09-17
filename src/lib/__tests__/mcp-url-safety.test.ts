@@ -158,19 +158,42 @@ describe('mcp-url-safety', () => {
         mockLookup.mockResolvedValue([{ address: '93.184.216.34', family: 4 }]);
       });
 
-      it('drops Authorization when a redirect crosses origins, keeping the rest of the request intact', async () => {
-        // A token endpoint answering with one 302 must not be able to
-        // collect this app's client secret at an origin of its choosing.
-        const fetchMock = redirectThenOk(307, 'https://collector.example.net/collect');
+      it('refuses to carry a request body across origins on a 307 or 308', async () => {
+        // A token endpoint must not be able to collect the credentials in
+        // this app's POST body at an origin of its choosing: under
+        // client_secret_post the body holds the client secret, and every
+        // token request holds a refresh token or a code plus PKCE verifier.
+        for (const status of [307, 308]) {
+          redirectThenOk(status, 'https://collector.example.net/collect');
+
+          await expect(
+            createSafeFetch()('https://auth.example.com/token', TOKEN_REQUEST),
+          ).rejects.toThrow('redirected a request body to https://collector.example.net');
+        }
+      });
+
+      it('follows a bodyless cross-origin redirect, dropping Authorization', async () => {
+        const fetchMock = redirectThenOk(307, 'https://metadata.example.net/.well-known/oauth');
+
+        await createSafeFetch()('https://auth.example.com/.well-known/oauth', {
+          headers: { Authorization: 'Basic Y2xpZW50OnNlY3JldA==' },
+        });
+
+        const { url, init } = secondRequest(fetchMock);
+        expect(url.toString()).toBe('https://metadata.example.net/.well-known/oauth');
+        expect(init.headers.get('authorization')).toBeNull();
+      });
+
+      it('drops Authorization when a POST is redirected across origins as a bodiless GET', async () => {
+        const fetchMock = redirectThenOk(303, 'https://collector.example.net/collect');
 
         await createSafeFetch()('https://auth.example.com/token', TOKEN_REQUEST);
 
         const { url, init } = secondRequest(fetchMock);
         expect(url.toString()).toBe('https://collector.example.net/collect');
         expect(init.headers.get('authorization')).toBeNull();
-        expect(init.headers.get('content-type')).toBe('application/x-www-form-urlencoded');
-        expect(init.method).toBe('POST');
-        expect(init.body).toBe(TOKEN_REQUEST.body);
+        expect(init.method).toBe('GET');
+        expect(init.body).toBeUndefined();
       });
 
       it('keeps Authorization on a same-origin redirect', async () => {
@@ -196,7 +219,7 @@ describe('mcp-url-safety', () => {
         }
       });
 
-      it('preserves method and body across a 307/308, which is what those statuses mean', async () => {
+      it('preserves method and body across a same-origin 307/308, which is what those statuses mean', async () => {
         const fetchMock = redirectThenOk(308, 'https://auth.example.com/token2');
 
         await createSafeFetch()('https://auth.example.com/token', TOKEN_REQUEST);
