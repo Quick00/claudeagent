@@ -32,6 +32,12 @@ COPY --from=build /app/.next/static ./.next/static
 COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/prisma ./prisma
 COPY --from=build /app/package.json ./package.json
+# Prisma 7 takes the datasource URL from here, not from schema.prisma — its
+# `datasource db` block declares only the provider. Without this file no
+# Prisma CLI command can resolve DATABASE_URL, and the entrypoint's
+# `migrate deploy` aborts with "The datasource.url property is required in
+# your Prisma config file".
+COPY --from=build /app/prisma.config.ts ./prisma.config.ts
 COPY docker-entrypoint.sh /docker-entrypoint.sh
 RUN chmod +x /docker-entrypoint.sh
 

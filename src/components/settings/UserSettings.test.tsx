@@ -26,6 +26,9 @@ function makeClaudeStatusFetchMock(initiallyLinked: boolean) {
       linked = true;
       return { ok: true, json: async () => ({}) };
     }
+    // McpServerConnections renders nothing once this resolves to an empty
+    // list, keeping it out of the way of these Claude-account assertions.
+    if (url === '/api/mcp-servers') return { ok: true, json: async () => [] };
     return { ok: true, json: async () => ({}) };
   });
 }
@@ -64,9 +67,11 @@ describe('UserSettings', () => {
   beforeEach(() => {
     mockSetTheme.mockClear();
     mockTheme = 'system';
-    global.fetch = jest.fn(async () => ({
+    global.fetch = jest.fn(async (url: string) => ({
       ok: true,
-      json: async () => ({ linked: false, email: null }),
+      // McpServerConnections renders nothing once this resolves to an empty
+      // list, keeping it out of the way of these Claude-account assertions.
+      json: async () => (url === '/api/mcp-servers' ? [] : { linked: false, email: null }),
     })) as unknown as typeof fetch;
   });
 

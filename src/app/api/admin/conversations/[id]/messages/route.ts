@@ -139,6 +139,18 @@ export async function POST(
     }
 
     const requestId = `admin-${conversationId}-${Date.now()}`;
+    /**
+     * This admin view has no in-chat notice for a dropped server, but the
+     * session manager keys them per request and hands them out exactly once,
+     * so an unread entry sits in its map for the lifetime of the process.
+     */
+    const drainDroppedServers = () => {
+      const dropped = sessionManager.takeDroppedServers(requestId);
+      if (dropped.length > 0) {
+        console.warn(`[admin-chat] MCP servers unavailable this turn: ${dropped.map((d) => d.name).join(', ')}`);
+      }
+    };
+
     const procOrPromise = sessionManager.resumeSession(
       requestId,
       sessionId,
@@ -156,9 +168,10 @@ export async function POST(
           content: 'Failed to start Claude process. Please try again.',
         }));
         sink.close();
-      });
+      }).finally(drainDroppedServers);
     } else {
       attach(procOrPromise);
+      drainDroppedServers();
     }
   });
 }

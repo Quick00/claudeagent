@@ -10,6 +10,7 @@ import { provenanceCollector } from '@/lib/provenance-collector';
 import { getKnowledgeIgnoreLists } from '@/lib/settings';
 import path from 'path';
 import { attachClaudeProcess, createSseResponse } from '@/lib/claude-process-stream';
+import { recordMcpServerStatus } from '@/lib/mcp-connections';
 import { NextResponse } from 'next/server';
 
 const MAX_RETRIES = 2;
@@ -151,6 +152,16 @@ export async function POST(request: Request) {
       ? config.responseReminder + (knowledge.length > 0 ? formatKnowledgeDelta(knowledge) + '\n\n' : '') + cliMessage
       : cliMessage;
 
+    // One notice per server per turn: a retry re-runs both the startup drop
+    // check and the mid-session init event, and a server that failed on the
+    // first attempt is often reported again on the second.
+    const noticedServers = new Set<string>();
+    function notifyServerDrop(name: string, message: string) {
+      if (noticedServers.has(name)) return;
+      noticedServers.add(name);
+      sink.send(JSON.stringify({ type: 'mcp_server_notice', server: name, message }));
+    }
+
     function attachProcess(proc: ChildProcess, retryCount: number) {
       // The answer as bubbles: one segment per stretch of text between tool calls.
       // `current` is the one being written; a tool call closes it and opens another.
@@ -213,6 +224,21 @@ export async function POST(request: Request) {
         onToolUseInput: (tool, input) => {
           provenanceCollector.recordToolUse(userMessage.id, tool, input);
         },
+        onMcpServerStatus: (servers) => {
+          for (const server of servers) {
+            if (server.name === 'knowledge') continue; // never surfaced to the user
+            // Every status is recorded, not only the bad ones: a healthy
+            // report is what clears the note an earlier failure left in
+            // Settings (see `recordMcpServerStatus`).
+            recordMcpServerStatus(userId, server.name, server.status).catch((err) => {
+              console.error(`[chat] Failed to record MCP server status for "${server.name}":`, err.message);
+            });
+            if (server.status === 'failed' || server.status === 'needs-auth') {
+              console.error(`[chat] MCP server "${server.name}" reported status "${server.status}" (userId=${userId})`);
+              notifyServerDrop(server.name, `${server.name} is unavailable this turn — reconnect it in Settings.`);
+            }
+          }
+        },
         onAuthFailed: () => {
           console.error('[chat] Authentication failed — invalid Claude token');
           authFailed = true;
@@ -259,18 +285,24 @@ export async function POST(request: Request) {
               ? sessionManager.resumeSession(retryRequestId, conversation.claudeSessionId, effectiveMessage, userClaudeToken, userId, userMessage.id)
               : sessionManager.startSession(retryRequestId, effectiveMessage, systemPrompt, userClaudeToken, userId, repoPaths, userMessage.id);
 
-            if (retryProcOrPromise instanceof Promise) {
-              retryProcOrPromise.then((retryProc) => attachProcess(retryProc, retryCount + 1)).catch((err) => {
-                console.error('[chat] Failed to acquire retry process:', err.message);
-                sink.send(JSON.stringify({
-                  type: 'error',
-                  content: 'Failed to retry Claude process. Please try again.',
-                }));
-                sink.close();
-              });
-            } else {
-              attachProcess(retryProcOrPromise, retryCount + 1);
-            }
+            retryProcOrPromise.then((retryProc) => {
+              for (const dropped of sessionManager.takeDroppedServers(retryRequestId)) {
+                notifyServerDrop(dropped.name, `${dropped.name} is unavailable this turn (${dropped.reason}).`);
+              }
+              attachProcess(retryProc, retryCount + 1);
+            }).catch((err) => {
+              console.error('[chat] Failed to acquire retry process:', err.message);
+              // The config was built before acquisition failed, so this
+              // request has an entry waiting to be read exactly once.
+              sessionManager.takeDroppedServers(retryRequestId);
+              sink.send(JSON.stringify({
+                type: 'error',
+                content: 'Failed to retry Claude process. Please try again.',
+              }));
+              // No process attached, so no terminal handler will end the collection started above.
+              provenanceCollector.end(userMessage.id);
+              sink.close();
+            });
             return true; // stop processing remaining lines in this chunk
           }
         },
@@ -349,21 +381,24 @@ export async function POST(request: Request) {
       ? sessionManager.resumeSession(requestId, conversation.claudeSessionId, effectiveMessage, userClaudeToken, userId, userMessage.id)
       : sessionManager.startSession(requestId, effectiveMessage, systemPrompt, userClaudeToken, userId, repoPaths, userMessage.id);
 
-    if (procOrPromise instanceof Promise) {
-      procOrPromise.then((proc) => {
-        console.log(`[chat] Process acquired (pid=${proc.pid})`);
-        attachProcess(proc, 0);
-      }).catch((err) => {
-        console.error('[chat] Failed to acquire process:', err.message);
-        sink.send(JSON.stringify({
-          type: 'error',
-          content: 'Failed to start Claude process. Please try again.',
-        }));
-        sink.close();
-      });
-    } else {
-      console.log(`[chat] Process acquired (pid=${procOrPromise.pid})`);
-      attachProcess(procOrPromise, 0);
-    }
+    procOrPromise.then((proc) => {
+      console.log(`[chat] Process acquired (pid=${proc.pid})`);
+      for (const dropped of sessionManager.takeDroppedServers(requestId)) {
+        notifyServerDrop(dropped.name, `${dropped.name} is unavailable this turn (${dropped.reason}).`);
+      }
+      attachProcess(proc, 0);
+    }).catch((err) => {
+      console.error('[chat] Failed to acquire process:', err.message);
+      // The config was built before acquisition failed, so this request has
+      // an entry waiting to be read exactly once.
+      sessionManager.takeDroppedServers(requestId);
+      sink.send(JSON.stringify({
+        type: 'error',
+        content: 'Failed to start Claude process. Please try again.',
+      }));
+      // No process attached, so no terminal handler will end the collection started above.
+      provenanceCollector.end(userMessage.id);
+      sink.close();
+    });
   });
 }

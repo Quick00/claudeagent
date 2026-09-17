@@ -3,6 +3,9 @@ export const config = {
   reposDir: process.env.REPOS_DIR || './repos',
   maxConcurrentSessions: parseInt(process.env.MAX_CONCURRENT_SESSIONS || '5', 10),
   sessionIdleTimeoutMs: parseInt(process.env.SESSION_IDLE_TIMEOUT_MS || '300000', 10),
+  // How far ahead of expiry a linked MCP server's access token is refreshed:
+  // it must outlive the whole CLI run, not just the moment it's handed out.
+  mcpTokenRefreshMarginMs: parseInt(process.env.MCP_TOKEN_REFRESH_MARGIN_MS || '600000', 10),
   claudeMaxTurns: parseInt(process.env.CLAUDE_MAX_TURNS || '25', 10),
   uploadPath: process.env.UPLOAD_PATH || './uploads',
   maxFileSize: 10 * 1024 * 1024, // 10MB

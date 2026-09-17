@@ -1,5 +1,6 @@
 import {
   BookOpen,
+  Cable,
   Flag,
   FolderGit2,
   LayoutDashboard,
@@ -37,6 +38,7 @@ export const CHILD_ICONS: Record<ChildIconKey, LucideIcon> = {
   flags: Flag,
   feedback: MessageSquareText,
   repos: FolderGit2,
+  mcpServers: Cable,
   knowledge: BookOpen,
   settings: SlidersHorizontal,
 };

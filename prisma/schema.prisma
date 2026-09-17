@@ -23,6 +23,9 @@ model User {
   adminFlags       Flag[] @relation("AdminFlags")
   adminSentMessages    Message[] @relation("AdminSentMessages")
   feedbackPosts    FeedbackPost[]
+  mcpServerConnections McpServerConnection[]
+  mcpOAuthStates       McpOAuthState[]
+  createdMcpServers    McpServer[] @relation("McpServerCreator")
 }
 
 model AppSetting {
@@ -194,4 +197,66 @@ model Repository {
 
   conversations    Conversation[]
   syncs            RepoSync[]
+}
+
+model McpServer {
+  id                      String    @id @default(uuid())
+  name                    String    @unique
+  serverUrl               String
+  transport               String    @default("HTTP") // "HTTP" | "SSE"
+  resource                String
+  authorizationServerUrl  String
+  authorizeEndpoint       String
+  tokenEndpoint           String
+  registrationEndpoint    String?
+  revocationEndpoint      String?
+  scope                   String?
+  tokenEndpointAuthMethod String?
+  clientId                String?
+  clientSecret            String?
+  clientSecretExpiresAt   DateTime?
+  registrationAccessToken String?
+  registrationMode        String    @default("MANUAL") // "DYNAMIC" | "MANUAL"
+  enabled                 Boolean   @default(false)
+  createdByUserId         String?
+  createdAt               DateTime  @default(now())
+  updatedAt               DateTime  @updatedAt
+
+  createdBy   User?                 @relation("McpServerCreator", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  connections McpServerConnection[]
+  oauthStates McpOAuthState[]
+}
+
+model McpServerConnection {
+  id           String    @id @default(uuid())
+  userId       String
+  mcpServerId  String
+  accessToken  String?
+  refreshToken String?
+  expiresAt    DateTime?
+  scope        String?
+  status       String    @default("CONNECTED") // "CONNECTED" | "ERROR"
+  lastError    String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  mcpServer McpServer @relation(fields: [mcpServerId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, mcpServerId])
+}
+
+// One row per in-flight authorization attempt. `state` is the PKCE/CSRF
+// state value handed to the authorization server and back; the callback
+// deletes this row the moment it's read, so a state value can't be replayed.
+model McpOAuthState {
+  state        String   @id
+  codeVerifier String
+  userId       String
+  mcpServerId  String
+  createdAt    DateTime @default(now())
+  expiresAt    DateTime
+
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  mcpServer McpServer @relation(fields: [mcpServerId], references: [id], onDelete: Cascade)
 }

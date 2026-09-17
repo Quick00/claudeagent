@@ -159,6 +159,9 @@ export function useConversation(initialConversationId: string | null) {
   const [streamingSegments, setStreamingSegments] = useState<string[]>([]);
   const [toolStatus, setToolStatus] = useState<string | null>(null);
   const [isStreaming, setIsStreaming] = useState(false);
+  // One notice per linked server that dropped out of the turn, cleared when
+  // the next turn starts rather than at `done`.
+  const [mcpNotices, setMcpNotices] = useState<string[]>([]);
 
   const knowledgeConfettiFired = useRef(false);
 
@@ -393,6 +396,7 @@ export function useConversation(initialConversationId: string | null) {
       setIsStreaming(true);
       setStreamingSegments([]);
       setToolStatus(null);
+      setMcpNotices([]);
 
       // ───────────────────────── SSE streaming block ─────────────────────────
       // Everything down to the matching end marker is today's fetch + reader
@@ -472,6 +476,8 @@ export function useConversation(initialConversationId: string | null) {
               title?: string;
               tool?: string;
               errorType?: string;
+              server?: string;
+              message?: string;
             };
             try {
               event = JSON.parse(line.slice(6));
@@ -514,6 +520,11 @@ export function useConversation(initialConversationId: string | null) {
             if (event.type === 'text_break') {
               // Guard against a stray break: never leave a trailing empty bubble.
               if (hasText(segments[segments.length - 1])) segments.push('');
+            }
+
+            if (event.type === 'mcp_server_notice' && event.message) {
+              const notice = event.message;
+              setMcpNotices((prev) => (prev.includes(notice) ? prev : [...prev, notice]));
             }
 
             if (event.type === 'tool_use') {
@@ -617,6 +628,7 @@ export function useConversation(initialConversationId: string | null) {
     messages,
     streamingSegments,
     toolStatus,
+    mcpNotices,
     isLoading,
     initialLoading,
     claudeLinked,

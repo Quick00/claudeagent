@@ -260,6 +260,7 @@ scripts/
   backfill-embeddings.ts      # One-off: backfill embeddings for existing entries
   cleanup-uploads.ts          # Cron: delete orphaned/old uploads
   consolidate-knowledge.ts    # One-off: merge duplicate knowledge entries
+  debug-mcp.ts                # Dev: test a linked MCP server's initialize/tools-list directly, no CLI or LLM
   sync-repos.ts               # Cron: fetch + reset all registered repos, record RepoSync rows
 ```
 

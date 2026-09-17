@@ -14,6 +14,7 @@ type ChatMessagesProps = {
   messages: Message[];
   streamingSegments: string[];
   toolStatus: string | null;
+  mcpNotices: string[];
   isLoading: boolean;
   onSendSuggestion: (message: string) => void;
   flags: Flag[];
@@ -53,6 +54,7 @@ export function ChatMessages({
   messages,
   streamingSegments,
   toolStatus,
+  mcpNotices,
   isLoading,
   onSendSuggestion,
   flags,
@@ -65,7 +67,7 @@ export function ChatMessages({
   // live answer grows — it is the reference that changes, not the contents.
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages, streamingSegments, toolStatus, isLoading]);
+  }, [messages, streamingSegments, toolStatus, mcpNotices, isLoading]);
 
   // Recent conversation titles make better starter chips than the canned list.
   const recentQuestions = useMemo(
@@ -79,7 +81,13 @@ export function ChatMessages({
 
   const timeline = useMemo(() => buildTimeline(messages, flags), [messages, flags]);
 
-  if (messages.length === 0 && streamingSegments.length === 0 && !toolStatus && !isLoading) {
+  if (
+    messages.length === 0 &&
+    streamingSegments.length === 0 &&
+    !toolStatus &&
+    mcpNotices.length === 0 &&
+    !isLoading
+  ) {
     const rest = [...new Set(recentQuestions.length > 0 ? recentQuestions : DEFAULT_SUGGESTIONS)]
       .filter((q) => !PINNED_SUGGESTIONS.includes(q))
       .slice(0, Math.max(0, 4 - PINNED_SUGGESTIONS.length));
@@ -168,6 +176,14 @@ export function ChatMessages({
           // Stable keys also mean `animate-message-in` runs once per bubble.
           <div key={`live-${i}`} className="animate-message-in">
             <MessageBubble role="assistant" content={content} />
+          </div>
+        ))}
+
+        {mcpNotices.map((notice) => (
+          // The text is the key: the hook already de-duplicates by it, and a
+          // notice never changes once shown — it only gets cleared with the turn.
+          <div key={notice} className="px-4 py-2 text-xs text-muted-foreground" role="status">
+            {notice}
           </div>
         ))}
 

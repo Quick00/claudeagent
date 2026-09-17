@@ -19,7 +19,7 @@ jest.mock('@/lib/prisma', () => ({
 }));
 jest.mock('@/lib/knowledge-admin', () => ({ refreshSourcesToHead: jest.fn(), updateEntry: jest.fn() }));
 jest.mock('@/lib/knowledge-repos', () => ({ loadActiveHeadTrees: jest.fn() }));
-jest.mock('@/lib/session-manager', () => ({ sessionManager: { startSession: jest.fn() } }));
+jest.mock('@/lib/session-manager', () => ({ sessionManager: { startSession: jest.fn(), takeDroppedServers: jest.fn(() => []) } }));
 jest.mock('@/lib/settings', () => ({ getKnowledgeIgnoreLists: jest.fn().mockResolvedValue({ segments: [], basenames: [] }) }));
 jest.mock('@/lib/config', () => ({
   config: {

@@ -465,6 +465,96 @@ describe('ChatThread', () => {
   // buffer, so a frame cut in half by a chunk boundary fails to parse and is
   // dropped. Losing a `text_break` silently merges two bubbles that the reload
   // then shows apart — the exact disagreement this feature removes.
+  // ─────────────────────── Dropped MCP server notice ───────────────────────
+
+  test('shows a notice when a linked MCP server drops out of the turn', async () => {
+    routeFetch({
+      '/api/chat': () =>
+        sseResponse([
+          { type: 'mcp_server_notice', server: 'jira', message: 'jira disconnected mid-turn.' },
+          { type: 'text', content: 'Here is the answer anyway.' },
+          { type: 'done' },
+        ]),
+      // What the server holds once the turn lands, so the post-`done` refetch
+      // doesn't wipe the reply back to the original two messages.
+      '/api/conversations/conv-1': () =>
+        jsonOk({
+          ...CONVERSATION,
+          messages: [
+            ...CONVERSATION.messages,
+            { id: 'm3', role: 'user', content: 'How?', createdAt: '2026-01-01T10:00:10Z' },
+            {
+              id: 'm4',
+              role: 'assistant',
+              content: 'Here is the answer anyway.',
+              createdAt: '2026-01-01T10:00:11Z',
+            },
+          ],
+        }),
+    });
+    const { user } = renderThread('conv-1');
+    await screen.findByText('It uses OAuth.');
+
+    await user.type(screen.getByRole('textbox', { name: /message/i }), 'How?');
+    await user.click(screen.getByRole('button', { name: /^send$/i }));
+
+    expect(await screen.findByText('jira disconnected mid-turn.')).toBeInTheDocument();
+    expect(await screen.findByText('Here is the answer anyway.')).toBeInTheDocument();
+    // Still visible after `done`: it describes the turn that just finished.
+    expect(screen.getByText('jira disconnected mid-turn.')).toBeInTheDocument();
+  });
+
+  test('a notice from a previous turn does not linger into the next one', async () => {
+    routeFetch({
+      '/api/chat': () =>
+        sseResponse([
+          { type: 'mcp_server_notice', server: 'jira', message: 'jira disconnected mid-turn.' },
+          { type: 'text', content: 'First answer.' },
+          { type: 'done' },
+        ]),
+    });
+    const { user } = renderThread('conv-1');
+    await screen.findByText('It uses OAuth.');
+
+    await user.type(screen.getByRole('textbox', { name: /message/i }), 'First?');
+    await user.click(screen.getByRole('button', { name: /^send$/i }));
+    await screen.findByText('jira disconnected mid-turn.');
+
+    routeFetch({
+      '/api/chat': () => sseResponse([{ type: 'text', content: 'Second answer.' }]),
+    });
+    await user.type(screen.getByRole('textbox', { name: /message/i }), 'Second?');
+    await user.click(screen.getByRole('button', { name: /^send$/i }));
+
+    await screen.findByText('Second answer.');
+    expect(screen.queryByText('jira disconnected mid-turn.')).not.toBeInTheDocument();
+  });
+
+  test('shows one notice per dropped server when several drop in the same turn', async () => {
+    // The server sends one `mcp_server_notice` per server. A single slot on
+    // the client kept only the last: the user fixed that one, retried, and
+    // was only then told about the other.
+    routeFetch({
+      '/api/chat': () =>
+        sseResponse([
+          { type: 'mcp_server_notice', server: 'jira', message: 'jira is unavailable this turn.' },
+          { type: 'mcp_server_notice', server: 'sentry', message: 'sentry is unavailable this turn.' },
+          // A retry within the turn can repeat a notice; it must not double up.
+          { type: 'mcp_server_notice', server: 'jira', message: 'jira is unavailable this turn.' },
+          { type: 'text', content: 'Answered without either.' },
+        ]),
+    });
+    const { user } = renderThread('conv-1');
+    await screen.findByText('It uses OAuth.');
+
+    await user.type(screen.getByRole('textbox', { name: /message/i }), 'Both?');
+    await user.click(screen.getByRole('button', { name: /^send$/i }));
+
+    await screen.findByText('Answered without either.');
+    expect(screen.getAllByText('jira is unavailable this turn.')).toHaveLength(1);
+    expect(screen.getByText('sentry is unavailable this turn.')).toBeInTheDocument();
+  });
+
   test('reassembles frames split across chunk boundaries', async () => {
     routeFetch({
       '/api/chat': () =>

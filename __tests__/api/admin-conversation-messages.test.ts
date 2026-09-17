@@ -15,7 +15,7 @@ jest.mock('@/lib/prisma', () => ({
   },
 }));
 jest.mock('@/lib/session-manager', () => ({
-  sessionManager: { resumeSession: jest.fn() },
+  sessionManager: { resumeSession: jest.fn(), takeDroppedServers: jest.fn(() => []) },
 }));
 jest.mock('@/lib/crypto', () => ({ decrypt: (s: string) => `dec(${s})` }));
 

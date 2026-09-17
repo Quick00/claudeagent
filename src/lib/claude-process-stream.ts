@@ -30,6 +30,8 @@ export interface ClaudeEventHandlers {
   onClose?: (code: number | null) => void;
   /** Emitted when the child process emits an `error`. */
   onProcessError?: (err: Error) => void;
+  /** Emitted when the CLI's init event lists each configured MCP server's connection state. */
+  onMcpServerStatus?: (servers: Array<{ name: string; status: string }>) => void;
   /** Prefix used when forwarding stderr to the server log. */
   logPrefix?: string;
 }
@@ -58,6 +60,10 @@ export function attachClaudeProcess(
 
     if (event.type === 'system' && typeof event.session_id === 'string') {
       handlers.onSessionId?.(event.session_id);
+    }
+
+    if (event.type === 'system' && Array.isArray(event.mcp_servers)) {
+      handlers.onMcpServerStatus?.(event.mcp_servers as Array<{ name: string; status: string }>);
     }
 
     if (event.type === 'stream_event') {
