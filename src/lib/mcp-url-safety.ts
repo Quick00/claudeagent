@@ -1,6 +1,14 @@
+
 import { lookup } from 'dns/promises';
-import { isIP } from 'net';
+import net, { isIP } from 'net';
 import * as ipaddr from 'ipaddr.js';
+import { Agent } from 'undici';
+
+/** An address `assertSafeMcpUrl` resolved and accepted, in `dns.lookup` shape. */
+export interface CheckedAddress {
+  address: string;
+  family: number;
+}
 
 // RFC 2544 benchmarking range. ipaddr.js 2.x reports it as 'reserved', which
 // the default-deny check below already catches, but 1.x reads it as plain
@@ -67,8 +75,12 @@ export function isLocalMcpAllowed(): boolean {
  * Applied to every URL fetched while linking an MCP server — the admin's
  * `serverUrl`, every endpoint discovered from it, and each redirect hop —
  * not only the one address an admin typed in.
+ *
+ * Returns the addresses it accepted so the caller can pin the connection to
+ * them (see `createSafeFetch`), or `null` when the local-server escape hatch
+ * is on and nothing was resolved.
  */
-export async function assertSafeMcpUrl(input: string | URL): Promise<void> {
+export async function assertSafeMcpUrl(input: string | URL): Promise<CheckedAddress[] | null> {
   const url = typeof input === 'string' ? new URL(input) : input;
   const allowLocal = isLocalMcpAllowed();
 
@@ -76,7 +88,7 @@ export async function assertSafeMcpUrl(input: string | URL): Promise<void> {
     if (url.protocol !== 'https:' && url.protocol !== 'http:') {
       throw new Error(`${url} must use http or https`);
     }
-    return;
+    return null;
   }
 
   if (url.protocol !== 'https:') {
@@ -105,6 +117,49 @@ export async function assertSafeMcpUrl(input: string | URL): Promise<void> {
       throw new Error(`${url} resolves to a private address (${address}), which is not allowed`);
     }
   }
+
+  return addresses.map(({ address, family }) => ({ address, family }));
+}
+
+/**
+ * A dispatcher whose DNS resolution can only answer with addresses
+ * `assertSafeMcpUrl` already accepted.
+ *
+ * Checking the hostname and then handing the *hostname* to `fetch` leaves a
+ * gap: `fetch` resolves it a second time, and a record the attacker controls
+ * can answer the check with a public address and the connection with
+ * 127.0.0.1 or 169.254.169.254. Nothing in the guard sees the second answer.
+ * Pinning closes it — the socket can only go to an address that passed.
+ *
+ * Addresses are keyed by hostname and filled in per redirect hop, since each
+ * hop is a different host and gets its own check. A hostname the hook has no
+ * entry for fails rather than falling back to a real lookup.
+ */
+export function createPinnedLookup(allowed: Map<string, CheckedAddress[]>): net.LookupFunction {
+  return function pinnedLookup(hostname, options, callback) {
+    const addresses = allowed.get(hostname.toLowerCase());
+    if (!addresses || addresses.length === 0) {
+      callback(new Error(`${hostname} was not validated for this request`), '');
+      return;
+    }
+    // Node calls this either way, depending on `autoSelectFamily`.
+    if (options?.all) {
+      callback(null, addresses);
+      return;
+    }
+    callback(null, addresses[0].address, addresses[0].family);
+  };
+}
+
+function pinnedAgent(allowed: Map<string, CheckedAddress[]>): Agent {
+  return new Agent({
+    // These sockets outlive the response, so they are kept briefly and left
+    // to expire on their own: closing the agent here would race the caller
+    // still reading the body it was handed.
+    keepAliveTimeout: 1000,
+    keepAliveMaxTimeout: 1000,
+    connect: { lookup: createPinnedLookup(allowed) },
+  });
 }
 
 /**
@@ -156,9 +211,18 @@ export function createSafeFetch(maxRedirects = 5) {
   return async function safeFetch(input: string | URL, init?: RequestInit): Promise<Response> {
     let url = typeof input === 'string' ? new URL(input) : input;
     let current = init;
+    // One dispatcher for the whole chain, reading a table each hop adds to,
+    // so a redirect cannot reach a host that was never checked.
+    const allowed = new Map<string, CheckedAddress[]>();
+    let dispatcher: Agent | undefined;
+
     for (let i = 0; i <= maxRedirects; i++) {
-      await assertSafeMcpUrl(url);
-      const res = await fetch(url, { ...current, redirect: 'manual' });
+      const checked = await assertSafeMcpUrl(url);
+      if (checked) {
+        allowed.set(url.hostname.toLowerCase(), checked);
+        dispatcher ??= pinnedAgent(allowed);
+      }
+      const res = await fetch(url, { ...current, redirect: 'manual', ...(dispatcher ? { dispatcher } : {}) } as RequestInit);
       const location = res.headers.get('location');
       if (res.status >= 300 && res.status < 400 && location) {
         // Nothing reads a redirect response's body; releasing it hands the

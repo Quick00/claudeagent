@@ -3,7 +3,7 @@ import { lookup } from 'dns/promises';
 jest.mock('dns/promises', () => ({ lookup: jest.fn() }));
 const mockLookup = lookup as jest.Mock;
 
-import { assertSafeMcpUrl, createSafeFetch } from '@/lib/mcp-url-safety';
+import { assertSafeMcpUrl, createSafeFetch, createPinnedLookup, type CheckedAddress } from '@/lib/mcp-url-safety';
 
 describe('mcp-url-safety', () => {
   const ORIGINAL_ENV = process.env;
@@ -43,7 +43,7 @@ describe('mcp-url-safety', () => {
 
     it('allows a public https URL', async () => {
       mockLookup.mockResolvedValue([{ address: '93.184.216.34', family: 4 }]);
-      await expect(assertSafeMcpUrl('https://mcp.example.com/mcp')).resolves.toBeUndefined();
+      await expect(assertSafeMcpUrl('https://mcp.example.com/mcp')).resolves.not.toBeNull();
     });
 
     it('rejects an IPv4-mapped IPv6 address embedding a private address', async () => {
@@ -72,11 +72,11 @@ describe('mcp-url-safety', () => {
     });
 
     it('still allows ordinary public IPv4 addresses, literal or resolved', async () => {
-      await expect(assertSafeMcpUrl('https://8.8.8.8/mcp')).resolves.toBeUndefined();
-      await expect(assertSafeMcpUrl('https://198.17.255.255/mcp')).resolves.toBeUndefined(); // just below the benchmark range
-      await expect(assertSafeMcpUrl('https://198.20.0.1/mcp')).resolves.toBeUndefined(); // just above it
+      await expect(assertSafeMcpUrl('https://8.8.8.8/mcp')).resolves.not.toBeNull();
+      await expect(assertSafeMcpUrl('https://198.17.255.255/mcp')).resolves.not.toBeNull(); // just below the benchmark range
+      await expect(assertSafeMcpUrl('https://198.20.0.1/mcp')).resolves.not.toBeNull(); // just above it
       mockLookup.mockResolvedValue([{ address: '1.1.1.1', family: 4 }]);
-      await expect(assertSafeMcpUrl('https://mcp.example.com/mcp')).resolves.toBeUndefined();
+      await expect(assertSafeMcpUrl('https://mcp.example.com/mcp')).resolves.not.toBeNull();
     });
 
     it('rejects the unspecified IPv6 address ::', async () => {
@@ -84,14 +84,14 @@ describe('mcp-url-safety', () => {
     });
 
     it('allows a literal public IPv6 address', async () => {
-      await expect(assertSafeMcpUrl('https://[2606:4700:4700::1111]/mcp')).resolves.toBeUndefined();
+      await expect(assertSafeMcpUrl('https://[2606:4700:4700::1111]/mcp')).resolves.not.toBeNull();
     });
   });
 
   describe('ALLOW_LOCAL_MCP_SERVERS', () => {
     it('allows http and localhost when set outside production', async () => {
       process.env.ALLOW_LOCAL_MCP_SERVERS = 'true';
-      await expect(assertSafeMcpUrl('http://localhost:8787/mcp')).resolves.toBeUndefined();
+      await expect(assertSafeMcpUrl('http://localhost:8787/mcp')).resolves.toBeNull();
       expect(mockLookup).not.toHaveBeenCalled();
     });
 
@@ -240,6 +240,67 @@ describe('mcp-url-safety', () => {
         await createSafeFetch()('https://auth.example.com/a');
 
         expect(cancel).toHaveBeenCalledTimes(1);
+      });
+    });
+  });
+
+  describe('DNS pinning', () => {
+    it('returns the addresses it accepted so the connection can be pinned', async () => {
+      mockLookup.mockResolvedValue([
+        { address: '93.184.216.34', family: 4 },
+        { address: '2606:2800:220:1:248:1893:25c8:1946', family: 6 },
+      ]);
+      await expect(assertSafeMcpUrl('https://example.com/mcp')).resolves.toEqual([
+        { address: '93.184.216.34', family: 4 },
+        { address: '2606:2800:220:1:248:1893:25c8:1946', family: 6 },
+      ]);
+    });
+
+    it('returns null when the local escape hatch is on, so nothing is pinned', async () => {
+      process.env.ALLOW_LOCAL_MCP_SERVERS = 'true';
+      await expect(assertSafeMcpUrl('http://localhost:3000/mcp')).resolves.toBeNull();
+      delete process.env.ALLOW_LOCAL_MCP_SERVERS;
+    });
+
+    describe('the pinned lookup hook', () => {
+      const allowed = new Map<string, CheckedAddress[]>([
+        ['example.com', [{ address: '93.184.216.34', family: 4 }]],
+      ]);
+
+      it('answers only with the checked address, whatever real DNS would say', () => {
+        const cb = jest.fn();
+        createPinnedLookup(allowed)('example.com', {}, cb);
+        expect(cb).toHaveBeenCalledWith(null, '93.184.216.34', 4);
+      });
+
+      it('answers the all-form Node uses under autoSelectFamily', () => {
+        const cb = jest.fn();
+        createPinnedLookup(allowed)('example.com', { all: true }, cb);
+        expect(cb).toHaveBeenCalledWith(null, [{ address: '93.184.216.34', family: 4 }]);
+      });
+
+      it('matches the hostname case-insensitively', () => {
+        const cb = jest.fn();
+        createPinnedLookup(allowed)('EXAMPLE.COM', {}, cb);
+        expect(cb).toHaveBeenCalledWith(null, '93.184.216.34', 4);
+      });
+
+      it('fails a hostname that was never checked instead of resolving it', () => {
+        const cb = jest.fn();
+        createPinnedLookup(allowed)('rebound.example.net', {}, cb);
+        expect(cb).toHaveBeenCalledWith(expect.any(Error), '');
+        expect((cb.mock.calls[0][0] as Error).message).toMatch(/was not validated/);
+      });
+
+      it('cannot be steered to a private address the check never saw', () => {
+        // A rebinding record answers the check with a public address and the
+        // connection with 127.0.0.1. The hook never learned 127.0.0.1, so the
+        // socket cannot go there: it only ever offers what passed the check.
+        const cb = jest.fn();
+        createPinnedLookup(allowed)('example.com', { all: true }, cb);
+        const offered = cb.mock.calls[0][1] as CheckedAddress[];
+        expect(offered.map((a) => a.address)).toEqual(['93.184.216.34']);
+        expect(offered.map((a) => a.address)).not.toContain('127.0.0.1');
       });
     });
   });
