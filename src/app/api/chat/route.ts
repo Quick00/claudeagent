@@ -227,11 +227,14 @@ export async function POST(request: Request) {
         onMcpServerStatus: (servers) => {
           for (const server of servers) {
             if (server.name === 'knowledge') continue; // never surfaced to the user
+            // Every status is recorded, not only the bad ones: a healthy
+            // report is what clears the note an earlier failure left in
+            // Settings (see `recordMcpServerStatus`).
+            recordMcpServerStatus(userId, server.name, server.status).catch((err) => {
+              console.error(`[chat] Failed to record MCP server status for "${server.name}":`, err.message);
+            });
             if (server.status === 'failed' || server.status === 'needs-auth') {
               console.error(`[chat] MCP server "${server.name}" reported status "${server.status}" (userId=${userId})`);
-              recordMcpServerStatus(userId, server.name, server.status).catch((err) => {
-                console.error(`[chat] Failed to record MCP server status for "${server.name}":`, err.message);
-              });
               notifyServerDrop(server.name, `${server.name} is unavailable this turn — reconnect it in Settings.`);
             }
           }

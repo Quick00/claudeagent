@@ -84,6 +84,11 @@ export async function startMcpConnect(userId: string, serverId: string): Promise
   if (!server.enabled || !server.clientId) {
     throw new Error(`${server.name} is not ready to connect to yet`);
   }
+  // The only place expired states are ever collected. A completed flow
+  // deletes its own row, but one the user abandoned at the authorization
+  // server — closed the tab, or clicked Cancel, which comes back with no
+  // code — would otherwise sit here with its PKCE verifier for good.
+  await prisma.mcpOAuthState.deleteMany({ where: { expiresAt: { lt: new Date() } } });
   const state = randomBytes(32).toString('base64url');
   const { authorizationUrl, codeVerifier } = await buildAuthorizationRequest(
     authContextFromServer(server),
@@ -146,6 +151,17 @@ export async function completeMcpConnect(userId: string, state: string, code: st
   });
 
   return { serverId: server.id };
+}
+
+/**
+ * The authorization server answered with an `error` instead of a code —
+ * the user declined, or it refused the request. There is nothing to
+ * exchange, but the pending state is spent all the same. Scoped to the
+ * signed-in user like `completeMcpConnect`, so a callback carrying someone
+ * else's state value cannot cancel their flow.
+ */
+export async function abandonMcpConnect(userId: string, state: string): Promise<void> {
+  await prisma.mcpOAuthState.deleteMany({ where: { state, userId } });
 }
 
 export async function disconnectMcpServer(userId: string, serverId: string): Promise<void> {
@@ -375,14 +391,39 @@ export async function getUsableConnectionsForSession(userId: string): Promise<{ 
 
 /**
  * Records a status the Claude CLI reported for a live MCP connection (not
- * one this app dropped itself — see `dropped` above for that path) onto
- * `lastError`, so it surfaces in Settings without needing prod log access.
+ * one this app dropped itself — see `dropped` above for that path), so it
+ * surfaces in Settings without needing prod log access. Called for every
+ * status the CLI reports, not only the bad ones, because the two kinds of
+ * failure need opposite follow-ups and only the CLI's next report can tell
+ * a blip from a dead connection:
+ *
+ * - `needs-auth` means the server rejected the bearer token this app handed
+ *   over. That token is not coming back, so the connection is flipped to
+ *   `ERROR` — it leaves future sessions' config and Settings offers
+ *   "Reconnect", which the in-chat notice already tells the user to do.
+ * - `failed` is a connection failure that says nothing about the token, so
+ *   it is noted on `lastError` while the status stays `CONNECTED`; forcing
+ *   a fresh OAuth round over a transient outage would be wrong.
+ * - `connected` clears a note left by an earlier `failed`. Without this the
+ *   note was permanent: only a token refresh or a reconnect cleared
+ *   `lastError`, and a connection with no expiry never refreshes.
+ *
+ * Anything else (`pending`, or a value this app does not know) is ignored.
+ * One relation-filtered `updateMany` per call, no lookup first: the healthy
+ * case runs on every turn for every linked server and usually matches zero
+ * rows.
  */
 export async function recordMcpServerStatus(userId: string, serverName: string, status: string): Promise<void> {
-  const server = await prisma.mcpServer.findUnique({ where: { name: serverName }, select: { id: true } });
-  if (!server) return;
+  const where = { userId, mcpServer: { name: serverName } };
+  if (status === 'connected') {
+    await prisma.mcpServerConnection.updateMany({ where: { ...where, lastError: { not: null } }, data: { lastError: null } });
+    return;
+  }
+  if (status !== 'failed' && status !== 'needs-auth') return;
+
+  const lastError = `Claude reported this connection as "${status}" during a chat turn`;
   await prisma.mcpServerConnection.updateMany({
-    where: { userId, mcpServerId: server.id },
-    data: { lastError: `Claude reported this connection as "${status}" during a chat turn` },
+    where,
+    data: status === 'needs-auth' ? { status: 'ERROR', lastError } : { lastError },
   });
 }

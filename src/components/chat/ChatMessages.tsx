@@ -14,7 +14,7 @@ type ChatMessagesProps = {
   messages: Message[];
   streamingSegments: string[];
   toolStatus: string | null;
-  mcpNotice: string | null;
+  mcpNotices: string[];
   isLoading: boolean;
   onSendSuggestion: (message: string) => void;
   flags: Flag[];
@@ -54,7 +54,7 @@ export function ChatMessages({
   messages,
   streamingSegments,
   toolStatus,
-  mcpNotice,
+  mcpNotices,
   isLoading,
   onSendSuggestion,
   flags,
@@ -67,7 +67,7 @@ export function ChatMessages({
   // live answer grows — it is the reference that changes, not the contents.
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages, streamingSegments, toolStatus, mcpNotice, isLoading]);
+  }, [messages, streamingSegments, toolStatus, mcpNotices, isLoading]);
 
   // Recent conversation titles make better starter chips than the canned list.
   const recentQuestions = useMemo(
@@ -85,7 +85,7 @@ export function ChatMessages({
     messages.length === 0 &&
     streamingSegments.length === 0 &&
     !toolStatus &&
-    !mcpNotice &&
+    mcpNotices.length === 0 &&
     !isLoading
   ) {
     const rest = [...new Set(recentQuestions.length > 0 ? recentQuestions : DEFAULT_SUGGESTIONS)]
@@ -179,11 +179,13 @@ export function ChatMessages({
           </div>
         ))}
 
-        {mcpNotice && (
-          <div className="px-4 py-2 text-xs text-muted-foreground" role="status">
-            {mcpNotice}
+        {mcpNotices.map((notice) => (
+          // The text is the key: the hook already de-duplicates by it, and a
+          // notice never changes once shown — it only gets cleared with the turn.
+          <div key={notice} className="px-4 py-2 text-xs text-muted-foreground" role="status">
+            {notice}
           </div>
-        )}
+        ))}
 
         {(showThinking || toolStatus) && (
           <div className="flex items-center gap-3 px-4 py-3">

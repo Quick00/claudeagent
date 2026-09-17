@@ -59,6 +59,33 @@ describe('mcp-servers-admin', () => {
     );
   });
 
+  it('registerMcpServer stores the token endpoint auth method the registration response assigned, not the discovery guess', async () => {
+    // Discovery's `[0]` of token_endpoint_auth_methods_supported said Basic;
+    // the server assigned client_secret_post (RFC 7591 §3.2.1 lets it). The
+    // stored value later becomes the *only* method the SDK is told the
+    // server supports, so persisting the guess meant every token request
+    // came back invalid_client.
+    mockDiscover.mockResolvedValue({ ...DISCOVERED, tokenEndpointAuthMethod: 'client_secret_basic' });
+    mockRegister.mockResolvedValue({ client_id: 'client-1', client_secret: 'secret-1', token_endpoint_auth_method: 'client_secret_post' });
+    (prisma.mcpServer.create as jest.Mock).mockImplementation(({ data }) => ({ id: 's1', ...data }));
+
+    const { registerMcpServer } = await import('@/lib/mcp-servers-admin');
+    const server = await registerMcpServer({ name: 'sentry', serverUrl: 'https://mcp.example.com/mcp', createdByUserId: 'admin-1' });
+
+    expect(server.tokenEndpointAuthMethod).toBe('client_secret_post');
+  });
+
+  it('registerMcpServer keeps the discovered auth method when the registration response does not name one', async () => {
+    mockDiscover.mockResolvedValue(DISCOVERED);
+    mockRegister.mockResolvedValue({ client_id: 'client-1', client_secret: 'secret-1' });
+    (prisma.mcpServer.create as jest.Mock).mockImplementation(({ data }) => ({ id: 's1', ...data }));
+
+    const { registerMcpServer } = await import('@/lib/mcp-servers-admin');
+    const server = await registerMcpServer({ name: 'sentry', serverUrl: 'https://mcp.example.com/mcp', createdByUserId: 'admin-1' });
+
+    expect(server.tokenEndpointAuthMethod).toBe(DISCOVERED.tokenEndpointAuthMethod);
+  });
+
   it('registerMcpServer rejects a name that is not slug-safe, or that collides with the built-in "knowledge" server', async () => {
     const { registerMcpServer } = await import('@/lib/mcp-servers-admin');
     await expect(
@@ -108,6 +135,20 @@ describe('mcp-servers-admin', () => {
     expect(server.clientSecret).toBe('enc:manual-secret');
   });
 
+  it('saveManualMcpServerClient leaves a stored client secret alone when the PATCH omits one', async () => {
+    // An endpoint-only edit must not quietly turn a confidential client
+    // into a public one — there is no form to put the secret back once the
+    // server has a client id.
+    (prisma.mcpServer.update as jest.Mock).mockImplementation(({ data }) => ({ id: 's2', ...data }));
+
+    const { saveManualMcpServerClient } = await import('@/lib/mcp-servers-admin');
+    await saveManualMcpServerClient('s2', { clientId: 'manual-client', tokenEndpoint: 'https://auth.acme.com/token' });
+
+    const { data } = (prisma.mcpServer.update as jest.Mock).mock.calls[0][0];
+    expect(data).not.toHaveProperty('clientSecret');
+    expect(data).toEqual(expect.objectContaining({ clientId: 'manual-client', tokenEndpoint: 'https://auth.acme.com/token' }));
+  });
+
   it('saveManualMcpServerClient runs every admin-entered endpoint URL through the same SSRF check as discovery', async () => {
     const { assertSafeMcpUrl } = await import('@/lib/mcp-url-safety');
     (prisma.mcpServer.update as jest.Mock).mockResolvedValue({ id: 's2' });
@@ -143,9 +184,19 @@ describe('mcp-servers-admin', () => {
     expect(prisma.mcpServer.update).toHaveBeenCalledWith({ where: { id: 's1' }, data: { enabled: true } });
   });
 
-  it('reRegisterMcpServerClient re-runs DCR for a DYNAMIC server', async () => {
-    mockDiscover.mockResolvedValue(DISCOVERED);
-    mockRegister.mockResolvedValue({ client_id: 'client-2', client_secret: 'secret-2' });
+  it('reRegisterMcpServerClient re-runs DCR for a DYNAMIC server and persists what re-discovery found alongside the new client', async () => {
+    // The endpoints and auth method were re-discovered to register against;
+    // leaving the old ones on the row would authenticate the new client the
+    // old client's way on the very next refresh.
+    const rediscovered = {
+      ...DISCOVERED,
+      tokenEndpoint: 'https://auth.example.com/v2/token',
+      revocationEndpoint: 'https://auth.example.com/v2/revoke',
+      scope: 'mcp:use mcp:admin',
+      tokenEndpointAuthMethod: 'client_secret_basic',
+    };
+    mockDiscover.mockResolvedValue(rediscovered);
+    mockRegister.mockResolvedValue({ client_id: 'client-2', client_secret: 'secret-2', token_endpoint_auth_method: 'client_secret_post' });
     (prisma.mcpServer.update as jest.Mock).mockImplementation(({ data }) => ({ id: 's1', registrationMode: 'DYNAMIC', ...data }));
 
     const { reRegisterMcpServerClient } = await import('@/lib/mcp-servers-admin');
@@ -153,6 +204,55 @@ describe('mcp-servers-admin', () => {
     const updated = await reRegisterMcpServerClient(server);
 
     expect(updated.clientId).toBe('client-2');
+    expect(updated.clientSecret).toBe('enc:secret-2');
+    expect(updated.tokenEndpoint).toBe('https://auth.example.com/v2/token');
+    expect(updated.revocationEndpoint).toBe('https://auth.example.com/v2/revoke');
+    expect(updated.scope).toBe('mcp:use mcp:admin');
+    expect(updated.tokenEndpointAuthMethod).toBe('client_secret_post');
+  });
+
+  it('toAdminMcpServerView never carries the encrypted client secret or registration access token to the browser', async () => {
+    const { toAdminMcpServerView } = await import('@/lib/mcp-servers-admin');
+    const row = {
+      id: 's1',
+      name: 'sentry',
+      serverUrl: 'https://mcp.example.com/mcp',
+      transport: 'HTTP',
+      resource: 'https://mcp.example.com/mcp',
+      authorizationServerUrl: 'https://auth.example.com',
+      authorizeEndpoint: 'https://auth.example.com/authorize',
+      tokenEndpoint: 'https://auth.example.com/token',
+      registrationEndpoint: 'https://auth.example.com/register',
+      revocationEndpoint: null,
+      scope: 'mcp:use',
+      tokenEndpointAuthMethod: 'client_secret_post',
+      clientId: 'client-1',
+      clientSecret: 'enc:secret-1',
+      clientSecretExpiresAt: null,
+      registrationAccessToken: 'enc:rat-1',
+      registrationMode: 'DYNAMIC',
+      enabled: true,
+      createdByUserId: 'admin-1',
+      createdAt: new Date('2026-01-01T00:00:00Z'),
+      updatedAt: new Date('2026-01-02T00:00:00Z'),
+    };
+
+    const view = toAdminMcpServerView(row);
+
+    expect(view).not.toHaveProperty('clientSecret');
+    expect(view).not.toHaveProperty('registrationAccessToken');
+    expect(view).toEqual(
+      expect.objectContaining({
+        id: 's1',
+        name: 'sentry',
+        clientId: 'client-1',
+        hasClientSecret: true,
+        registrationMode: 'DYNAMIC',
+        enabled: true,
+        callbackUrl: expect.stringMatching(/\/api\/mcp-servers\/s1\/callback$/),
+      }),
+    );
+    expect(toAdminMcpServerView({ ...row, clientSecret: null }).hasClientSecret).toBe(false);
   });
 
   it('reRegisterMcpServerClient refuses a MANUAL server', async () => {

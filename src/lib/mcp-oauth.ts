@@ -43,6 +43,11 @@ function hasRevocationEndpoint(metadata: AuthorizationServerMetadata): metadata 
   return 'revocation_endpoint' in metadata;
 }
 
+/** A published `scopes_supported` list as the space-delimited `scope` parameter (RFC 6749 §3.3). */
+function joinScopes(scopes: string[] | undefined): string | undefined {
+  return scopes && scopes.length > 0 ? scopes.join(' ') : undefined;
+}
+
 /** Combines RFC 9728 protected-resource discovery with RFC 8414 authorization-server metadata. */
 export async function discoverMcpServer(serverUrl: string): Promise<DiscoveredMcpServer> {
   const info: OAuthServerInfo = await discoverOAuthServerInfo(serverUrl, { fetchFn: createSafeFetch() });
@@ -63,7 +68,16 @@ export async function discoverMcpServer(serverUrl: string): Promise<DiscoveredMc
     tokenEndpoint: metadata.token_endpoint,
     registrationEndpoint: metadata.registration_endpoint,
     revocationEndpoint: hasRevocationEndpoint(metadata) ? metadata.revocation_endpoint : undefined,
-    scope: metadata.scopes_supported?.[0],
+    // The resource's own RFC 9728 `scopes_supported` is what an authorization
+    // request for *this* resource should carry, and the MCP scope-selection
+    // strategy (SEP-835, which the SDK's own `auth()` implements) prefers it.
+    // The authorization server's RFC 8414 list is only a fallback, and it is
+    // requested whole: it is the set of everything the server supports, not
+    // a ranking, so taking `[0]` requested e.g. `openid` on its own and left
+    // out the tool scope — every `tools/call` then failed while Settings
+    // still showed CONNECTED. Whatever is chosen here is stored on the row
+    // and reused verbatim for the authorize redirect and every refresh.
+    scope: joinScopes(info.resourceMetadata?.scopes_supported) ?? joinScopes(metadata.scopes_supported),
     tokenEndpointAuthMethod: metadata.token_endpoint_auth_methods_supported?.[0],
     metadata,
   };

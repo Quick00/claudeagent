@@ -1,5 +1,5 @@
 import { describe, expect, jest, test } from '@jest/globals';
-import { screen } from '@testing-library/react';
+import { screen, waitFor, within } from '@testing-library/react';
 import { renderWithProviders } from '@/test/render';
 import AdminMcpServers from './AdminMcpServers';
 
@@ -66,6 +66,48 @@ describe('AdminMcpServers', () => {
         body: JSON.stringify({ name: 'sentry', serverUrl: 'https://mcp.sentry.dev/mcp', transport: 'HTTP' }),
       }),
     );
+  });
+
+  const SENTRY: Server = {
+    id: 's1',
+    name: 'sentry',
+    serverUrl: 'https://mcp.sentry.dev/mcp',
+    enabled: true,
+    registrationMode: 'DYNAMIC',
+    clientId: 'c1',
+    callbackUrl: 'https://app.example.com/api/mcp-servers/s1/callback',
+  };
+
+  test('Delete asks for confirmation first — it cascades to every user\'s tokens — and only then calls the API', async () => {
+    const mock = fetchMock([SENTRY]);
+    global.fetch = mock as unknown as typeof fetch;
+
+    const { user } = renderWithProviders(<AdminMcpServers />);
+    await user.click(await screen.findByRole('button', { name: 'Delete' }));
+
+    const dialog = await screen.findByRole('alertdialog');
+    expect(within(dialog).getByText('Delete "sentry"?')).toBeInTheDocument();
+    expect(mock).not.toHaveBeenCalledWith('/api/admin/mcp-servers/s1', expect.objectContaining({ method: 'DELETE' }));
+
+    await user.click(within(dialog).getByRole('button', { name: 'Delete' }));
+
+    await waitFor(() =>
+      expect(mock).toHaveBeenCalledWith('/api/admin/mcp-servers/s1', expect.objectContaining({ method: 'DELETE' })),
+    );
+  });
+
+  test('cancelling the confirmation deletes nothing', async () => {
+    const mock = fetchMock([SENTRY]);
+    global.fetch = mock as unknown as typeof fetch;
+
+    const { user } = renderWithProviders(<AdminMcpServers />);
+    await user.click(await screen.findByRole('button', { name: 'Delete' }));
+    const dialog = await screen.findByRole('alertdialog');
+    await user.click(within(dialog).getByRole('button', { name: 'Cancel' }));
+
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument());
+    expect(mock).not.toHaveBeenCalledWith('/api/admin/mcp-servers/s1', expect.objectContaining({ method: 'DELETE' }));
+    expect(screen.getByText('sentry')).toBeInTheDocument();
   });
 
   test('shows the manual-entry form, with the callback URL to register on the server\'s side, when a server has no client id yet', async () => {

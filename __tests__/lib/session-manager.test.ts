@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
 import type { ChildProcess } from 'child_process';
 import { EventEmitter } from 'events';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync, existsSync, readdirSync } from 'fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync, existsSync, readdirSync, utimesSync } from 'fs';
 import { tmpdir } from 'os';
 import path from 'path';
 
@@ -211,25 +211,59 @@ describe('SessionManager', () => {
     expect(verifyMcp.mcpServers.knowledge.env.VERIFICATION_RUN_ID).toBe('run-9');
   });
 
-  it('deletes MCP config files left behind by a previous instance when the module loads', async () => {
+  /** Backdates a file so the sweep sees it as older than any session can live. */
+  function ageFile(file: string, ageMs: number) {
+    const then = (Date.now() - ageMs) / 1000;
+    utimesSync(file, then, then);
+  }
+  const TWO_HOURS = 2 * 60 * 60 * 1000;
+
+  it('deletes stale MCP config files left behind by a previous instance when the module loads, but not fresh ones', async () => {
     // A config file survives only when its process died without running any
     // cleanup handler — a SIGKILL or a container restart. In production
     // SESSIONS_DIR is a persistent volume, so the plaintext bearer tokens in
     // it would otherwise stay on disk indefinitely.
     const strayDir = path.join(sessionsDir, 'user-gone', 'mcp-config');
     mkdirSync(strayDir, { recursive: true });
-    writeFileSync(path.join(strayDir, 'abandoned.json'), '{"mcpServers":{}}');
-    // A file where a user directory belongs: rmSync on a path through it
-    // raises ENOTDIR, which must not stop the sweep reaching anything else.
+    const abandoned = path.join(strayDir, 'abandoned.json');
+    writeFileSync(abandoned, '{"mcpServers":{}}');
+    ageFile(abandoned, TWO_HOURS);
+    // Written moments ago by another instance sharing the volume, for a
+    // request still waiting in its queue: sweeping it would make that spawn
+    // fail under --strict-mcp-config.
+    const inFlight = path.join(strayDir, 'in-flight.json');
+    writeFileSync(inFlight, '{"mcpServers":{}}');
+    // A file where a user directory belongs: reading through it raises
+    // ENOTDIR, which must not stop the sweep reaching anything else.
     writeFileSync(path.join(sessionsDir, 'not-a-directory'), 'x');
-    const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
 
     jest.resetModules();
     await import('@/lib/session-manager');
 
-    expect(existsSync(strayDir)).toBe(false);
+    expect(existsSync(abandoned)).toBe(false);
+    expect(existsSync(inFlight)).toBe(true);
     expect(existsSync(path.join(sessionsDir, 'user-gone'))).toBe(true);
-    warnSpy.mockRestore();
+  });
+
+  it("sweeps stale files from the user's own config directory each time it writes a new one there", async () => {
+    // A file left by a crash is still fresh at the restart that follows, so
+    // the import-time sweep leaves it; this is what removes it later without
+    // waiting for another restart.
+    const configDir = path.join(sessionsDir, 'user-1', 'mcp-config');
+    mkdirSync(configDir, { recursive: true });
+    const crashed = path.join(configDir, 'crashed.json');
+    writeFileSync(crashed, '{"mcpServers":{}}');
+    ageFile(crashed, TWO_HOURS);
+    const recent = path.join(configDir, 'recent.json');
+    writeFileSync(recent, '{"mcpServers":{}}');
+    mockSpawn.mockReturnValue(createMockProcess());
+
+    const manager = new SessionManager();
+    await manager.startSession('msg-1', 'Hello', '', 'test-token', 'user-1', ['/mock/repo'], 'key-1');
+
+    expect(existsSync(crashed)).toBe(false);
+    expect(existsSync(recent)).toBe(true);
+    expect(readdirSync(configDir)).toHaveLength(2); // recent.json plus the one just written
   });
 
   it('cleans up process on close', async () => {

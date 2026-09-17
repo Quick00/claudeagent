@@ -1,5 +1,5 @@
 import { spawn, ChildProcess } from 'child_process';
-import { mkdirSync, writeFileSync, unlink, readdirSync, rmSync } from 'fs';
+import { mkdirSync, writeFileSync, unlink, readdirSync, statSync, unlinkSync } from 'fs';
 import { randomUUID } from 'crypto';
 import path from 'path';
 import { config } from '@/lib/config';
@@ -18,23 +18,62 @@ function cleanupConfigFile(configPath: string): void {
 }
 
 /**
- * Deletes every `mcp-config` directory under `SESSIONS_DIR`. The files in
- * them hold bearer tokens in plaintext and are unlinked when their process
- * ends — but a SIGKILL or a container restart never runs that handler, and
- * `SESSIONS_DIR` is a persistent volume in production. This runs once at
- * import, when no process is tracked yet, so nothing it finds is still in
- * use; every later config file is written fresh under a random name.
+ * How old an MCP config file must be before a sweep removes it. Comfortably
+ * past the longest a session can live: a verification run is bounded at
+ * twice `verificationTimeoutMs` (queue wait plus the run itself, 30 minutes
+ * by default) and a chat turn at `claudeMaxTurns`. A file this old belongs
+ * to no process on any instance.
+ */
+const STALE_MCP_CONFIG_MS = 60 * 60 * 1000;
+
+/**
+ * Removes config files older than `STALE_MCP_CONFIG_MS` from one user's
+ * `mcp-config` directory. The files hold bearer tokens in plaintext and are
+ * unlinked when their process ends — but a SIGKILL or a container restart
+ * never runs that handler, and `SESSIONS_DIR` is a persistent volume in
+ * production, so leftovers would otherwise stay on disk indefinitely.
+ *
+ * Age-gated rather than "everything": `SESSIONS_DIR` is a *shared* volume
+ * (`claude-sessions` in docker-compose.yml), so a second replica or an
+ * overlapping rolling restart would otherwise wipe files another instance
+ * had just written for a request still waiting in its queue — fatal for
+ * that spawn under `--strict-mcp-config`. A fresh file is left alone
+ * whoever wrote it; files are written once and never modified, so mtime is
+ * their age.
+ */
+function sweepStaleConfigFiles(configDir: string): void {
+  let names: string[];
+  try {
+    names = readdirSync(configDir);
+  } catch {
+    // Nothing written for this user yet — or a stray file where the user
+    // directory belongs (ENOTDIR). Either way there is nothing to sweep.
+    return;
+  }
+  const cutoff = Date.now() - STALE_MCP_CONFIG_MS;
+  for (const name of names) {
+    const file = path.join(configDir, name);
+    try {
+      if (statSync(file).mtimeMs < cutoff) unlinkSync(file);
+    } catch (err) {
+      // Another instance may have just removed it; the rest still gets swept.
+      console.warn(`[session-manager] Could not sweep MCP config file ${file}:`, (err as Error).message);
+    }
+  }
+}
+
+/**
+ * Runs once at import, across every user directory, to catch what a
+ * previous instance left behind. Not the only sweep: a file left by a crash
+ * is younger than the threshold at the restart that follows, so
+ * `buildMcpConfigFile` sweeps the user's own directory again each time it
+ * writes there, and the leftover goes the next time that user starts a
+ * session rather than surviving until some later restart.
  */
 function sweepOrphanedConfigDirs(): void {
   try {
     for (const userDir of readdirSync(SESSIONS_DIR)) {
-      try {
-        rmSync(path.join(SESSIONS_DIR, userDir, 'mcp-config'), { recursive: true, force: true });
-      } catch (err) {
-        // A stray file where a user directory belongs makes this ENOTDIR,
-        // which `force` does not cover. Skip it; the rest still gets swept.
-        console.warn(`[session-manager] Could not sweep MCP config for ${userDir}:`, (err as Error).message);
-      }
+      sweepStaleConfigFiles(path.join(SESSIONS_DIR, userDir, 'mcp-config'));
     }
   } catch {
     // No SESSIONS_DIR yet — nothing has ever been written there.
@@ -79,6 +118,7 @@ async function buildMcpConfigFile(
 
   const configDir = path.join(SESSIONS_DIR, userId, 'mcp-config');
   mkdirSync(configDir, { recursive: true });
+  sweepStaleConfigFiles(configDir);
   const configPath = path.join(configDir, `${randomUUID()}.json`);
   writeFileSync(configPath, JSON.stringify({ mcpServers }), { mode: 0o600 });
 

@@ -58,6 +58,44 @@ describe('mcp-oauth', () => {
     expect(discovered.scope).toBe('mcp:use');
   });
 
+  it("discoverMcpServer requests every scope the authorization server publishes, not just the first — the list is a set, not a ranking", async () => {
+    global.fetch = fakeFetch({
+      [PROTECTED_RESOURCE_URL]: RESOURCE_METADATA,
+      [AUTH_SERVER_METADATA_URL]: { ...AUTH_SERVER_METADATA, scopes_supported: ['openid', 'mcp:tools'] },
+    });
+    const { discoverMcpServer } = await import('@/lib/mcp-oauth');
+
+    const discovered = await discoverMcpServer(SERVER_URL);
+
+    // `[0]` here had been `openid` alone: a token with no tool scope, every
+    // tools/call rejected, Settings still saying CONNECTED.
+    expect(discovered.scope).toBe('openid mcp:tools');
+  });
+
+  it("discoverMcpServer prefers the protected resource's own scopes_supported (RFC 9728) over the authorization server's", async () => {
+    global.fetch = fakeFetch({
+      [PROTECTED_RESOURCE_URL]: { ...RESOURCE_METADATA, scopes_supported: ['mcp:tools'] },
+      [AUTH_SERVER_METADATA_URL]: { ...AUTH_SERVER_METADATA, scopes_supported: ['openid', 'profile', 'email', 'mcp:tools'] },
+    });
+    const { discoverMcpServer } = await import('@/lib/mcp-oauth');
+
+    const discovered = await discoverMcpServer(SERVER_URL);
+
+    expect(discovered.scope).toBe('mcp:tools');
+  });
+
+  it('discoverMcpServer leaves scope undefined when neither document publishes any, so the server applies its default', async () => {
+    global.fetch = fakeFetch({
+      [PROTECTED_RESOURCE_URL]: RESOURCE_METADATA,
+      [AUTH_SERVER_METADATA_URL]: { ...AUTH_SERVER_METADATA, scopes_supported: undefined },
+    });
+    const { discoverMcpServer } = await import('@/lib/mcp-oauth');
+
+    const discovered = await discoverMcpServer(SERVER_URL);
+
+    expect(discovered.scope).toBeUndefined();
+  });
+
   it('discoverMcpServer throws when the server has no authorization server metadata at all', async () => {
     global.fetch = fakeFetch({});
     const { discoverMcpServer } = await import('@/lib/mcp-oauth');
@@ -82,6 +120,34 @@ describe('mcp-oauth', () => {
 
     expect(clientInfo.client_id).toBe('client-123');
     expect(clientInfo.client_secret).toBe('secret-456');
+  });
+
+  it('registerMcpClient asks for the full discovered scope, and passes through the auth method the server assigned', async () => {
+    const { discoverMcpServer, registerMcpClient } = await import('@/lib/mcp-oauth');
+    global.fetch = fakeFetch({
+      [PROTECTED_RESOURCE_URL]: RESOURCE_METADATA,
+      [AUTH_SERVER_METADATA_URL]: {
+        ...AUTH_SERVER_METADATA,
+        scopes_supported: ['openid', 'mcp:tools'],
+        token_endpoint_auth_methods_supported: ['client_secret_basic', 'client_secret_post'],
+      },
+    });
+    const discovered = await discoverMcpServer(SERVER_URL);
+
+    let requestedScope: string | undefined;
+    global.fetch = jest.fn(async (_url: string | URL, init?: RequestInit) => {
+      const body = JSON.parse(init!.body as string);
+      requestedScope = body.scope;
+      // RFC 7591 §3.2.1: the server may assign a different method than requested.
+      return new Response(
+        JSON.stringify({ ...body, client_id: 'client-123', client_secret: 'secret-456', token_endpoint_auth_method: 'client_secret_post' }),
+        { status: 201 },
+      );
+    });
+    const clientInfo = await registerMcpClient(discovered, 'https://app.example.com/api/mcp-servers/s1/callback');
+
+    expect(requestedScope).toBe('openid mcp:tools');
+    expect(clientInfo.token_endpoint_auth_method).toBe('client_secret_post');
   });
 
   it('buildAuthorizationRequest generates a PKCE code verifier and includes the resource parameter', async () => {

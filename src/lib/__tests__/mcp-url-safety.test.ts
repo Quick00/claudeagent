@@ -51,6 +51,34 @@ describe('mcp-url-safety', () => {
       await expect(assertSafeMcpUrl('https://[::ffff:192.168.1.1]/mcp')).rejects.toThrow('private address');
     });
 
+    it('rejects every non-unicast IPv4 range, not just RFC 1918 — CGNAT, TEST-NETs, benchmark, multicast, broadcast, reserved', async () => {
+      // Each of these had been let through by the hand-written allow-list.
+      const blocked = [
+        '100.64.0.1', // RFC 6598 carrier-grade NAT — common internal cloud/k8s space
+        '192.0.0.1', // IETF protocol assignments
+        '192.0.2.1', // TEST-NET-1
+        '198.51.100.1', // TEST-NET-2
+        '203.0.113.1', // TEST-NET-3
+        '198.18.0.1', // RFC 2544 benchmarking (not in ipaddr.js's own table)
+        '198.19.255.254', // upper end of the same /15
+        '224.0.0.1', // multicast
+        '255.255.255.255', // broadcast
+        '240.0.0.1', // reserved
+      ];
+      for (const address of blocked) {
+        await expect(assertSafeMcpUrl(`https://${address}/mcp`)).rejects.toThrow('private address');
+        await expect(assertSafeMcpUrl(`https://[::ffff:${address}]/mcp`)).rejects.toThrow('private address');
+      }
+    });
+
+    it('still allows ordinary public IPv4 addresses, literal or resolved', async () => {
+      await expect(assertSafeMcpUrl('https://8.8.8.8/mcp')).resolves.toBeUndefined();
+      await expect(assertSafeMcpUrl('https://198.17.255.255/mcp')).resolves.toBeUndefined(); // just below the benchmark range
+      await expect(assertSafeMcpUrl('https://198.20.0.1/mcp')).resolves.toBeUndefined(); // just above it
+      mockLookup.mockResolvedValue([{ address: '1.1.1.1', family: 4 }]);
+      await expect(assertSafeMcpUrl('https://mcp.example.com/mcp')).resolves.toBeUndefined();
+    });
+
     it('rejects the unspecified IPv6 address ::', async () => {
       await expect(assertSafeMcpUrl('https://[::]/mcp')).rejects.toThrow('private address');
     });
@@ -103,6 +131,93 @@ describe('mcp-url-safety', () => {
 
       const safeFetch = createSafeFetch();
       await expect(safeFetch('https://public.example.com/mcp')).rejects.toThrow('private address');
+    });
+
+    describe('what is forwarded on a redirect', () => {
+      const TOKEN_REQUEST: RequestInit = {
+        method: 'POST',
+        headers: { Authorization: 'Basic Y2xpZW50OnNlY3JldA==', 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: 'grant_type=refresh_token&refresh_token=rt-1',
+      };
+
+      function redirectThenOk(status: number, location: string) {
+        const fetchMock = jest
+          .fn()
+          .mockResolvedValueOnce({ status, headers: new Headers({ location }) })
+          .mockResolvedValueOnce({ status: 200, headers: new Headers() });
+        global.fetch = fetchMock as unknown as typeof fetch;
+        return fetchMock;
+      }
+
+      function secondRequest(fetchMock: jest.Mock) {
+        const [url, init] = fetchMock.mock.calls[1] as [URL, RequestInit & { headers: Headers }];
+        return { url, init };
+      }
+
+      beforeEach(() => {
+        mockLookup.mockResolvedValue([{ address: '93.184.216.34', family: 4 }]);
+      });
+
+      it('drops Authorization when a redirect crosses origins, keeping the rest of the request intact', async () => {
+        // A token endpoint answering with one 302 must not be able to
+        // collect this app's client secret at an origin of its choosing.
+        const fetchMock = redirectThenOk(307, 'https://collector.example.net/collect');
+
+        await createSafeFetch()('https://auth.example.com/token', TOKEN_REQUEST);
+
+        const { url, init } = secondRequest(fetchMock);
+        expect(url.toString()).toBe('https://collector.example.net/collect');
+        expect(init.headers.get('authorization')).toBeNull();
+        expect(init.headers.get('content-type')).toBe('application/x-www-form-urlencoded');
+        expect(init.method).toBe('POST');
+        expect(init.body).toBe(TOKEN_REQUEST.body);
+      });
+
+      it('keeps Authorization on a same-origin redirect', async () => {
+        const fetchMock = redirectThenOk(307, 'https://auth.example.com/v2/token');
+
+        await createSafeFetch()('https://auth.example.com/token', TOKEN_REQUEST);
+
+        const { init } = secondRequest(fetchMock);
+        expect(init.headers.get('authorization')).toBe('Basic Y2xpZW50OnNlY3JldA==');
+        expect(init.body).toBe(TOKEN_REQUEST.body);
+      });
+
+      it('turns a 303, or a POST answered with 302, into a bodiless GET — as platform fetch does', async () => {
+        for (const status of [303, 302]) {
+          const fetchMock = redirectThenOk(status, 'https://auth.example.com/done');
+
+          await createSafeFetch()('https://auth.example.com/token', TOKEN_REQUEST);
+
+          const { init } = secondRequest(fetchMock);
+          expect(init.method).toBe('GET');
+          expect(init.body).toBeUndefined();
+          expect(init.headers.get('content-type')).toBeNull();
+        }
+      });
+
+      it('preserves method and body across a 307/308, which is what those statuses mean', async () => {
+        const fetchMock = redirectThenOk(308, 'https://auth.example.com/token2');
+
+        await createSafeFetch()('https://auth.example.com/token', TOKEN_REQUEST);
+
+        const { init } = secondRequest(fetchMock);
+        expect(init.method).toBe('POST');
+        expect(init.body).toBe(TOKEN_REQUEST.body);
+      });
+
+      it('releases the body of each redirect response it steps past', async () => {
+        const cancel = jest.fn().mockResolvedValue(undefined);
+        const fetchMock = jest
+          .fn()
+          .mockResolvedValueOnce({ status: 302, headers: new Headers({ location: 'https://auth.example.com/b' }), body: { cancel } })
+          .mockResolvedValueOnce({ status: 200, headers: new Headers() });
+        global.fetch = fetchMock as unknown as typeof fetch;
+
+        await createSafeFetch()('https://auth.example.com/a');
+
+        expect(cancel).toHaveBeenCalledTimes(1);
+      });
     });
   });
 });

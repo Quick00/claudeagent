@@ -257,5 +257,9 @@ describe('POST /api/chat — one assistant row per text segment', () => {
     );
 
     expect(events.filter((e) => e.type === 'mcp_server_notice')).toHaveLength(0);
+    // A healthy report is still recorded — it is what clears a note an
+    // earlier failure left in Settings — but the knowledge server never is.
+    expect(mockRecordStatus).toHaveBeenCalledWith('u1', 'sentry', 'connected');
+    expect(mockRecordStatus).not.toHaveBeenCalledWith('u1', 'knowledge', expect.anything());
   });
 });

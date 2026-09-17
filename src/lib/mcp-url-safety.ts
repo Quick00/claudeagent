@@ -2,15 +2,28 @@ import { lookup } from 'dns/promises';
 import { isIP } from 'net';
 import * as ipaddr from 'ipaddr.js';
 
+// RFC 2544 benchmarking range. ipaddr.js 2.x reports it as 'reserved', which
+// the default-deny check below already catches, but 1.x reads it as plain
+// 'unicast' — so it is named here rather than left to the installed version.
+const IPV4_BENCHMARK_RANGE = ipaddr.IPv4.parseCIDR('198.18.0.0/15');
+
 function isPrivateIPv4(address: string): boolean {
-  const parts = address.split('.').map(Number);
-  if (parts.length !== 4 || parts.some((n) => Number.isNaN(n))) return false;
-  const [a, b] = parts;
-  if (a === 10 || a === 127 || a === 0) return true;
-  if (a === 169 && b === 254) return true;
-  if (a === 172 && b >= 16 && b <= 31) return true;
-  if (a === 192 && b === 168) return true;
-  return false;
+  try {
+    const parsed = ipaddr.parse(address);
+    if (parsed.kind() !== 'ipv4') return false;
+    const ipv4 = parsed as ipaddr.IPv4;
+    if (ipv4.match(IPV4_BENCHMARK_RANGE)) return true;
+    // Default-deny, the same shape as the IPv6 check below: only a normal
+    // globally-routable ('unicast') address is public. A hand-written
+    // allow-by-default list had let through CGNAT 100.64.0.0/10 (RFC 6598 —
+    // common internal cloud/k8s NAT space), 192.0.0.0/24, the TEST-NETs,
+    // multicast, broadcast and 240.0.0.0/4.
+    return parsed.range() !== 'unicast';
+  } catch {
+    // Only reached for a string neither `net.isIP` nor the resolver
+    // produced; an SSRF guard fails closed on input it cannot classify.
+    return true;
+  }
 }
 
 function isPrivateIPv6(address: string): boolean {
@@ -29,7 +42,10 @@ function isPrivateIPv6(address: string): boolean {
     // doesn't specifically recognize as safe.
     return parsed.range() !== 'unicast';
   } catch {
-    return false;
+    // Same as the IPv4 branch: only reachable for a string neither
+    // `net.isIP` nor the resolver produced, and a guard that cannot
+    // classify its input fails closed rather than waving it through.
+    return true;
   }
 }
 
@@ -92,6 +108,36 @@ export async function assertSafeMcpUrl(input: string | URL): Promise<void> {
 }
 
 /**
+ * Rewrites a request the way the Fetch standard does when it follows a
+ * redirect itself (steps this wrapper takes over by using `redirect:
+ * 'manual'`): a 303, or a 301/302 answering a POST, becomes a bodiless GET
+ * (RFC 9110 §15.4), and a hop to a different origin loses `Authorization`.
+ *
+ * The second rule is what keeps a linked server's token or registration
+ * endpoint from answering with one 302 and collecting this app's client
+ * secret plus the user's refresh token or authorization code at an origin of
+ * its choosing — `assertSafeMcpUrl` only checks the target is public https.
+ * Platform `fetch` already strips the header on a cross-origin redirect;
+ * before this the wrapper regressed that.
+ */
+function rewriteForRedirect(init: RequestInit | undefined, status: number, from: URL, to: URL): RequestInit {
+  const headers = new Headers(init?.headers);
+  let { method, body } = init ?? {};
+
+  if (status === 303 || ((status === 301 || status === 302) && (method ?? 'GET').toUpperCase() === 'POST')) {
+    method = 'GET';
+    body = undefined;
+    for (const name of ['content-type', 'content-length', 'content-encoding', 'content-language', 'content-location']) {
+      headers.delete(name);
+    }
+  }
+  if (from.origin !== to.origin) {
+    headers.delete('authorization');
+  }
+  return { ...init, method, body, headers };
+}
+
+/**
  * A `fetch`-compatible function that validates a URL before every request
  * AND before following each redirect, since OAuth discovery chases several
  * server-supplied URLs that aren't the one an admin typed in. Passed as
@@ -100,12 +146,18 @@ export async function assertSafeMcpUrl(input: string | URL): Promise<void> {
 export function createSafeFetch(maxRedirects = 5) {
   return async function safeFetch(input: string | URL, init?: RequestInit): Promise<Response> {
     let url = typeof input === 'string' ? new URL(input) : input;
+    let current = init;
     for (let i = 0; i <= maxRedirects; i++) {
       await assertSafeMcpUrl(url);
-      const res = await fetch(url, { ...init, redirect: 'manual' });
+      const res = await fetch(url, { ...current, redirect: 'manual' });
       const location = res.headers.get('location');
       if (res.status >= 300 && res.status < 400 && location) {
-        url = new URL(location, url);
+        // Nothing reads a redirect response's body; releasing it hands the
+        // connection back instead of holding it until garbage collection.
+        void res.body?.cancel().catch(() => {});
+        const next = new URL(location, url);
+        current = rewriteForRedirect(current, res.status, url, next);
+        url = next;
         continue;
       }
       return res;

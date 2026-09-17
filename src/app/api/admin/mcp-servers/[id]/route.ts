@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { requireAdminUser } from '@/lib/api-auth';
-import { saveManualMcpServerClient, setMcpServerEnabled, deleteMcpServer } from '@/lib/mcp-servers-admin';
+import { saveManualMcpServerClient, setMcpServerEnabled, deleteMcpServer, toAdminMcpServerView } from '@/lib/mcp-servers-admin';
 
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const auth = await requireAdminUser();
@@ -9,7 +9,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
 
   const body = await request.json();
   if ('enabled' in body) {
-    return NextResponse.json(await setMcpServerEnabled(id, Boolean(body.enabled)));
+    return NextResponse.json(toAdminMcpServerView(await setMcpServerEnabled(id, Boolean(body.enabled))));
   }
 
   const { clientId, clientSecret, authorizeEndpoint, tokenEndpoint, revocationEndpoint } = body as {
@@ -23,7 +23,9 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     return NextResponse.json({ error: 'clientId is required' }, { status: 400 });
   }
   return NextResponse.json(
-    await saveManualMcpServerClient(id, { clientId, clientSecret, authorizeEndpoint, tokenEndpoint, revocationEndpoint }),
+    toAdminMcpServerView(
+      await saveManualMcpServerClient(id, { clientId, clientSecret, authorizeEndpoint, tokenEndpoint, revocationEndpoint }),
+    ),
   );
 }
 

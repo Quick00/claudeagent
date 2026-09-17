@@ -13,6 +13,7 @@ import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
+import { useConfirm } from '@/hooks/use-confirm';
 import { apiFetch, jsonBody } from '@/lib/api';
 import { qk } from '@/lib/query-keys';
 
@@ -68,6 +69,7 @@ function ManualClientForm({ server, onSaved }: { server: McpServer; onSaved: () 
 
 export default function AdminMcpServers() {
   const queryClient = useQueryClient();
+  const confirmDialog = useConfirm();
   const [name, setName] = useState('');
   const [serverUrl, setServerUrl] = useState('');
   const [transport, setTransport] = useState<'HTTP' | 'SSE'>('HTTP');
@@ -104,6 +106,20 @@ export default function AdminMcpServers() {
     onError: () => toast.error('Failed to delete server'),
   });
 
+  // Same gate as the repos and users panels. Deleting a server cascades to
+  // every user's McpServerConnection — their access and refresh tokens go
+  // with it, and nothing revokes those upstream first — so a stray click
+  // here is not something a user can undo from their own Settings.
+  const handleDelete = async (server: McpServer) => {
+    const ok = await confirmDialog({
+      title: `Delete "${server.name}"?`,
+      description:
+        'Every user who connected their account to this server will be disconnected and will have to connect again. This cannot be undone.',
+      confirmLabel: 'Delete',
+    });
+    if (ok) deleteMutation.mutate(server.id);
+  };
+
   return (
     <PageContainer className="space-y-8">
       <PageHeader title="MCP Servers" description="Remote MCP servers users can connect their own account to." />
@@ -136,7 +152,7 @@ export default function AdminMcpServers() {
                     />
                   </TableCell>
                   <TableCell className="text-right">
-                    <Button variant="ghost" size="sm" onClick={() => deleteMutation.mutate(server.id)}>
+                    <Button variant="ghost" size="sm" onClick={() => handleDelete(server)}>
                       Delete
                     </Button>
                   </TableCell>

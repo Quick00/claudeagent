@@ -7,7 +7,7 @@ jest.mock('@/lib/prisma', () => ({
   prisma: {
     mcpServer: { findUnique: jest.fn(), findUniqueOrThrow: jest.fn() },
     mcpServerConnection: { findMany: jest.fn(), findUnique: jest.fn(), upsert: jest.fn(), update: jest.fn(), updateMany: jest.fn(), delete: jest.fn() },
-    mcpOAuthState: { create: jest.fn(), findUnique: jest.fn(), delete: jest.fn() },
+    mcpOAuthState: { create: jest.fn(), findUnique: jest.fn(), delete: jest.fn(), deleteMany: jest.fn() },
     $transaction: jest.fn((fn: (tx: unknown) => unknown) => fn(prismaMockTx)),
   },
 }));
@@ -367,10 +367,31 @@ describe('startMcpConnect', () => {
     );
   });
 
+  it('sweeps expired pending states before recording a new one — the only collection abandoned flows ever get', async () => {
+    (prisma.mcpServer.findUniqueOrThrow as jest.Mock).mockResolvedValue(SERVER);
+    (mcpOauth.buildAuthorizationRequest as jest.Mock).mockResolvedValue({
+      authorizationUrl: new URL('https://auth.sentry.dev/authorize?state=abc'),
+      codeVerifier: 'verifier-xyz',
+    });
+
+    const { startMcpConnect } = await import('@/lib/mcp-connections');
+    await startMcpConnect('u1', 'srv-1');
+
+    expect(prisma.mcpOAuthState.deleteMany).toHaveBeenCalledWith({ where: { expiresAt: { lt: expect.any(Date) } } });
+  });
+
   it('refuses to connect to a server with no client id yet', async () => {
     (prisma.mcpServer.findUniqueOrThrow as jest.Mock).mockResolvedValue({ ...SERVER, clientId: null });
     const { startMcpConnect } = await import('@/lib/mcp-connections');
     await expect(startMcpConnect('u1', 'srv-1')).rejects.toThrow('not ready to connect');
+  });
+});
+
+describe('abandonMcpConnect', () => {
+  it("deletes the pending state, scoped to the signed-in user so someone else's state value cannot be cancelled", async () => {
+    const { abandonMcpConnect } = await import('@/lib/mcp-connections');
+    await abandonMcpConnect('u1', 'state-abc');
+    expect(prisma.mcpOAuthState.deleteMany).toHaveBeenCalledWith({ where: { state: 'state-abc', userId: 'u1' } });
   });
 });
 
@@ -501,24 +522,45 @@ describe('disconnectMcpServer', () => {
 });
 
 describe('recordMcpServerStatus', () => {
-  it('writes the reported status onto the connection lastError', async () => {
-    (prisma.mcpServer.findUnique as jest.Mock).mockResolvedValue({ id: 'srv-1' });
+  const byName = { userId: 'u1', mcpServer: { name: 'sentry' } };
 
+  it('notes a "failed" report on lastError but leaves the status CONNECTED — a connection blip says nothing about the token', async () => {
+    const { recordMcpServerStatus } = await import('@/lib/mcp-connections');
+    await recordMcpServerStatus('u1', 'sentry', 'failed');
+
+    expect(prisma.mcpServerConnection.updateMany).toHaveBeenCalledWith({
+      where: byName,
+      data: { lastError: expect.stringContaining('failed') },
+    });
+    expect((prisma.mcpServerConnection.updateMany as jest.Mock).mock.calls[0][0].data).not.toHaveProperty('status');
+  });
+
+  it('flips a "needs-auth" report to ERROR, so the connection leaves future sessions and Settings offers Reconnect', async () => {
     const { recordMcpServerStatus } = await import('@/lib/mcp-connections');
     await recordMcpServerStatus('u1', 'sentry', 'needs-auth');
 
-    expect(prisma.mcpServer.findUnique).toHaveBeenCalledWith({ where: { name: 'sentry' }, select: { id: true } });
     expect(prisma.mcpServerConnection.updateMany).toHaveBeenCalledWith({
-      where: { userId: 'u1', mcpServerId: 'srv-1' },
-      data: { lastError: expect.stringContaining('needs-auth') },
+      where: byName,
+      data: { status: 'ERROR', lastError: expect.stringContaining('needs-auth') },
     });
   });
 
-  it('does nothing when the server name is unknown', async () => {
-    (prisma.mcpServer.findUnique as jest.Mock).mockResolvedValue(null);
-
+  it('clears the note an earlier failure left once the server reports connected again', async () => {
+    // Before this, only a token refresh or a reconnect ever cleared
+    // lastError — and a connection with no expiry never refreshes, so the
+    // row read "Connected" with a permanent red error line beneath it.
     const { recordMcpServerStatus } = await import('@/lib/mcp-connections');
-    await recordMcpServerStatus('u1', 'ghost', 'failed');
+    await recordMcpServerStatus('u1', 'sentry', 'connected');
+
+    expect(prisma.mcpServerConnection.updateMany).toHaveBeenCalledWith({
+      where: { ...byName, lastError: { not: null } },
+      data: { lastError: null },
+    });
+  });
+
+  it('ignores statuses it has nothing to say about, such as pending', async () => {
+    const { recordMcpServerStatus } = await import('@/lib/mcp-connections');
+    await recordMcpServerStatus('u1', 'sentry', 'pending');
 
     expect(prisma.mcpServerConnection.updateMany).not.toHaveBeenCalled();
   });

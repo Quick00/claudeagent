@@ -162,7 +162,11 @@ export function useConversation(initialConversationId: string | null) {
   // A linked MCP server that dropped out of the current turn. Transient like
   // `toolStatus`, but survives past `done`: it describes what happened during
   // the turn that just finished, not work still in flight.
-  const [mcpNotice, setMcpNotice] = useState<string | null>(null);
+  // One entry per linked server that dropped out of the current turn. The
+  // server sends a separate `mcp_server_notice` per server, so a single slot
+  // here kept only the last one — a user with two dead connections fixed
+  // one, retried, and was only then told about the other.
+  const [mcpNotices, setMcpNotices] = useState<string[]>([]);
 
   const knowledgeConfettiFired = useRef(false);
 
@@ -397,7 +401,7 @@ export function useConversation(initialConversationId: string | null) {
       setIsStreaming(true);
       setStreamingSegments([]);
       setToolStatus(null);
-      setMcpNotice(null);
+      setMcpNotices([]);
 
       // ───────────────────────── SSE streaming block ─────────────────────────
       // Everything down to the matching end marker is today's fetch + reader
@@ -523,8 +527,9 @@ export function useConversation(initialConversationId: string | null) {
               if (hasText(segments[segments.length - 1])) segments.push('');
             }
 
-            if (event.type === 'mcp_server_notice') {
-              setMcpNotice(event.message ?? null);
+            if (event.type === 'mcp_server_notice' && event.message) {
+              const notice = event.message;
+              setMcpNotices((prev) => (prev.includes(notice) ? prev : [...prev, notice]));
             }
 
             if (event.type === 'tool_use') {
@@ -628,7 +633,7 @@ export function useConversation(initialConversationId: string | null) {
     messages,
     streamingSegments,
     toolStatus,
-    mcpNotice,
+    mcpNotices,
     isLoading,
     initialLoading,
     claudeLinked,

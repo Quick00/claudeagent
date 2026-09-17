@@ -1,21 +1,13 @@
 import { NextResponse } from 'next/server';
 import { requireAdminUser } from '@/lib/api-auth';
-import { listMcpServersAdmin, registerMcpServer, mcpCallbackUrl } from '@/lib/mcp-servers-admin';
-import type { McpServer } from '@prisma/client';
-
-// The admin UI needs to display this fixed URI for MANUAL registration
-// (the admin registers it as the redirect URI on the third-party server's
-// side), so every server the admin-facing routes return carries it.
-function withCallbackUrl(server: McpServer) {
-  return { ...server, callbackUrl: mcpCallbackUrl(server.id) };
-}
+import { listMcpServersAdmin, registerMcpServer, toAdminMcpServerView } from '@/lib/mcp-servers-admin';
 
 export async function GET() {
   const auth = await requireAdminUser();
   if (!auth.ok) return auth.response;
 
   const servers = await listMcpServersAdmin();
-  return NextResponse.json(servers.map(withCallbackUrl));
+  return NextResponse.json(servers.map(toAdminMcpServerView));
 }
 
 export async function POST(request: Request) {
@@ -30,7 +22,7 @@ export async function POST(request: Request) {
 
   try {
     const server = await registerMcpServer({ name, serverUrl, transport, createdByUserId: auth.user.id });
-    return NextResponse.json(withCallbackUrl(server), { status: 201 });
+    return NextResponse.json(toAdminMcpServerView(server), { status: 201 });
   } catch (err) {
     // Discovery failures — including a rejected name — are the caller's
     // (admin's) input being invalid or unreachable, not a server bug.
