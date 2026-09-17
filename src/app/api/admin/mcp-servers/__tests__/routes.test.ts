@@ -63,6 +63,12 @@ describe('admin mcp-servers routes', () => {
     expect((await POST(json({ name: 'sentry' }))).status).toBe(400);
   });
 
+  it('POST rejects a transport outside the two the schema allows', async () => {
+    const res = await POST(json({ name: 'sentry', serverUrl: 'https://mcp.example.com/mcp', transport: 'WEBSOCKET' }));
+    expect(res.status).toBe(400);
+    expect(registerMcpServer).not.toHaveBeenCalled();
+  });
+
   it('POST maps a discovery failure to 422 rather than 500', async () => {
     (registerMcpServer as jest.Mock).mockRejectedValue(new Error('mcp.example.com must use https'));
     const res = await POST(json({ name: 'bad', serverUrl: 'http://mcp.example.com/mcp' }));
@@ -76,6 +82,12 @@ describe('admin mcp-servers routes', () => {
     expect(res.status).toBe(200);
     expect(setMcpServerEnabled).toHaveBeenCalledWith('s1', true);
     expect(await res.json()).toEqual(expect.objectContaining({ id: 's1', projected: true }));
+  });
+
+  it('PATCH rejects a non-boolean enabled instead of coercing it', async () => {
+    const res = await PATCH(json({ enabled: 'false' }, 'PATCH'), params('s1'));
+    expect(res.status).toBe(400);
+    expect(setMcpServerEnabled).not.toHaveBeenCalled();
   });
 
   it('PATCH saves manual client credentials and answers with the projected row', async () => {

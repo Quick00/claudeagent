@@ -74,7 +74,7 @@ export default function AdminMcpServers() {
   const [serverUrl, setServerUrl] = useState('');
   const [transport, setTransport] = useState<'HTTP' | 'SSE'>('HTTP');
 
-  const { data: servers = [], isPending } = useQuery({
+  const { data: servers = [], isPending, isError, error } = useQuery({
     queryKey: qk.mcpServers.adminList(),
     queryFn: ({ signal }) => apiFetch<McpServer[]>('/api/admin/mcp-servers', { signal }),
   });
@@ -124,7 +124,9 @@ export default function AdminMcpServers() {
     <PageContainer className="space-y-8">
       <PageHeader title="MCP Servers" description="Remote MCP servers users can connect their own account to." />
 
-      {isPending ? null : servers.length === 0 ? (
+      {isPending ? null : isError ? (
+        <p className="text-sm text-destructive">{error.message}</p>
+      ) : servers.length === 0 ? (
         <EmptyState icon={Cable} title="No MCP servers yet" description="Register one below." />
       ) : (
         <Table>
@@ -147,12 +149,13 @@ export default function AdminMcpServers() {
                   <TableCell>
                     <Switch
                       checked={server.enabled}
+                      aria-label={`Enable ${server.name}`}
                       disabled={server.registrationMode === 'MANUAL' && !server.clientId}
                       onCheckedChange={(checked) => toggleMutation.mutate({ id: server.id, enabled: checked })}
                     />
                   </TableCell>
                   <TableCell className="text-right">
-                    <Button variant="ghost" size="sm" onClick={() => handleDelete(server)}>
+                    <Button variant="ghost" size="sm" aria-label={`Delete ${server.name}`} onClick={() => handleDelete(server)}>
                       Delete
                     </Button>
                   </TableCell>

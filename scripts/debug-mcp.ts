@@ -88,7 +88,7 @@ function checkTool(tool: unknown, index: number): string[] {
 async function main() {
   const [serverName, userEmail] = process.argv.slice(2);
   if (!serverName) {
-    console.error('Usage: npx ts-node scripts/debug-mcp.ts <server-name> [user-email]');
+    console.error('Usage: npx tsx scripts/debug-mcp.ts <server-name> [user-email]');
     process.exit(1);
   }
 

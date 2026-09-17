@@ -74,7 +74,21 @@ export default function McpServerConnections() {
     );
   }
 
-  if (isError || servers.length === 0) return null;
+  // Rendering nothing here is indistinguishable from a deployment with no MCP servers.
+  if (isError) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle>MCP Servers</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <p className="text-sm text-destructive">Couldn&rsquo;t load your MCP server connections.</p>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (servers.length === 0) return null;
 
   return (
     <Card>

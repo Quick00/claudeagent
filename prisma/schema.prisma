@@ -25,6 +25,7 @@ model User {
   feedbackPosts    FeedbackPost[]
   mcpServerConnections McpServerConnection[]
   mcpOAuthStates       McpOAuthState[]
+  createdMcpServers    McpServer[] @relation("McpServerCreator")
 }
 
 model AppSetting {
@@ -221,6 +222,7 @@ model McpServer {
   createdAt               DateTime  @default(now())
   updatedAt               DateTime  @updatedAt
 
+  createdBy   User?                 @relation("McpServerCreator", fields: [createdByUserId], references: [id], onDelete: SetNull)
   connections McpServerConnection[]
   oauthStates McpOAuthState[]
 }

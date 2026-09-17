@@ -5,9 +5,15 @@ import { discoverMcpServer, registerMcpClient } from '@/lib/mcp-oauth';
 import { assertSafeMcpUrl } from '@/lib/mcp-url-safety';
 import type { McpServer } from '@prisma/client';
 
-/** The fixed redirect URI every server sees — never taken from user or admin input. */
+/**
+ * The fixed redirect URI every server sees — never taken from user or admin
+ * input. Authorization codes arrive on it, so in production it must be https.
+ */
 export function mcpCallbackUrl(serverId: string): string {
   const base = process.env.NEXTAUTH_URL || 'http://localhost:3000';
+  if (process.env.NODE_ENV === 'production' && !base.startsWith('https://')) {
+    throw new Error('NEXTAUTH_URL must be an https URL to register an MCP server');
+  }
   return `${base}/api/mcp-servers/${serverId}/callback`;
 }
 

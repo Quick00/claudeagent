@@ -13,8 +13,13 @@ interface DroppedServer {
   reason: string;
 }
 
+/** A file left behind holds the user's bearer tokens until `sweepStaleConfigFiles` reaches it. */
 function cleanupConfigFile(configPath: string): void {
-  unlink(configPath, () => {});
+  unlink(configPath, (err) => {
+    if (err && err.code !== 'ENOENT') {
+      console.warn(`[session-manager] Could not remove MCP config file ${configPath}:`, err.message);
+    }
+  });
 }
 
 /**

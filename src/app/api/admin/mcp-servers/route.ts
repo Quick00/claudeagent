@@ -15,9 +15,12 @@ export async function POST(request: Request) {
   if (!auth.ok) return auth.response;
 
   const body = await request.json();
-  const { name, serverUrl, transport } = body as { name?: string; serverUrl?: string; transport?: 'HTTP' | 'SSE' };
+  const { name, serverUrl, transport } = body as { name?: string; serverUrl?: string; transport?: unknown };
   if (!name || !serverUrl) {
     return NextResponse.json({ error: 'name and serverUrl are required' }, { status: 400 });
+  }
+  if (transport !== undefined && transport !== 'HTTP' && transport !== 'SSE') {
+    return NextResponse.json({ error: 'transport must be "HTTP" or "SSE"' }, { status: 400 });
   }
 
   try {

@@ -39,6 +39,14 @@ describe('McpServerConnections', () => {
   // into every later test in this file.
   beforeEach(() => useSearchParams.mockReturnValue(new URLSearchParams()));
 
+  test('a failed load shows an error rather than hiding the section entirely', async () => {
+    global.fetch = jest.fn(async () => ({ ok: false, status: 500, text: async () => '{"error":"nope"}' })) as unknown as typeof fetch;
+
+    renderWithProviders(<McpServerConnections />);
+
+    expect(await screen.findByText(/Couldn.t load your MCP server connections/)).toBeInTheDocument();
+  });
+
   test('shows each server with its connection status', async () => {
     global.fetch = fetchMock([
       { id: 's1', name: 'sentry', connectionStatus: 'CONNECTED', lastError: null },

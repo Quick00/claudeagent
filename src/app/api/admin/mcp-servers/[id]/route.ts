@@ -9,7 +9,11 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
 
   const body = await request.json();
   if ('enabled' in body) {
-    return NextResponse.json(toAdminMcpServerView(await setMcpServerEnabled(id, Boolean(body.enabled))));
+    // Coercion reads the string "false" as true, enabling a server meant to be switched off.
+    if (typeof body.enabled !== 'boolean') {
+      return NextResponse.json({ error: 'enabled must be a boolean' }, { status: 400 });
+    }
+    return NextResponse.json(toAdminMcpServerView(await setMcpServerEnabled(id, body.enabled)));
   }
 
   const { clientId, clientSecret, authorizeEndpoint, tokenEndpoint, revocationEndpoint } = body as {

@@ -299,6 +299,8 @@ export async function POST(request: Request) {
                 type: 'error',
                 content: 'Failed to retry Claude process. Please try again.',
               }));
+              // No process attached, so no terminal handler will end the collection started above.
+              provenanceCollector.end(userMessage.id);
               sink.close();
             });
             return true; // stop processing remaining lines in this chunk
@@ -394,6 +396,8 @@ export async function POST(request: Request) {
         type: 'error',
         content: 'Failed to start Claude process. Please try again.',
       }));
+      // No process attached, so no terminal handler will end the collection started above.
+      provenanceCollector.end(userMessage.id);
       sink.close();
     });
   });

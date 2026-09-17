@@ -30,6 +30,19 @@ function fetchMock(servers: Server[]) {
 }
 
 describe('AdminMcpServers', () => {
+  test('a failed load says so instead of claiming no servers are registered', async () => {
+    global.fetch = jest.fn(async () => ({
+      ok: false,
+      status: 500,
+      text: async () => JSON.stringify({ error: 'Internal Server Error' }),
+    })) as unknown as typeof fetch;
+
+    renderWithProviders(<AdminMcpServers />);
+
+    expect(await screen.findByText(/Internal Server Error/)).toBeInTheDocument();
+    expect(screen.queryByText('No MCP servers yet')).not.toBeInTheDocument();
+  });
+
   test('lists registered servers with their registration mode', async () => {
     global.fetch = fetchMock([
       {
@@ -83,7 +96,7 @@ describe('AdminMcpServers', () => {
     global.fetch = mock as unknown as typeof fetch;
 
     const { user } = renderWithProviders(<AdminMcpServers />);
-    await user.click(await screen.findByRole('button', { name: 'Delete' }));
+    await user.click(await screen.findByRole('button', { name: 'Delete sentry' }));
 
     const dialog = await screen.findByRole('alertdialog');
     expect(within(dialog).getByText('Delete "sentry"?')).toBeInTheDocument();
@@ -101,7 +114,7 @@ describe('AdminMcpServers', () => {
     global.fetch = mock as unknown as typeof fetch;
 
     const { user } = renderWithProviders(<AdminMcpServers />);
-    await user.click(await screen.findByRole('button', { name: 'Delete' }));
+    await user.click(await screen.findByRole('button', { name: 'Delete sentry' }));
     const dialog = await screen.findByRole('alertdialog');
     await user.click(within(dialog).getByRole('button', { name: 'Cancel' }));
 

@@ -37,6 +37,22 @@ const DISCOVERED = {
 describe('mcp-servers-admin', () => {
   beforeEach(() => jest.clearAllMocks());
 
+  it('mcpCallbackUrl refuses a plain-http base in production, since an authorization code arrives on it', async () => {
+    const { mcpCallbackUrl } = await import('@/lib/mcp-servers-admin');
+    const url = process.env.NEXTAUTH_URL;
+    const env = process.env.NODE_ENV;
+
+    process.env.NEXTAUTH_URL = 'http://app.example.com';
+    Object.defineProperty(process.env, 'NODE_ENV', { value: 'production', configurable: true });
+    expect(() => mcpCallbackUrl('s1')).toThrow(/https/);
+
+    process.env.NEXTAUTH_URL = 'https://app.example.com';
+    expect(mcpCallbackUrl('s1')).toBe('https://app.example.com/api/mcp-servers/s1/callback');
+
+    Object.defineProperty(process.env, 'NODE_ENV', { value: env, configurable: true });
+    process.env.NEXTAUTH_URL = url;
+  });
+
   it('registerMcpServer attempts DCR and stores DYNAMIC credentials on success', async () => {
     mockDiscover.mockResolvedValue(DISCOVERED);
     mockRegister.mockResolvedValue({ client_id: 'client-1', client_secret: 'secret-1' });
