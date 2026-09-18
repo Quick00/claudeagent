@@ -319,6 +319,18 @@ describe('POST /api/chat — what a connected source is for reaches the CLI', ()
     expect(mockResume.mock.calls[0][2] as string).toContain('jira');
   });
 
+  // The provenance collection is already open by this point, so a throw here
+  // would 500 the turn and leave that collection running for the message.
+  it('still answers when the lookup fails, without describing any source', async () => {
+    mockConvFind.mockResolvedValue({ id: 'conv-1', claudeSessionId: null });
+    mockLinkedServers.mockRejectedValue(new Error('connection pool exhausted'));
+
+    await runEmptyTurn(mockStart);
+
+    expect(mockStart).toHaveBeenCalled();
+    expect(mockStart.mock.calls[0][2] as string).not.toMatch(/CONNECTED SOURCES/);
+  });
+
   it('says nothing about sources when the user has connected none', async () => {
     mockConvFind.mockResolvedValue({ id: 'conv-1', claudeSessionId: null });
     mockLinkedServers.mockResolvedValue([]);

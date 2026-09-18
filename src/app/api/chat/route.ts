@@ -7,7 +7,7 @@ import { decrypt } from '@/lib/crypto';
 import { ChildProcess } from 'child_process';
 import { retrieveKnowledge, type LabelledEntry } from '@/lib/knowledge-context';
 import { buildSystemPrompt, buildCliMessage } from '@/lib/chat-prompt';
-import { getLinkedServersForPrompt } from '@/lib/mcp-context';
+import { getLinkedServersForPrompt, type LinkedServerSummary } from '@/lib/mcp-context';
 import { provenanceCollector } from '@/lib/provenance-collector';
 import { getKnowledgeIgnoreLists } from '@/lib/settings';
 import path from 'path';
@@ -137,7 +137,12 @@ export async function POST(request: Request) {
   }
 
   const isResumed = Boolean(conversation.claudeSessionId);
-  const linkedServers = await getLinkedServersForPrompt(userId);
+  let linkedServers: LinkedServerSummary[] = [];
+  try {
+    linkedServers = await getLinkedServersForPrompt(userId);
+  } catch (err) {
+    console.error('[chat] Linked MCP server lookup failed, continuing without them:', (err as Error).message);
+  }
   const systemPrompt = buildSystemPrompt({ isResumed, knowledge, repoContext, linkedServers });
 
   return createSseResponse((sink) => {
