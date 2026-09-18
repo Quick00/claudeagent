@@ -272,7 +272,10 @@ describe('POST /api/chat — what a connected source is for reaches the CLI', ()
   beforeEach(() => {
     jest.clearAllMocks();
     mockAuth.mockResolvedValue({ ok: true, user: { id: 'u1', claudeToken: 'enc', role: 'user' } });
-    mockRepos.mockResolvedValue([]);
+    // With no repo and no REPO_PATH the route answers 503 and never spawns.
+    mockRepos.mockResolvedValue([
+      { name: 'app', description: 'the app', localPath: '/repos/app', lastPulledAt: null, gitlabProjectId: '1' },
+    ]);
     mockMsgCreate.mockResolvedValue({ id: 'um1', createdAt: USER_MESSAGE_AT });
     mockMsgCreateMany.mockResolvedValue({ count: 1 });
     mockDropped.mockReturnValue([]);
