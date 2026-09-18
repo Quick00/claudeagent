@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { requireAdminUser } from '@/lib/api-auth';
-import { saveManualMcpServerClient, setMcpServerEnabled, deleteMcpServer, toAdminMcpServerView } from '@/lib/mcp-servers-admin';
+import { saveManualMcpServerClient, setMcpServerEnabled, setMcpServerDescription, deleteMcpServer, toAdminMcpServerView } from '@/lib/mcp-servers-admin';
+import { config } from '@/lib/config';
 
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const auth = await requireAdminUser();
@@ -14,6 +15,21 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
       return NextResponse.json({ error: 'enabled must be a boolean' }, { status: 400 });
     }
     return NextResponse.json(toAdminMcpServerView(await setMcpServerEnabled(id, body.enabled)));
+  }
+
+  if ('description' in body) {
+    const { description } = body as { description: unknown };
+    if (description !== null && typeof description !== 'string') {
+      return NextResponse.json({ error: 'description must be text' }, { status: 400 });
+    }
+    const trimmed = description?.trim() ?? '';
+    if (trimmed.length > config.mcpServerDescriptionMaxLength) {
+      return NextResponse.json(
+        { error: `description must be at most ${config.mcpServerDescriptionMaxLength} characters` },
+        { status: 400 },
+      );
+    }
+    return NextResponse.json(toAdminMcpServerView(await setMcpServerDescription(id, trimmed || null)));
   }
 
   const { clientId, clientSecret, authorizeEndpoint, tokenEndpoint, revocationEndpoint } = body as {

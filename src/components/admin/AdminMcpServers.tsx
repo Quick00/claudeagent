@@ -11,20 +11,65 @@ import { Button } from '@/components/ui/button';
 import { Field, FieldLabel } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
+import { Textarea } from '@/components/ui/textarea';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { useConfirm } from '@/hooks/use-confirm';
 import { apiFetch, jsonBody } from '@/lib/api';
 import { qk } from '@/lib/query-keys';
 
+// Kept in step with `config.mcpServerDescriptionMaxLength`, which the API enforces.
+const DESCRIPTION_MAX_LENGTH = 300;
+
 interface McpServer {
   id: string;
   name: string;
+  description: string | null;
   serverUrl: string;
   enabled: boolean;
   registrationMode: 'DYNAMIC' | 'MANUAL';
   clientId: string | null;
   callbackUrl: string;
+}
+
+function DescriptionForm({ server, onSaved }: { server: McpServer; onSaved: () => void }) {
+  const [description, setDescription] = useState(server.description ?? '');
+
+  const saveMutation = useMutation({
+    mutationFn: () => apiFetch(`/api/admin/mcp-servers/${server.id}`, jsonBody('PATCH', { description: description.trim() })),
+    onSuccess: () => {
+      toast.success(`Saved what ${server.name} is for`);
+      onSaved();
+    },
+    onError: (err) => toast.error(err instanceof Error ? err.message : 'Failed to save the description'),
+  });
+
+  return (
+    <Field>
+      <FieldLabel htmlFor={`mcp-description-${server.id}`}>When to use {server.name}</FieldLabel>
+      <Textarea
+        id={`mcp-description-${server.id}`}
+        rows={2}
+        maxLength={DESCRIPTION_MAX_LENGTH}
+        value={description}
+        onChange={(e) => setDescription(e.target.value)}
+        placeholder="Customer tickets, their status and history."
+      />
+      <p className="text-xs text-muted-foreground">
+        One or two sentences, in the words support staff use. Claude reads this to decide when to look here instead of
+        in the code.
+      </p>
+      <Button
+        size="sm"
+        className="self-start"
+        aria-label={`Save description for ${server.name}`}
+        disabled={description.trim() === (server.description ?? '') || saveMutation.isPending}
+        onClick={() => saveMutation.mutate()}
+      >
+        {saveMutation.isPending ? 'Saving…' : 'Save'}
+      </Button>
+    </Field>
+  );
 }
 
 function ManualClientForm({ server, onSaved }: { server: McpServer; onSaved: () => void }) {
@@ -160,13 +205,14 @@ export default function AdminMcpServers() {
                     </Button>
                   </TableCell>
                 </TableRow>
-                {server.registrationMode === 'MANUAL' && !server.clientId && (
-                  <TableRow>
-                    <TableCell colSpan={5}>
+                <TableRow>
+                  <TableCell colSpan={5}>
+                    <DescriptionForm server={server} onSaved={invalidate} />
+                    {server.registrationMode === 'MANUAL' && !server.clientId && (
                       <ManualClientForm server={server} onSaved={invalidate} />
-                    </TableCell>
-                  </TableRow>
-                )}
+                    )}
+                  </TableCell>
+                </TableRow>
               </Fragment>
             ))}
           </TableBody>

@@ -202,6 +202,8 @@ model Repository {
 model McpServer {
   id                      String    @id @default(uuid())
   name                    String    @unique
+  // Admin-written, not discovered: it is read into the chat system prompt.
+  description             String?
   serverUrl               String
   transport               String    @default("HTTP") // "HTTP" | "SSE"
   resource                String

@@ -11,6 +11,7 @@ type Server = {
   registrationMode: 'DYNAMIC' | 'MANUAL';
   clientId: string | null;
   callbackUrl: string;
+  description?: string | null;
 };
 
 function fetchMock(servers: Server[]) {
@@ -121,6 +122,34 @@ describe('AdminMcpServers', () => {
     await waitFor(() => expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument());
     expect(mock).not.toHaveBeenCalledWith('/api/admin/mcp-servers/s1', expect.objectContaining({ method: 'DELETE' }));
     expect(screen.getByText('sentry')).toBeInTheDocument();
+  });
+
+  test('an admin can say what a server is for, and it is saved for the chat prompt to read', async () => {
+    const mock = fetchMock([{ ...SENTRY, description: null }]);
+    global.fetch = mock as unknown as typeof fetch;
+
+    const { user } = renderWithProviders(<AdminMcpServers />);
+
+    await user.type(await screen.findByLabelText('When to use sentry'), 'Error reports from the live product.');
+    await user.click(screen.getByRole('button', { name: 'Save description for sentry' }));
+
+    await waitFor(() =>
+      expect(mock).toHaveBeenCalledWith(
+        '/api/admin/mcp-servers/s1',
+        expect.objectContaining({
+          method: 'PATCH',
+          body: JSON.stringify({ description: 'Error reports from the live product.' }),
+        }),
+      ),
+    );
+  });
+
+  test('a description already saved is shown for editing rather than starting blank', async () => {
+    global.fetch = fetchMock([{ ...SENTRY, description: 'Error reports from the live product.' }]) as unknown as typeof fetch;
+
+    renderWithProviders(<AdminMcpServers />);
+
+    expect(await screen.findByLabelText('When to use sentry')).toHaveValue('Error reports from the live product.');
   });
 
   test('shows the manual-entry form, with the callback URL to register on the server\'s side, when a server has no client id yet', async () => {
