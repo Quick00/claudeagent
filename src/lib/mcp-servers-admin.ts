@@ -5,12 +5,17 @@ import { discoverMcpServer, registerMcpClient } from '@/lib/mcp-oauth';
 import { assertSafeMcpUrl } from '@/lib/mcp-url-safety';
 import type { McpServer } from '@prisma/client';
 
+// A request's own origin is the bind address under `output: 'standalone'`, so browser-facing URLs use this.
+export function appBaseUrl(): string {
+  return process.env.NEXTAUTH_URL || 'http://localhost:3000';
+}
+
 /**
  * The fixed redirect URI every server sees — never taken from user or admin
  * input. Authorization codes arrive on it, so in production it must be https.
  */
 export function mcpCallbackUrl(serverId: string): string {
-  const base = process.env.NEXTAUTH_URL || 'http://localhost:3000';
+  const base = appBaseUrl();
   if (process.env.NODE_ENV === 'production' && !base.startsWith('https://')) {
     throw new Error('NEXTAUTH_URL must be an https URL to register an MCP server');
   }
