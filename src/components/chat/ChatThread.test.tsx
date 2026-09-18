@@ -4,6 +4,7 @@ import { renderWithProviders } from '@/test/render';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { mockRouter, usePathname } from '@/test/mocks/next-navigation';
 import { setMockSession } from '@/test/mocks/next-auth-react';
+import { mockConfetti } from '@/test/mocks/canvas-confetti';
 import { StrictMode } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
@@ -111,6 +112,7 @@ describe('ChatThread', () => {
       expires: '2099-01-01',
     });
     mockFetch.mockReset();
+    mockConfetti.mockReset();
     routeFetch();
   });
 
@@ -576,5 +578,47 @@ describe('ChatThread', () => {
 
     await screen.findByText('Confirmed.');
     expect(assistantBubbles()).toEqual(['It uses OAuth.', 'Found it.', 'Confirmed.']);
+  });
+  /** How many times the conversation list itself has been fetched. */
+  const listFetches = () =>
+    mockFetch.mock.calls.filter(([url]) => url === '/api/conversations').length;
+
+  test('the first message of a conversation that lands on a milestone fires the confetti', async () => {
+    routeFetch({
+      '/api/chat': () =>
+        sseResponse([
+          { type: 'conversation_created', conversationId: 'conv-new', title: 'First question' },
+          { type: 'text', content: 'Here is the answer.' },
+          { type: 'done' },
+        ]),
+      '/api/conversations/conv-new': () => jsonOk({ ...CONVERSATION, id: 'conv-new' }),
+      '/api/conversations': () => jsonOk([{ id: 'conv-new', title: 'First question' }]),
+    });
+    const { user } = renderThread(null);
+
+    await user.type(screen.getByRole('textbox', { name: /message/i }), 'First question');
+    await user.click(screen.getByRole('button', { name: /^send$/i }));
+
+    await waitFor(() => expect(mockConfetti).toHaveBeenCalled());
+  });
+
+  // A reply leaves the list length alone, so a list already sitting on a
+  // milestone must not celebrate again on every answer.
+  test('a reply in an existing thread does not fire the milestone confetti', async () => {
+    routeFetch({
+      '/api/chat': () =>
+        sseResponse([{ type: 'text', content: 'Because it does.' }, { type: 'done' }]),
+      '/api/conversations/conv-1': () => jsonOk(CONVERSATION),
+      '/api/conversations': () => jsonOk([{ id: 'conv-1', title: 'How does login work?' }]),
+    });
+    const { user } = renderThread('conv-1');
+    await screen.findByText('It uses OAuth.');
+
+    await user.type(screen.getByRole('textbox', { name: /message/i }), 'Why?');
+    await user.click(screen.getByRole('button', { name: /^send$/i }));
+
+    // The post-answer refresh is the last thing before the milestone check.
+    await waitFor(() => expect(listFetches()).toBeGreaterThan(1));
+    expect(mockConfetti).not.toHaveBeenCalled();
   });
 });
