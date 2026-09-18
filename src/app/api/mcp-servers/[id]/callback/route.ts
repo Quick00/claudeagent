@@ -1,5 +1,6 @@
 import { requireApprovedUser } from '@/lib/api-auth';
 import { abandonMcpConnect, completeMcpConnect } from '@/lib/mcp-connections';
+import { appBaseUrl } from '@/lib/mcp-servers-admin';
 
 /**
  * Reached only via a redirect from the authorization server, but the user's
@@ -14,7 +15,7 @@ export async function GET(request: Request, _context: { params: Promise<{ id: st
   const state = url.searchParams.get('state');
   const code = url.searchParams.get('code');
   const error = url.searchParams.get('error');
-  const settingsUrl = new URL('/settings', url.origin);
+  const settingsUrl = new URL('/settings', appBaseUrl());
 
   // RFC 6749 §4.1.2.1: a declined or refused authorization comes back with
   // `error` (and usually `error_description`) in place of `code`. Surfacing
