@@ -232,6 +232,7 @@ describe('mcp-servers-admin', () => {
     const row = {
       id: 's1',
       name: 'sentry',
+      description: null,
       serverUrl: 'https://mcp.example.com/mcp',
       transport: 'HTTP',
       resource: 'https://mcp.example.com/mcp',
@@ -269,6 +270,14 @@ describe('mcp-servers-admin', () => {
       }),
     );
     expect(toAdminMcpServerView({ ...row, clientSecret: null }).hasClientSecret).toBe(false);
+  });
+
+  // The admin panel edits this field, so the projection has to carry it back.
+  it('toAdminMcpServerView carries the description the admin panel edits', async () => {
+    const { toAdminMcpServerView } = await import('@/lib/mcp-servers-admin');
+    const row = { id: 's1', name: 'jira', description: 'Customer tickets.', clientSecret: null } as never;
+
+    expect(toAdminMcpServerView(row).description).toBe('Customer tickets.');
   });
 
   it('reRegisterMcpServerClient refuses a MANUAL server', async () => {

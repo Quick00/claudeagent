@@ -5,7 +5,9 @@ import { config } from '@/lib/config';
 import { stripSourceReferences } from '@/lib/sanitize-response';
 import { decrypt } from '@/lib/crypto';
 import { ChildProcess } from 'child_process';
-import { retrieveKnowledge, formatKnowledgeBlock, formatKnowledgeDelta, type LabelledEntry } from '@/lib/knowledge-context';
+import { retrieveKnowledge, type LabelledEntry } from '@/lib/knowledge-context';
+import { buildSystemPrompt, buildCliMessage } from '@/lib/chat-prompt';
+import { getLinkedServersForPrompt } from '@/lib/mcp-context';
 import { provenanceCollector } from '@/lib/provenance-collector';
 import { getKnowledgeIgnoreLists } from '@/lib/settings';
 import path from 'path';
@@ -134,12 +136,9 @@ export async function POST(request: Request) {
     console.error('[chat] Knowledge retrieval failed, continuing without knowledge:', (err as Error).message);
   }
 
-  let systemPrompt = config.systemPrompt;
-  if (!conversation.claudeSessionId) {
-    systemPrompt += formatKnowledgeBlock(knowledge);
-  }
-  systemPrompt += repoContext;
-  systemPrompt += `\n\n${config.knowledgeToolsPrompt}`;
+  const isResumed = Boolean(conversation.claudeSessionId);
+  const linkedServers = await getLinkedServersForPrompt(userId);
+  const systemPrompt = buildSystemPrompt({ isResumed, knowledge, repoContext, linkedServers });
 
   return createSseResponse((sink) => {
     // Send conversation ID immediately so the client can update the sidebar
@@ -148,9 +147,7 @@ export async function POST(request: Request) {
     // On resumed sessions the system prompt isn't re-sent, so Claude
     // drifts and starts including file paths / code references.  Prepend
     // a short reminder to each follow-up message.
-    const effectiveMessage = conversation.claudeSessionId
-      ? config.responseReminder + (knowledge.length > 0 ? formatKnowledgeDelta(knowledge) + '\n\n' : '') + cliMessage
-      : cliMessage;
+    const effectiveMessage = buildCliMessage({ isResumed, knowledge, linkedServers, message: cliMessage });
 
     // One notice per server per turn: a retry re-runs both the startup drop
     // check and the mid-session init event, and a server that failed on the

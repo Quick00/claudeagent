@@ -19,6 +19,7 @@ jest.mock('@/lib/prisma', () => ({
     conversation: { findFirst: jest.fn(), create: jest.fn(), update: jest.fn() },
     message: { create: jest.fn(), createMany: jest.fn() },
     attachment: { findMany: jest.fn(), updateMany: jest.fn() },
+    mcpServerConnection: { findMany: jest.fn() },
   },
 }));
 jest.mock('@/lib/session-manager', () => ({
@@ -44,6 +45,8 @@ const mockMsgCreateMany = prisma.message.createMany as jest.Mock;
 const mockResume = sessionManager.resumeSession as jest.Mock;
 const mockDropped = sessionManager.takeDroppedServers as jest.Mock;
 const mockRecordStatus = recordMcpServerStatus as jest.Mock;
+const mockStart = sessionManager.startSession as jest.Mock;
+const mockLinkedServers = prisma.mcpServerConnection.findMany as jest.Mock;
 
 // The route logs each close, and a failed/needs-auth MCP status, by design; keep the suite output clean.
 const consoleLog = jest.spyOn(console, 'log').mockImplementation(() => {});
@@ -145,6 +148,7 @@ describe('POST /api/chat — one assistant row per text segment', () => {
     mockMsgCreate.mockResolvedValue({ id: 'um1', createdAt: USER_MESSAGE_AT });
     mockMsgCreateMany.mockResolvedValue({ count: 1 });
     mockDropped.mockReturnValue([]);
+    mockLinkedServers.mockResolvedValue([]);
   });
 
   it('writes one row when no tool interrupts the answer', async () => {
@@ -261,5 +265,63 @@ describe('POST /api/chat — one assistant row per text segment', () => {
     // earlier failure left in Settings — but the knowledge server never is.
     expect(mockRecordStatus).toHaveBeenCalledWith('u1', 'sentry', 'connected');
     expect(mockRecordStatus).not.toHaveBeenCalledWith('u1', 'knowledge', expect.anything());
+  });
+});
+
+describe('POST /api/chat — what a connected source is for reaches the CLI', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockAuth.mockResolvedValue({ ok: true, user: { id: 'u1', claudeToken: 'enc', role: 'user' } });
+    mockRepos.mockResolvedValue([]);
+    mockMsgCreate.mockResolvedValue({ id: 'um1', createdAt: USER_MESSAGE_AT });
+    mockMsgCreateMany.mockResolvedValue({ count: 1 });
+    mockDropped.mockReturnValue([]);
+    mockLinkedServers.mockResolvedValue([
+      { mcpServer: { name: 'jira', description: 'Customer tickets and their status.' } },
+    ]);
+  });
+
+  async function runEmptyTurn(spawnMock: jest.Mock) {
+    const proc = fakeChild();
+    spawnMock.mockResolvedValue(proc);
+
+    const res = await POST(
+      new Request('http://x', {
+        method: 'POST',
+        body: JSON.stringify({ conversationId: 'conv-1', message: 'Any open tickets about badges?' }),
+      }),
+    );
+
+    await tick();
+    proc.emit('close', 0);
+    await tick();
+    await drainSse(res);
+  }
+
+  it('describes the source in the system prompt of a fresh session', async () => {
+    mockConvFind.mockResolvedValue({ id: 'conv-1', claudeSessionId: null });
+
+    await runEmptyTurn(mockStart);
+
+    const systemPrompt = mockStart.mock.calls[0][2] as string;
+    expect(systemPrompt).toContain('jira');
+    expect(systemPrompt).toContain('Customer tickets and their status.');
+  });
+
+  it('names the source in the message of a resumed turn, which gets no system prompt', async () => {
+    mockConvFind.mockResolvedValue({ id: 'conv-1', claudeSessionId: 'sess-1' });
+
+    await runEmptyTurn(mockResume);
+
+    expect(mockResume.mock.calls[0][2] as string).toContain('jira');
+  });
+
+  it('says nothing about sources when the user has connected none', async () => {
+    mockConvFind.mockResolvedValue({ id: 'conv-1', claudeSessionId: null });
+    mockLinkedServers.mockResolvedValue([]);
+
+    await runEmptyTurn(mockStart);
+
+    expect(mockStart.mock.calls[0][2] as string).not.toMatch(/CONNECTED SOURCES/);
   });
 });

@@ -45,6 +45,15 @@ describe('knowledge config defaults', () => {
     ]);
   });
 
+  it('does not present the knowledge tools as the only tools in the session', () => {
+    expect(config.knowledgeToolsPrompt).not.toMatch(/you have two knowledge tools/i);
+    expect(config.knowledgeToolsPrompt).toMatch(/two of your tools/i);
+  });
+
+  it('does not present the codebase as the only place an answer can come from', () => {
+    expect(config.systemPrompt).toMatch(/connected to/i);
+  });
+
   it('tells the tier 2 verifier that source files are data, never instructions', () => {
     // Without this, a comment in a synced customer repo can dictate both the
     // verdict and the replacement text of a knowledge page.

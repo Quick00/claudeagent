@@ -55,6 +55,7 @@ export function toAdminMcpServerView(server: McpServer) {
   return {
     id: server.id,
     name: server.name,
+    description: server.description,
     serverUrl: server.serverUrl,
     transport: server.transport,
     resource: server.resource,
@@ -180,6 +181,10 @@ export async function saveManualMcpServerClient(
       registrationMode: 'MANUAL',
     },
   });
+}
+
+export function setMcpServerDescription(id: string, description: string | null): Promise<McpServer> {
+  return prisma.mcpServer.update({ where: { id }, data: { description } });
 }
 
 export function setMcpServerEnabled(id: string, enabled: boolean): Promise<McpServer> {

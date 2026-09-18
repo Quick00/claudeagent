@@ -7,7 +7,9 @@ import {
   saveManualMcpServerClient,
   setMcpServerEnabled,
   deleteMcpServer,
+  setMcpServerDescription,
 } from '@/lib/mcp-servers-admin';
+import { config } from '@/lib/config';
 
 jest.mock('@/lib/api-auth', () => ({ requireAdminUser: jest.fn() }));
 // The projection itself is covered in mcp-servers-admin.test.ts; here it is
@@ -19,6 +21,7 @@ jest.mock('@/lib/mcp-servers-admin', () => ({
   saveManualMcpServerClient: jest.fn(),
   setMcpServerEnabled: jest.fn(),
   deleteMcpServer: jest.fn(),
+  setMcpServerDescription: jest.fn(),
   toAdminMcpServerView: jest.fn((server: { id: string }) => ({
     id: server.id,
     projected: true,
@@ -96,6 +99,35 @@ describe('admin mcp-servers routes', () => {
     expect(res.status).toBe(200);
     expect(saveManualMcpServerClient).toHaveBeenCalledWith('s1', { clientId: 'c1', clientSecret: 's3cr3t' });
     expect(await res.json()).toEqual(expect.objectContaining({ id: 's1', projected: true }));
+  });
+
+  it('PATCH saves the description the chat prompt will read', async () => {
+    (setMcpServerDescription as jest.Mock).mockResolvedValue({ id: 's1', description: 'Customer tickets.' });
+    const res = await PATCH(json({ description: 'Customer tickets.' }, 'PATCH'), params('s1'));
+    expect(res.status).toBe(200);
+    expect(setMcpServerDescription).toHaveBeenCalledWith('s1', 'Customer tickets.');
+    expect(await res.json()).toEqual(expect.objectContaining({ id: 's1', projected: true }));
+  });
+
+  it('PATCH stores a blank description as no description at all', async () => {
+    (setMcpServerDescription as jest.Mock).mockResolvedValue({ id: 's1', description: null });
+    const res = await PATCH(json({ description: '   ' }, 'PATCH'), params('s1'));
+    expect(res.status).toBe(200);
+    expect(setMcpServerDescription).toHaveBeenCalledWith('s1', null);
+  });
+
+  it('PATCH refuses a description longer than the cap', async () => {
+    const res = await PATCH(json({ description: 'x'.repeat(config.mcpServerDescriptionMaxLength + 1) }, 'PATCH'), params('s1'));
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toMatch(/description/i);
+    expect(setMcpServerDescription).not.toHaveBeenCalled();
+  });
+
+  it('PATCH refuses a description that is not text', async () => {
+    const res = await PATCH(json({ description: 42 }, 'PATCH'), params('s1'));
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toMatch(/description/i);
+    expect(setMcpServerDescription).not.toHaveBeenCalled();
   });
 
   it('DELETE removes the server', async () => {
