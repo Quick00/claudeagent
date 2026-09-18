@@ -21,6 +21,8 @@ const jsdomProject: Config = {
   setupFilesAfterEnv: ['<rootDir>/jest.setup.ts'],
   moduleNameMapper: {
     ...moduleNameMapper,
+    // Draws on a canvas jsdom does not have; the stub records the calls instead.
+    '^canvas-confetti$': '<rootDir>/src/test/mocks/canvas-confetti.ts',
     // ESM-only packages Jest cannot transform. Stubbed rather than fighting
     // transformIgnorePatterns.
     '^react-markdown$': '<rootDir>/src/test/mocks/react-markdown.tsx',

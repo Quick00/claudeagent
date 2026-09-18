@@ -375,6 +375,9 @@ export function useConversation(initialConversationId: string | null) {
         return;
       }
 
+      // Null until a stream settles one, so this is true only for a thread's first send.
+      const isNewConversation = conversationId === null;
+
       const tempId = `temp-${Date.now()}`;
       const isAdminSend = !!(ownership && !ownership.isOwner && ownership.isAdmin);
       const adminAttribution =
@@ -573,7 +576,11 @@ export function useConversation(initialConversationId: string | null) {
               }
               const rows = await refreshConversations();
               const count = rows.length;
-              if (MILESTONES.includes(count) || (count >= 100 && count % 100 === 0)) {
+              // Only a thread's first message grows the list, so only then can a milestone land.
+              if (
+                isNewConversation &&
+                (MILESTONES.includes(count) || (count >= 100 && count % 100 === 0))
+              ) {
                 fireConfetti({ particleCount: 100, spread: 70, origin: { y: 0.6 } });
               }
             }
