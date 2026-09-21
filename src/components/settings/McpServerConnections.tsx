@@ -10,7 +10,7 @@ import { navigateTo } from '@/lib/navigate';
 import { qk } from '@/lib/query-keys';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Skeleton } from '@/components/ui/skeleton';
+import { RiseIn } from '@/components/shared/RiseIn';
 
 interface McpServer {
   id: string;
@@ -61,67 +61,65 @@ export default function McpServerConnections() {
     onError: () => toast.error('Failed to disconnect'),
   });
 
-  if (isPending) {
-    return (
-      <Card>
-        <CardHeader>
-          <CardTitle>MCP Servers</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <Skeleton className="h-16 w-full" />
-        </CardContent>
-      </Card>
-    );
-  }
+  // Nothing is rendered while the list loads: a placeholder card here would
+  // only be taken away again for the two outcomes that render nothing (no
+  // servers registered, or a list this user has none of), so the section
+  // rises into place once it has something to say instead of appearing and
+  // then vanishing.
+  if (isPending) return null;
 
   // Rendering nothing here is indistinguishable from a deployment with no MCP servers.
   if (isError) {
     return (
-      <Card>
-        <CardHeader>
-          <CardTitle>MCP Servers</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <p className="text-sm text-destructive">Couldn&rsquo;t load your MCP server connections.</p>
-        </CardContent>
-      </Card>
+      <RiseIn>
+        <Card>
+          <CardHeader>
+            <CardTitle>MCP Servers</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-sm text-destructive">Couldn&rsquo;t load your MCP server connections.</p>
+          </CardContent>
+        </Card>
+      </RiseIn>
     );
   }
 
   if (servers.length === 0) return null;
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>MCP Servers</CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        {servers.map((server) => (
-          <div key={server.id} className="flex items-center justify-between gap-3">
-            <div>
-              <div className="flex items-center gap-2">
-                {server.connectionStatus === 'CONNECTED' && <CircleCheck className="size-4 text-success" />}
-                {server.connectionStatus === 'ERROR' && <CircleAlert className="size-4 text-destructive" />}
-                {server.connectionStatus === 'NOT_CONNECTED' && <Circle className="size-4 text-muted-foreground" />}
-                <span className="text-sm font-medium">{server.name}</span>
-                <span className="text-xs text-muted-foreground">
-                  {server.connectionStatus === 'CONNECTED' ? 'Connected' : server.connectionStatus === 'ERROR' ? 'Needs reconnecting' : 'Not connected'}
-                </span>
+    <RiseIn>
+      <Card>
+        <CardHeader>
+          <CardTitle>MCP Servers</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {servers.map((server) => (
+            <div key={server.id} className="flex items-center justify-between gap-3">
+              <div>
+                <div className="flex items-center gap-2">
+                  {server.connectionStatus === 'CONNECTED' && <CircleCheck className="size-4 text-success" />}
+                  {server.connectionStatus === 'ERROR' && <CircleAlert className="size-4 text-destructive" />}
+                  {server.connectionStatus === 'NOT_CONNECTED' && <Circle className="size-4 text-muted-foreground" />}
+                  <span className="text-sm font-medium">{server.name}</span>
+                  <span className="text-xs text-muted-foreground">
+                    {server.connectionStatus === 'CONNECTED' ? 'Connected' : server.connectionStatus === 'ERROR' ? 'Needs reconnecting' : 'Not connected'}
+                  </span>
+                </div>
+                {server.lastError && <p className="mt-1 text-xs text-destructive">{server.lastError}</p>}
               </div>
-              {server.lastError && <p className="mt-1 text-xs text-destructive">{server.lastError}</p>}
+              {server.connectionStatus === 'CONNECTED' ? (
+                <Button variant="destructive" size="sm" onClick={() => disconnectMutation.mutate(server.id)}>
+                  Disconnect
+                </Button>
+              ) : (
+                <Button size="sm" onClick={() => connectMutation.mutate(server.id)}>
+                  {server.connectionStatus === 'ERROR' ? 'Reconnect' : 'Connect'}
+                </Button>
+              )}
             </div>
-            {server.connectionStatus === 'CONNECTED' ? (
-              <Button variant="destructive" size="sm" onClick={() => disconnectMutation.mutate(server.id)}>
-                Disconnect
-              </Button>
-            ) : (
-              <Button size="sm" onClick={() => connectMutation.mutate(server.id)}>
-                {server.connectionStatus === 'ERROR' ? 'Reconnect' : 'Connect'}
-              </Button>
-            )}
-          </div>
-        ))}
-      </CardContent>
-    </Card>
+          ))}
+        </CardContent>
+      </Card>
+    </RiseIn>
   );
 }

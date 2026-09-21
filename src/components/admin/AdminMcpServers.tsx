@@ -7,6 +7,7 @@ import { Cable } from 'lucide-react';
 import { EmptyState } from '@/components/shared/EmptyState';
 import { PageContainer } from '@/components/shared/PageContainer';
 import { PageHeader } from '@/components/shared/PageHeader';
+import { RiseIn } from '@/components/shared/RiseIn';
 import { Button } from '@/components/ui/button';
 import { Field, FieldLabel } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
@@ -167,9 +168,17 @@ export default function AdminMcpServers() {
 
   return (
     <PageContainer className="space-y-8">
-      <PageHeader title="MCP Servers" description="Remote MCP servers users can connect their own account to." />
+      <RiseIn delay={0}>
+        <PageHeader title="MCP Servers" description="Remote MCP servers users can connect their own account to." />
+      </RiseIn>
 
-      {isPending ? null : isError ? (
+      <RiseIn delay={0.06}>
+      {isPending ? null : (
+      /* Nested RiseIn: this subtree mounts fresh the moment loading flips to
+         false, so the loaded content arrives with the same rise/fade the rest
+         of the page uses instead of popping in place. */
+      <RiseIn delay={0}>
+      {isError ? (
         <p className="text-sm text-destructive">{error.message}</p>
       ) : servers.length === 0 ? (
         <EmptyState icon={Cable} title="No MCP servers yet" description="Register one below." />
@@ -218,7 +227,11 @@ export default function AdminMcpServers() {
           </TableBody>
         </Table>
       )}
+      </RiseIn>
+      )}
+      </RiseIn>
 
+      <RiseIn delay={0.12}>
       <div className="max-w-md space-y-3 rounded-lg border border-border bg-card p-4">
         <h2 className="text-lg font-semibold">Register a server</h2>
         <Field>
@@ -252,6 +265,7 @@ export default function AdminMcpServers() {
           {addMutation.isPending ? 'Registering…' : 'Add Server'}
         </Button>
       </div>
+      </RiseIn>
     </PageContainer>
   );
 }
