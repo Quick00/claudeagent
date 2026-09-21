@@ -4,6 +4,7 @@ import { Fragment, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { Cable } from 'lucide-react';
+import { AdminTableSkeleton } from '@/components/admin/AdminTableSkeleton';
 import { EmptyState } from '@/components/shared/EmptyState';
 import { PageContainer } from '@/components/shared/PageContainer';
 import { PageHeader } from '@/components/shared/PageHeader';
@@ -16,6 +17,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { useConfirm } from '@/hooks/use-confirm';
+import { useDeferredSkeleton } from '@/hooks/use-deferred-skeleton';
 import { apiFetch, jsonBody } from '@/lib/api';
 import { qk } from '@/lib/query-keys';
 
@@ -125,6 +127,8 @@ export default function AdminMcpServers() {
     queryFn: ({ signal }) => apiFetch<McpServer[]>('/api/admin/mcp-servers', { signal }),
   });
 
+  const showSkeleton = useDeferredSkeleton(isPending);
+
   const invalidate = () => queryClient.invalidateQueries({ queryKey: qk.mcpServers.adminList() });
 
   const addMutation = useMutation({
@@ -173,7 +177,9 @@ export default function AdminMcpServers() {
       </RiseIn>
 
       <RiseIn delay={0.06}>
-      {isPending ? null : (
+      {isPending ? (
+        showSkeleton && <AdminTableSkeleton columns={5} container={false} />
+      ) : (
       /* Nested RiseIn: this subtree mounts fresh the moment loading flips to
          false, so the loaded content arrives with the same rise/fade the rest
          of the page uses instead of popping in place. */
