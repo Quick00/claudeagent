@@ -30,7 +30,7 @@ beforeEach(() => {
 
 describe('admin knowledge routes', () => {
   it('GET returns attention and refuses non-admins', async () => {
-    (buildAttention as jest.Mock).mockResolvedValue({ stale: [], unverified: [], pinned: [], reviews: [], syncs: [] });
+    (buildAttention as jest.Mock).mockResolvedValue({ stale: [], unverified: [], verified: [], pinned: [], reviews: [], syncs: [] });
     expect((await GET()).status).toBe(200);
     mockAuth.mockResolvedValue({ ok: false, response: new Response('Forbidden', { status: 403 }) });
     expect((await GET()).status).toBe(403);
@@ -67,7 +67,7 @@ describe('admin knowledge routes', () => {
   });
 
   it('GET reconciles stranded verification runs before building the panel', async () => {
-    (buildAttention as jest.Mock).mockResolvedValue({ stale: [], unverified: [], pinned: [], reviews: [], syncs: [] });
+    (buildAttention as jest.Mock).mockResolvedValue({ stale: [], unverified: [], verified: [], pinned: [], reviews: [], syncs: [] });
     await GET();
     expect(reconcileStrandedRuns).toHaveBeenCalled();
   });

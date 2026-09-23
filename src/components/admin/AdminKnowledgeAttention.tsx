@@ -38,9 +38,10 @@ interface Item {
 }
 interface Review { id: string; type: string; payload: Record<string, unknown>; createdAt: string; entry: { id: string; subject: string; kind: string; content: string } }
 interface Sync { id: string; repositoryName: string | null; gitlabProjectId: number; fromSha: string; toSha: string; changedFileCount: number; reason: string; wouldStaleCount: number; syncedAt: string }
-interface Attention { stale: Item[]; unverified: Item[]; pinned: Item[]; reviews: Review[]; syncs: Sync[] }
+interface Attention { stale: Item[]; unverified: Item[]; verified: Item[]; pinned: Item[]; reviews: Review[]; syncs: Sync[] }
 
-type Tab = 'stale' | 'unverified' | 'pinned' | 'reviews' | 'syncs';
+type Tab = 'stale' | 'unverified' | 'verified' | 'pinned' | 'reviews' | 'syncs';
+const TABS: Tab[] = ['stale', 'unverified', 'verified', 'pinned', 'reviews', 'syncs'];
 const CATEGORIES = ['terminology', 'product_insight', 'process', 'developer'];
 
 export default function AdminKnowledgeAttention() {
@@ -146,7 +147,7 @@ export default function AdminKnowledgeAttention() {
     return (
       <PageContainer>
         <RiseIn delay={0}>
-          <PageHeader title="Knowledge" description="Stale, unverified, and pinned knowledge entries." />
+          <PageHeader title="Knowledge" description="Stale, unverified, verified, and pinned knowledge entries." />
         </RiseIn>
         <RiseIn delay={0.06}>
           <p className="text-sm text-destructive">{error?.message ?? 'Failed to load knowledge entries'}</p>
@@ -158,12 +159,13 @@ export default function AdminKnowledgeAttention() {
   const counts: Record<Tab, number> = {
     stale: data.stale.length,
     unverified: data.unverified.length,
+    verified: data.verified.length,
     pinned: data.pinned.length,
     reviews: data.reviews.length,
     syncs: data.syncs.length,
   };
 
-  function renderItems(items: Item[], variant: 'stale' | 'unverified' | 'pinned') {
+  function renderItems(items: Item[], variant: 'stale' | 'unverified' | 'verified' | 'pinned') {
     const stale = variant === 'stale';
     const pinned = variant === 'pinned';
     if (items.length === 0) {
@@ -289,7 +291,7 @@ export default function AdminKnowledgeAttention() {
       <RiseIn delay={0}>
         <PageHeader
           title="Knowledge"
-          description="Stale, unverified, and pinned knowledge entries."
+          description="Stale, unverified, verified, and pinned knowledge entries."
           actions={<Button onClick={() => setCreating(true)}>New pinned rule</Button>}
         />
       </RiseIn>
@@ -297,7 +299,7 @@ export default function AdminKnowledgeAttention() {
       <RiseIn delay={0.06}>
       <Tabs value={tab} onValueChange={(v) => setTab(v as Tab)}>
         <TabsList>
-          {(['stale', 'unverified', 'pinned', 'reviews', 'syncs'] as Tab[]).map((t) => (
+          {TABS.map((t) => (
             <TabsTrigger key={t} value={t}>
               {t[0].toUpperCase() + t.slice(1)} ({counts[t]})
             </TabsTrigger>
@@ -306,6 +308,7 @@ export default function AdminKnowledgeAttention() {
 
         <TabsContent value="stale">{renderItems(data.stale, 'stale')}</TabsContent>
         <TabsContent value="unverified">{renderItems(data.unverified, 'unverified')}</TabsContent>
+        <TabsContent value="verified">{renderItems(data.verified, 'verified')}</TabsContent>
         <TabsContent value="pinned">{renderItems(data.pinned, 'pinned')}</TabsContent>
         <TabsContent value="reviews">
           {data.reviews.length === 0 ? (

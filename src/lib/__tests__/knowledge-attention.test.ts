@@ -33,8 +33,9 @@ describe('buildAttention', () => {
     mockSyncs.mockResolvedValue([]);
   });
 
-  it('splits derived entries into stale and unverified, sorted by hitCount desc, and never lists pinned or fresh', async () => {
+  it('splits derived entries into stale, unverified and verified, sorted by hitCount desc, and never lists pinned', async () => {
     withEntries([
+      { ...common, id: 'fresh-lo', subject: 'F1', kind: 'derived', hitCount: 2, sources: [{ gitlabProjectId: 1, path: 'a.php', blobSha: 'A', verifiedAt: new Date('2026-09-04') }] },
       { ...common, id: 'fresh', subject: 'F', kind: 'derived', hitCount: 9, sources: [{ gitlabProjectId: 1, path: 'a.php', blobSha: 'A', verifiedAt: new Date('2026-09-05') }] },
       { ...common, id: 'stale-lo', subject: 'S1', kind: 'derived', hitCount: 1, sources: [{ gitlabProjectId: 1, path: 'a.php', blobSha: 'OLD', verifiedAt: new Date('2026-08-01') }] },
       { ...common, id: 'stale-hi', subject: 'S2', kind: 'derived', hitCount: 5, sources: [{ gitlabProjectId: 1, path: 'gone.php', blobSha: 'X', verifiedAt: new Date('2026-08-02') }] },
@@ -47,8 +48,11 @@ describe('buildAttention', () => {
     expect(out.stale.map((i) => i.id)).toEqual(['stale-hi', 'stale-lo']);
     expect(out.stale[0]).toMatchObject({ changedPaths: ['gone.php'], sourceCount: 1, lastVerifiedAt: new Date('2026-08-02') });
     expect(out.unverified.map((i) => i.id)).toEqual(['unv']);
+    expect(out.verified.map((i) => i.id)).toEqual(['fresh', 'fresh-lo']);
+    expect(out.verified[0]).toMatchObject({ changedPaths: [], sourceCount: 1, lastVerifiedAt: new Date('2026-09-05') });
     expect(out.stale.map((i) => i.id)).not.toContain('pin');
     expect(out.unverified.map((i) => i.id)).not.toContain('pin');
+    expect(out.verified.map((i) => i.id)).not.toContain('pin');
     expect(mockEntries).toHaveBeenCalledWith({ where: { status: 'active', kind: 'derived' }, include: { sources: true } });
   });
 

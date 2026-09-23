@@ -41,6 +41,7 @@ export interface AttentionSync {
 export interface Attention {
   stale: AttentionItem[];
   unverified: AttentionItem[];
+  verified: AttentionItem[];
   pinned: AttentionItem[];
   reviews: AttentionReview[];
   syncs: AttentionSync[];
@@ -82,10 +83,10 @@ function toItem(e: EntryWithSources, changedPaths: string[]): AttentionItem {
 }
 
 /**
- * Everything an admin might need to act on. Stale/unverified are computed
+ * Everything an admin might need to act on. Stale/unverified/verified are computed
  * live from KnowledgeSource blob hashes against the current HEAD trees on
  * every call — nothing about freshness is stored. Pinned entries are always
- * fresh (see computeFreshness) so they never appear in those two lists; they
+ * fresh (see computeFreshness) so they never appear in those three lists; they
  * get their own list instead, because spec §10.2 makes unpin an admin action
  * and a pinned entry that appeared in no tab could never be unpinned, edited
  * or retired from the panel again.
@@ -105,21 +106,23 @@ export async function buildAttention(): Promise<Attention> {
 
   const stale: AttentionItem[] = [];
   const unverified: AttentionItem[] = [];
+  const verified: AttentionItem[] = [];
+  const buckets = { stale, unverified, fresh: verified };
 
   for (const e of entries) {
     const freshness = computeFreshness(e, e.sources, headTrees);
-    if (freshness.state === 'fresh') continue;
-    const item = toItem(e, freshness.state === 'stale' ? freshness.changedPaths : []);
-    (freshness.state === 'stale' ? stale : unverified).push(item);
+    buckets[freshness.state].push(toItem(e, freshness.state === 'stale' ? freshness.changedPaths : []));
   }
 
   const byHitsDesc = (a: AttentionItem, b: AttentionItem) => b.hitCount - a.hitCount;
   stale.sort(byHitsDesc);
   unverified.sort(byHitsDesc);
+  verified.sort(byHitsDesc);
 
   return {
     stale,
     unverified,
+    verified,
     pinned: pinnedEntries.map((e) => toItem(e, [])),
     reviews: reviews.map((r) => ({ id: r.id, type: r.type, payload: r.payload, createdAt: r.createdAt, entry: r.entry })),
     syncs: syncs.map((s) => ({

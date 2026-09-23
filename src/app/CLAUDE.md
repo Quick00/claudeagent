@@ -7,7 +7,7 @@ Next.js 16 App Router directory.
 - `api/` — Server-side API route handlers (REST endpoints)
 - `admin/conversations/` — Every conversation across all users, with search and an owner filter. Rows link into `/chat/[id]`, which is already where an admin reads and replies — this page is a way in, not a second viewer.
 - `admin/repos/` — Admin repository management page
-- `admin/knowledge/` — Admin attention page: stale, unverified, pinned, reviews, syncs; edit / pin / unpin / retire / verify. Pinned entries have their own tab because they are always fresh and so appear in no other one; without it, pinning would hide an entry from the panel for good.
+- `admin/knowledge/` — Admin attention page: stale, unverified, verified, pinned, reviews, syncs; edit / pin / unpin / retire / verify. Pinned entries have their own tab because they are always fresh and so appear in no other one; without it, pinning would hide an entry from the panel for good.
 - `conversation/[id]/` — Individual conversation view
 - `dashboard/` — Knowledge dashboard with stats and semantic search
 - `knowledge/` — Knowledge graph visualization
