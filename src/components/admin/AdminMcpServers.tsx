@@ -1,126 +1,32 @@
 'use client';
 
-import { Fragment, useState } from 'react';
+import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { Cable } from 'lucide-react';
+import { Cable, Plus } from 'lucide-react';
 import { AdminTableSkeleton } from '@/components/admin/AdminTableSkeleton';
+import { McpServerEditDialog, needsManualClient, type McpServer } from '@/components/admin/McpServerEditDialog';
+import { RegisterMcpServerDialog } from '@/components/admin/RegisterMcpServerDialog';
 import { EmptyState } from '@/components/shared/EmptyState';
 import { PageContainer } from '@/components/shared/PageContainer';
 import { PageHeader } from '@/components/shared/PageHeader';
 import { RiseIn } from '@/components/shared/RiseIn';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Field, FieldLabel } from '@/components/ui/field';
-import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
-import { Textarea } from '@/components/ui/textarea';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { useConfirm } from '@/hooks/use-confirm';
 import { useDeferredSkeleton } from '@/hooks/use-deferred-skeleton';
 import { apiFetch, jsonBody } from '@/lib/api';
 import { qk } from '@/lib/query-keys';
 
-// Kept in step with `config.mcpServerDescriptionMaxLength`, which the API enforces.
-const DESCRIPTION_MAX_LENGTH = 300;
-
-interface McpServer {
-  id: string;
-  name: string;
-  description: string | null;
-  serverUrl: string;
-  enabled: boolean;
-  registrationMode: 'DYNAMIC' | 'MANUAL';
-  clientId: string | null;
-  callbackUrl: string;
-}
-
-function DescriptionForm({ server, onSaved }: { server: McpServer; onSaved: () => void }) {
-  const [description, setDescription] = useState(server.description ?? '');
-
-  const saveMutation = useMutation({
-    mutationFn: () => apiFetch(`/api/admin/mcp-servers/${server.id}`, jsonBody('PATCH', { description: description.trim() })),
-    onSuccess: () => {
-      toast.success(`Saved what ${server.name} is for`);
-      onSaved();
-    },
-    onError: (err) => toast.error(err instanceof Error ? err.message : 'Failed to save the description'),
-  });
-
-  return (
-    <Field>
-      <FieldLabel htmlFor={`mcp-description-${server.id}`}>When to use {server.name}</FieldLabel>
-      <Textarea
-        id={`mcp-description-${server.id}`}
-        rows={2}
-        maxLength={DESCRIPTION_MAX_LENGTH}
-        value={description}
-        onChange={(e) => setDescription(e.target.value)}
-        placeholder="Customer tickets, their status and history."
-      />
-      <p className="text-xs text-muted-foreground">
-        One or two sentences, in the words support staff use. Claude reads this to decide when to look here instead of
-        in the code.
-      </p>
-      <Button
-        size="sm"
-        className="self-start"
-        aria-label={`Save description for ${server.name}`}
-        disabled={description.trim() === (server.description ?? '') || saveMutation.isPending}
-        onClick={() => saveMutation.mutate()}
-      >
-        {saveMutation.isPending ? 'Saving…' : 'Save'}
-      </Button>
-    </Field>
-  );
-}
-
-function ManualClientForm({ server, onSaved }: { server: McpServer; onSaved: () => void }) {
-  const [clientId, setClientId] = useState('');
-  const [clientSecret, setClientSecret] = useState('');
-
-  const saveMutation = useMutation({
-    mutationFn: () => apiFetch(`/api/admin/mcp-servers/${server.id}`, jsonBody('PATCH', { clientId, clientSecret: clientSecret || undefined })),
-    onSuccess: () => {
-      toast.success(`Client saved for ${server.name}`);
-      onSaved();
-    },
-    onError: () => toast.error('Failed to save client credentials'),
-  });
-
-  return (
-    <div className="mt-2 space-y-2 rounded border border-border p-3">
-      <p className="text-xs text-muted-foreground">
-        {server.name} needs a client id — it does not support automatic registration. Register this app with the
-        server first, using this redirect URI, then paste the credentials it gives you below.
-      </p>
-      <p className="font-mono text-xs">{server.callbackUrl}</p>
-      <Field>
-        <FieldLabel htmlFor={`manual-client-${server.id}`}>Client ID</FieldLabel>
-        <Input id={`manual-client-${server.id}`} value={clientId} onChange={(e) => setClientId(e.target.value)} />
-      </Field>
-      <Field>
-        <FieldLabel htmlFor={`manual-secret-${server.id}`}>Client Secret (optional)</FieldLabel>
-        <Input
-          id={`manual-secret-${server.id}`}
-          type="password"
-          value={clientSecret}
-          onChange={(e) => setClientSecret(e.target.value)}
-        />
-      </Field>
-      <Button size="sm" disabled={!clientId.trim() || saveMutation.isPending} onClick={() => saveMutation.mutate()}>
-        {saveMutation.isPending ? 'Saving…' : 'Save Client'}
-      </Button>
-    </div>
-  );
-}
+const REGISTRATION_LABEL: Record<McpServer['registrationMode'], string> = { DYNAMIC: 'Dynamic', MANUAL: 'Manual' };
 
 export default function AdminMcpServers() {
   const queryClient = useQueryClient();
   const confirmDialog = useConfirm();
-  const [name, setName] = useState('');
-  const [serverUrl, setServerUrl] = useState('');
-  const [transport, setTransport] = useState<'HTTP' | 'SSE'>('HTTP');
+  const [registerOpen, setRegisterOpen] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
 
   const { data: servers = [], isPending, isError, error } = useQuery({
     queryKey: qk.mcpServers.adminList(),
@@ -131,17 +37,16 @@ export default function AdminMcpServers() {
 
   const invalidate = () => queryClient.invalidateQueries({ queryKey: qk.mcpServers.adminList() });
 
-  const addMutation = useMutation({
-    mutationFn: () => apiFetch('/api/admin/mcp-servers', jsonBody('POST', { name, serverUrl, transport })),
-    onSuccess: () => {
-      invalidate();
-      setName('');
-      setServerUrl('');
-      setTransport('HTTP');
-      toast.success('Server registered');
-    },
-    onError: (err) => toast.error(err instanceof Error ? err.message : 'Failed to register server'),
-  });
+  // Looked up from the live list rather than held as a snapshot, so the dialog
+  // reflects a refetch — e.g. the manual-client section goes once it is saved.
+  const editingServer = servers.find((s) => s.id === editingId) ?? null;
+
+  const addButton = (
+    <Button onClick={() => setRegisterOpen(true)}>
+      <Plus className="size-4" />
+      Add server
+    </Button>
+  );
 
   const toggleMutation = useMutation({
     mutationFn: ({ id, enabled }: { id: string; enabled: boolean }) =>
@@ -173,7 +78,11 @@ export default function AdminMcpServers() {
   return (
     <PageContainer className="space-y-8">
       <RiseIn delay={0}>
-        <PageHeader title="MCP Servers" description="Remote MCP servers users can connect their own account to." />
+        <PageHeader
+          title="MCP Servers"
+          description="Remote MCP servers users can connect their own account to."
+          actions={servers.length > 0 && addButton}
+        />
       </RiseIn>
 
       <RiseIn delay={0.06}>
@@ -187,7 +96,12 @@ export default function AdminMcpServers() {
       {isError ? (
         <p className="text-sm text-destructive">{error.message}</p>
       ) : servers.length === 0 ? (
-        <EmptyState icon={Cable} title="No MCP servers yet" description="Register one below." />
+        <EmptyState
+          icon={Cable}
+          title="No MCP servers yet"
+          description="Register one so users can connect their account to it."
+          action={addButton}
+        />
       ) : (
         <Table>
           <TableHeader>
@@ -201,34 +115,48 @@ export default function AdminMcpServers() {
           </TableHeader>
           <TableBody>
             {servers.map((server) => (
-              <Fragment key={server.id}>
-                <TableRow>
-                  <TableCell className="font-medium">{server.name}</TableCell>
-                  <TableCell className="font-mono text-xs">{server.serverUrl}</TableCell>
-                  <TableCell>{server.registrationMode}</TableCell>
-                  <TableCell>
-                    <Switch
-                      checked={server.enabled}
-                      aria-label={`Enable ${server.name}`}
-                      disabled={server.registrationMode === 'MANUAL' && !server.clientId}
-                      onCheckedChange={(checked) => toggleMutation.mutate({ id: server.id, enabled: checked })}
-                    />
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <Button variant="ghost" size="sm" aria-label={`Delete ${server.name}`} onClick={() => handleDelete(server)}>
-                      Delete
-                    </Button>
-                  </TableCell>
-                </TableRow>
-                <TableRow>
-                  <TableCell colSpan={5}>
-                    <DescriptionForm server={server} onSaved={invalidate} />
-                    {server.registrationMode === 'MANUAL' && !server.clientId && (
-                      <ManualClientForm server={server} onSaved={invalidate} />
-                    )}
-                  </TableCell>
-                </TableRow>
-              </Fragment>
+              <TableRow key={server.id} className="cursor-pointer" onClick={() => setEditingId(server.id)}>
+                {/* max-w-0 + w-full lets this column take the spare width and truncate within it. */}
+                <TableCell className="w-full max-w-0">
+                  <p className="font-medium">{server.name}</p>
+                  {server.description ? (
+                    <p className="truncate text-xs text-muted-foreground" title={server.description}>
+                      {server.description}
+                    </p>
+                  ) : (
+                    <p className="truncate text-xs text-warning">
+                      No description — Claude won&apos;t know when to look here
+                    </p>
+                  )}
+                </TableCell>
+                <TableCell>
+                  <p className="max-w-64 truncate font-mono text-xs" title={server.serverUrl}>
+                    {server.serverUrl}
+                  </p>
+                </TableCell>
+                <TableCell>
+                  <div className="flex items-center gap-1.5">
+                    <Badge variant="outline">{REGISTRATION_LABEL[server.registrationMode]}</Badge>
+                    {needsManualClient(server) && <Badge variant="warning">Needs setup</Badge>}
+                  </div>
+                </TableCell>
+                <TableCell onClick={(e) => e.stopPropagation()}>
+                  <Switch
+                    checked={server.enabled}
+                    aria-label={`Enable ${server.name}`}
+                    disabled={needsManualClient(server)}
+                    onCheckedChange={(checked) => toggleMutation.mutate({ id: server.id, enabled: checked })}
+                  />
+                </TableCell>
+                <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
+                  <Button variant="ghost" size="sm" aria-label={`Edit ${server.name}`} onClick={() => setEditingId(server.id)}>
+                    Edit
+                  </Button>
+                  <Button variant="ghost" size="sm" aria-label={`Delete ${server.name}`} onClick={() => handleDelete(server)}>
+                    Delete
+                  </Button>
+                </TableCell>
+              </TableRow>
             ))}
           </TableBody>
         </Table>
@@ -237,41 +165,12 @@ export default function AdminMcpServers() {
       )}
       </RiseIn>
 
-      <RiseIn delay={0.12}>
-      <div className="max-w-md space-y-3 rounded-lg border border-border bg-card p-4">
-        <h2 className="text-lg font-semibold">Register a server</h2>
-        <Field>
-          <FieldLabel htmlFor="mcp-name">Name</FieldLabel>
-          <Input id="mcp-name" value={name} onChange={(e) => setName(e.target.value)} placeholder="sentry" />
-        </Field>
-        <Field>
-          <FieldLabel htmlFor="mcp-url">Server URL</FieldLabel>
-          <Input
-            id="mcp-url"
-            value={serverUrl}
-            onChange={(e) => setServerUrl(e.target.value)}
-            placeholder="https://mcp.example.com/mcp"
-            className="font-mono"
-          />
-        </Field>
-        <Field>
-          <FieldLabel htmlFor="mcp-transport">Transport</FieldLabel>
-          <ToggleGroup
-            id="mcp-transport"
-            type="single"
-            variant="outline"
-            value={transport}
-            onValueChange={(value) => { if (value) setTransport(value as 'HTTP' | 'SSE'); }}
-          >
-            <ToggleGroupItem value="HTTP">HTTP</ToggleGroupItem>
-            <ToggleGroupItem value="SSE">SSE</ToggleGroupItem>
-          </ToggleGroup>
-        </Field>
-        <Button disabled={!name.trim() || !serverUrl.trim() || addMutation.isPending} onClick={() => addMutation.mutate()}>
-          {addMutation.isPending ? 'Registering…' : 'Add Server'}
-        </Button>
-      </div>
-      </RiseIn>
+      <McpServerEditDialog
+        server={editingServer}
+        onOpenChange={(open) => { if (!open) setEditingId(null); }}
+        onSaved={invalidate}
+      />
+      <RegisterMcpServerDialog open={registerOpen} onOpenChange={setRegisterOpen} onRegistered={invalidate} />
     </PageContainer>
   );
 }

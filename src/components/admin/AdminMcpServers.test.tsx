@@ -60,7 +60,7 @@ describe('AdminMcpServers', () => {
     renderWithProviders(<AdminMcpServers />);
 
     expect(await screen.findByText('sentry')).toBeInTheDocument();
-    expect(screen.getByText('DYNAMIC')).toBeInTheDocument();
+    expect(screen.getByText('Dynamic')).toBeInTheDocument();
   });
 
   test('submitting the add-server form posts name, serverUrl, and the chosen transport', async () => {
@@ -69,9 +69,12 @@ describe('AdminMcpServers', () => {
 
     const { user } = renderWithProviders(<AdminMcpServers />);
 
-    await user.type(await screen.findByLabelText('Name'), 'sentry');
-    await user.type(screen.getByLabelText('Server URL'), 'https://mcp.sentry.dev/mcp');
-    await user.click(screen.getByRole('button', { name: 'Add Server' }));
+    // Both the header and the empty state offer the button; either opens the same dialog.
+    await user.click((await screen.findAllByRole('button', { name: 'Add server' }))[0]);
+    const dialog = await screen.findByRole('dialog');
+    await user.type(within(dialog).getByLabelText('Name'), 'sentry');
+    await user.type(within(dialog).getByLabelText('Server URL'), 'https://mcp.sentry.dev/mcp');
+    await user.click(within(dialog).getByRole('button', { name: 'Register server' }));
 
     expect(mock).toHaveBeenCalledWith(
       '/api/admin/mcp-servers',
@@ -80,6 +83,16 @@ describe('AdminMcpServers', () => {
         body: JSON.stringify({ name: 'sentry', serverUrl: 'https://mcp.sentry.dev/mcp', transport: 'HTTP' }),
       }),
     );
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+  });
+
+  test('the register form stays out of the way until asked for', async () => {
+    global.fetch = fetchMock([]) as unknown as typeof fetch;
+
+    renderWithProviders(<AdminMcpServers />);
+
+    expect(await screen.findByText('No MCP servers yet')).toBeInTheDocument();
+    expect(screen.queryByLabelText('Server URL')).not.toBeInTheDocument();
   });
 
   const SENTRY: Server = {
@@ -130,8 +143,10 @@ describe('AdminMcpServers', () => {
 
     const { user } = renderWithProviders(<AdminMcpServers />);
 
-    await user.type(await screen.findByLabelText('When to use sentry'), 'Error reports from the live product.');
-    await user.click(screen.getByRole('button', { name: 'Save description for sentry' }));
+    await user.click(await screen.findByRole('button', { name: 'Edit sentry' }));
+    const dialog = await screen.findByRole('dialog');
+    await user.type(within(dialog).getByLabelText('When to use sentry'), 'Error reports from the live product.');
+    await user.click(within(dialog).getByRole('button', { name: 'Save' }));
 
     await waitFor(() =>
       expect(mock).toHaveBeenCalledWith(
@@ -142,14 +157,26 @@ describe('AdminMcpServers', () => {
         }),
       ),
     );
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
   });
 
   test('a description already saved is shown for editing rather than starting blank', async () => {
     global.fetch = fetchMock([{ ...SENTRY, description: 'Error reports from the live product.' }]) as unknown as typeof fetch;
 
+    const { user } = renderWithProviders(<AdminMcpServers />);
+
+    // The list previews it, and the edit dialog starts from it.
+    expect(await screen.findByText('Error reports from the live product.')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Edit sentry' }));
+    expect(await screen.findByLabelText('When to use sentry')).toHaveValue('Error reports from the live product.');
+  });
+
+  test('a server with no description is flagged in the list, since Claude cannot tell when to use it', async () => {
+    global.fetch = fetchMock([{ ...SENTRY, description: null }]) as unknown as typeof fetch;
+
     renderWithProviders(<AdminMcpServers />);
 
-    expect(await screen.findByLabelText('When to use sentry')).toHaveValue('Error reports from the live product.');
+    expect(await screen.findByText(/no description/i)).toBeInTheDocument();
   });
 
   test('shows the manual-entry form, with the callback URL to register on the server\'s side, when a server has no client id yet', async () => {
@@ -165,10 +192,14 @@ describe('AdminMcpServers', () => {
       },
     ]) as unknown as typeof fetch;
 
-    renderWithProviders(<AdminMcpServers />);
+    const { user } = renderWithProviders(<AdminMcpServers />);
 
     expect(await screen.findByText('acme')).toBeInTheDocument();
-    expect(screen.getByText(/needs a client id/i)).toBeInTheDocument();
-    expect(screen.getByText('https://app.example.com/api/mcp-servers/s2/callback')).toBeInTheDocument();
+    expect(screen.getByText('Needs setup')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Edit acme' }));
+    const dialog = await screen.findByRole('dialog');
+    expect(within(dialog).getByText(/needs a client id/i)).toBeInTheDocument();
+    expect(within(dialog).getByText('https://app.example.com/api/mcp-servers/s2/callback')).toBeInTheDocument();
   });
 });
