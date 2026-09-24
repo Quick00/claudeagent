@@ -16,6 +16,10 @@ const BARE_FILE_LINE = /\b[\w/.-]*\w\.\w{1,5}:\d+(?:-\d+)?\b/g;
 // Full path references like src/Controllers/Foo.php (must contain a slash)
 const BARE_PATH = /\b(?:[\w.-]+\/){1,}[\w.-]+\.\w{1,5}\b/g;
 
+// Bare source file names like SessionTagLimit.php — no folder, no line. Limited
+// to source-code extensions so "example.com" or "e.g." survive.
+const BARE_SOURCE_FILE = /\b[\w-]+\.(?:php|phtml|twig|tsx?|jsx?|mjs|cjs|vue|py|rb|go|java|kt|cs|swift|scss|sql|ya?ml|neon)\b/gi;
+
 // Parenthetical source references like "(in CheckInValidator.php:69-72)"
 const PAREN_SOURCE_REF = /\s*\(in\s+[^)]*\.\w{1,5}(?::\d+(?:-\d+)?)?\s*\)/gi;
 
@@ -25,6 +29,7 @@ const patterns = [
   BACKTICK_PATH,
   BARE_FILE_LINE,
   BARE_PATH,
+  BARE_SOURCE_FILE,
 ];
 
 export function stripSourceReferences(text: string): string {
@@ -35,6 +40,7 @@ export function stripSourceReferences(text: string): string {
   // Clean up leftover artifacts
   result = result.replace(/``/g, '');
   result = result.replace(/\s*\(in\s*\)/g, '');
+  result = result.replace(/""|“”|''|‘’/g, '');
   result = result.replace(/  +/g, ' ');
   return result;
 }
