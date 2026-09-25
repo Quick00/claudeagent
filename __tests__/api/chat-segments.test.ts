@@ -224,6 +224,22 @@ describe('POST /api/chat — one assistant row per text segment', () => {
     expect(rows[1].content).not.toContain('CheckIn.php');
   });
 
+  // A note Claude writes before a tool call is not the answer; one that names a
+  // repo, file or class is taken back from the screen and never stored.
+  it('retracts a leaky note before a tool call and writes only the answer', async () => {
+    const events = await runTurn(
+      textLine('OK, repo 16310549 = Eventinsight. Let me search within it.') +
+        toolLines('Grep') +
+        textLine('Short answer: yes.'),
+    );
+
+    expect(writtenRows().map((r) => r.content)).toEqual(['Short answer: yes.']);
+    const types = events.map((e) => e.type);
+    expect(types).toContain('text_retract');
+    expect(types).not.toContain('text_break');
+    expect(types.indexOf('text_retract')).toBeLessThan(types.indexOf('tool_use'));
+  });
+
   it('writes nothing but still finishes when the answer is empty', async () => {
     const events = await runTurn('');
 

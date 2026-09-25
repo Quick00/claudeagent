@@ -525,6 +525,13 @@ export function useConversation(initialConversationId: string | null) {
               if (hasText(segments[segments.length - 1])) segments.push('');
             }
 
+            if (event.type === 'text_retract') {
+              // The server took back the note just written (it read as code
+              // talk); the next text is written in its place.
+              segments[segments.length - 1] = '';
+              publish();
+            }
+
             if (event.type === 'mcp_server_notice' && event.message) {
               const notice = event.message;
               setMcpNotices((prev) => (prev.includes(notice) ? prev : [...prev, notice]));

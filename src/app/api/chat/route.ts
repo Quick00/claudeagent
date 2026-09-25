@@ -2,7 +2,6 @@ import { requireApprovedUser } from '@/lib/api-auth';
 import { prisma } from '@/lib/prisma';
 import { sessionManager } from '@/lib/session-manager';
 import { config } from '@/lib/config';
-import { stripSourceReferences } from '@/lib/sanitize-response';
 import { decrypt } from '@/lib/crypto';
 import { ChildProcess } from 'child_process';
 import { retrieveKnowledge, type LabelledEntry } from '@/lib/knowledge-context';
@@ -12,17 +11,11 @@ import { provenanceCollector } from '@/lib/provenance-collector';
 import { getKnowledgeIgnoreLists } from '@/lib/settings';
 import path from 'path';
 import { attachClaudeProcess, createSseResponse } from '@/lib/claude-process-stream';
+import { createAnswerSegments } from '@/lib/answer-segments';
 import { recordMcpServerStatus } from '@/lib/mcp-connections';
 import { NextResponse } from 'next/server';
 
 const MAX_RETRIES = 2;
-
-/**
- * One stretch of answer text, to be rendered and stored as its own bubble.
- * `sentLength` is how much of the sanitized text has already gone out as
- * `text` frames, so a delta only ever streams the tail.
- */
-type Segment = { raw: string; sentLength: number };
 
 export async function POST(request: Request) {
   const auth = await requireApprovedUser();
@@ -166,61 +159,21 @@ export async function POST(request: Request) {
 
     function attachProcess(proc: ChildProcess, retryCount: number) {
       // The answer as bubbles: one segment per stretch of text between tool calls.
-      // `current` is the one being written; a tool call closes it and opens another.
       // Locals of `attachProcess`, so a retry starts from a clean slate.
-      const segments: Segment[] = [{ raw: '', sentLength: 0 }];
-      let current = segments[0];
+      const answer = createAnswerSegments(sink);
       let claudeSessionId: string | null = null;
       let authFailed = false;
       let retrying = false;
 
-      /**
-       * End the bubble being written and open the next: flush whatever of it
-       * has not gone out yet, then announce the break.
-       *
-       * A no-op on a segment with no text, which is what keeps a tool fired
-       * before any prose from opening an empty leading bubble — and what makes
-       * it safe to call twice, as `attachClaudeProcess` does for every tool
-       * (once from `content_block_start`, once from the complete `assistant`
-       * event; see the ['Read', 'Read'] assertion in
-       * claude-process-stream.test.ts). Emptiness is judged on the *sanitized*
-       * text: a segment that was nothing but a stripped file path is no bubble.
-       */
-      function breakSegment() {
-        const closing = stripSourceReferences(current.raw);
-        if (!closing.trim()) return;
-        const remaining = closing.slice(current.sentLength);
-        if (remaining) {
-          sink.send(JSON.stringify({ type: 'text', content: remaining }));
-        }
-        current.sentLength = closing.length;
-        sink.send(JSON.stringify({ type: 'text_break' }));
-        current = { raw: '', sentLength: 0 };
-        segments.push(current);
-      }
-
       attachClaudeProcess(proc, {
         logPrefix: '[chat]',
         onSessionId: (sid) => { claudeSessionId = sid; },
-        onTextDelta: (delta) => {
-          current.raw += delta;
-          const sanitized = stripSourceReferences(current.raw);
-          // If sanitization shortened already-sent text, reset so
-          // subsequent clean text isn't permanently dropped.
-          if (sanitized.length < current.sentLength) {
-            current.sentLength = sanitized.length;
-          }
-          const newContent = sanitized.slice(current.sentLength);
-          if (newContent) {
-            sink.send(JSON.stringify({ type: 'text', content: newContent }));
-            current.sentLength = sanitized.length;
-          }
-        },
+        onTextDelta: (delta) => answer.append(delta),
         onToolUse: (tool) => {
           // Before the tool frame, not after: the break belongs to the text that
           // just ended, so the client closes that bubble and only then hangs the
           // tool label beneath it.
-          breakSegment();
+          answer.closeAtTool();
           sink.send(JSON.stringify({ type: 'tool_use', tool }));
         },
         onToolUseInput: (tool, input) => {
@@ -245,9 +198,7 @@ export async function POST(request: Request) {
           console.error('[chat] Authentication failed — invalid Claude token');
           authFailed = true;
           // Drop the partial answer: the error row below is what this turn becomes.
-          segments.length = 1;
-          segments[0] = { raw: '', sentLength: 0 };
-          current = segments[0];
+          answer.reset();
           prisma.message.create({
             data: {
               conversationId: conversation.id,
@@ -272,9 +223,9 @@ export async function POST(request: Request) {
             },
           }).catch((err) => console.error('[chat] Failed to save rate-limit message:', err));
           // The notice is its own row above, so give it a bubble of its own
-          // live too. It never enters `current.raw` — hence no new segment here,
-          // and no second copy of it from `onClose`.
-          breakSegment();
+          // live too. It never enters the answer's segments — hence no new
+          // segment here, and no second copy of it from `onClose`.
+          answer.closeAtTool();
           sink.send(JSON.stringify({ type: 'text', content: rateLimitMessage }));
           sink.send(JSON.stringify({ type: 'text_break' }));
         },
@@ -309,8 +260,7 @@ export async function POST(request: Request) {
           }
         },
         onClose: async (code) => {
-          const responseLength = segments.reduce((n, s) => n + s.raw.length, 0);
-          console.log(`[chat] Process closed (code=${code}, responseLength=${responseLength}, segments=${segments.length}, sessionId=${claudeSessionId}, authFailed=${authFailed}, retrying=${retrying})`);
+          console.log(`[chat] Process closed (code=${code}, responseLength=${answer.rawLength}, segments=${answer.count}, droppedNotes=${answer.droppedNotes}, sessionId=${claudeSessionId}, authFailed=${authFailed}, retrying=${retrying})`);
           if (authFailed) {
             sink.close();
             return;
@@ -320,20 +270,8 @@ export async function POST(request: Request) {
           }
           provenanceCollector.end(userMessage.id);
 
-          // Flush the tail of the open segment. Closed ones were already flushed
-          // at the tool call that closed them.
-          const finalCurrent = stripSourceReferences(current.raw);
-          if (finalCurrent.length > current.sentLength) {
-            sink.send(JSON.stringify({ type: 'text', content: finalCurrent.slice(current.sentLength) }));
-            current.sentLength = finalCurrent.length;
-          }
-
-          // A boundary lands exactly where trailing newlines pile up, so trim —
-          // otherwise a bubble ends in a blank line. Empty segments (a tool
-          // before any text, a tool after the last) never become rows.
-          const contents = segments
-            .map((segment) => stripSourceReferences(segment.raw).trim())
-            .filter((content) => content.length > 0);
+          answer.flushOpen();
+          const contents = answer.contents();
 
           if (contents.length > 0) {
             // `Message.createdAt` is TIMESTAMP(3) — millisecond precision. Rows

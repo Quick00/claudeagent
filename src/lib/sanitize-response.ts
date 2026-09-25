@@ -32,6 +32,12 @@ const patterns = [
   BARE_SOURCE_FILE,
 ];
 
+/** Whether the text holds anything `stripSourceReferences` would remove. */
+export function hasSourceReference(text: string): boolean {
+  // `search` ignores the global flag's `lastIndex`, which `test` would carry over.
+  return patterns.some((pattern) => text.search(pattern) !== -1);
+}
+
 export function stripSourceReferences(text: string): string {
   let result = text;
   for (const pattern of patterns) {

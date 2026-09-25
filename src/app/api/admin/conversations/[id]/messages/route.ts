@@ -6,6 +6,8 @@ import { decrypt } from '@/lib/crypto';
 import { attachClaudeProcess, createSseResponse } from '@/lib/claude-process-stream';
 import { provenanceCollector } from '@/lib/provenance-collector';
 import { getKnowledgeIgnoreLists } from '@/lib/settings';
+import { createAnswerSegments } from '@/lib/answer-segments';
+import { config } from '@/lib/config';
 import type { ChildProcess } from 'child_process';
 
 export async function POST(
@@ -88,18 +90,18 @@ export async function POST(
   provenanceCollector.start(adminMessage.id, activeRepos, await getKnowledgeIgnoreLists());
 
   return createSseResponse((sink) => {
-    let fullResponse = '';
     let newSessionId: string | null = null;
 
     function attach(proc: ChildProcess) {
+      // Same bubbles as /api/chat: split at each tool call, sanitized, and a
+      // leaky note before a tool call taken back rather than shown to the owner.
+      const answer = createAnswerSegments(sink);
       attachClaudeProcess(proc, {
         logPrefix: '[admin-chat]',
         onSessionId: (sid) => { newSessionId = sid; },
-        onTextDelta: (delta) => {
-          fullResponse += delta;
-          sink.send(JSON.stringify({ type: 'text', content: delta }));
-        },
+        onTextDelta: (delta) => answer.append(delta),
         onToolUse: (tool) => {
+          answer.closeAtTool();
           sink.send(JSON.stringify({ type: 'tool_use', tool }));
         },
         onToolUseInput: (tool, input) => {
@@ -107,14 +109,20 @@ export async function POST(
         },
         onClose: async () => {
           provenanceCollector.end(adminMessage.id);
-          if (fullResponse) {
-            await prisma.message.create({
-              data: {
+          answer.flushOpen();
+          const contents = answer.contents();
+          if (contents.length > 0) {
+            // Strictly increasing timestamps, past the question: rows that tie
+            // at TIMESTAMP(3) come back in any order (see /api/chat).
+            const base = Math.max(Date.now(), adminMessage.createdAt.getTime() + 1);
+            await prisma.message.createMany({
+              data: contents.map((content, i) => ({
                 conversationId,
-                role: 'assistant',
-                content: fullResponse,
+                role: 'assistant' as const,
+                content,
                 seenByOwner: false,
-              },
+                createdAt: new Date(base + i),
+              })),
             });
             if (newSessionId && newSessionId !== sessionId) {
               await prisma.conversation.update({
@@ -154,7 +162,8 @@ export async function POST(
     const procOrPromise = sessionManager.resumeSession(
       requestId,
       sessionId,
-      content,
+      // Always a resumed run, which gets no system prompt: the rules ride on the message.
+      config.responseReminder + content,
       ownerClaudeToken,
       ownerUserId,
       adminMessage.id,
