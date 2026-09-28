@@ -70,12 +70,12 @@ export const SECTIONS: Section[] = [
   {
     id: 'knowledge',
     label: 'Knowledge',
-    href: ROUTES.knowledgeMap,
+    href: ROUTES.knowledgeDashboard,
     adminOnly: false,
     placement: 'top',
     children: [
-      { label: 'Map', href: ROUTES.knowledgeMap, icon: 'map' },
       { label: 'Dashboard', href: ROUTES.knowledgeDashboard, icon: 'dashboard' },
+      { label: 'Map', href: ROUTES.knowledgeMap, icon: 'map' },
     ],
   },
   {
