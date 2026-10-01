@@ -107,13 +107,14 @@ export function ChatMessages({
           action={
             <div className="w-full">
               {/* `auto-rows-fr` equalises every row, so a chip holding a long
-                  question does not tower over a short one. */}
+                  question does not tower over a short one. `wrap-anywhere`
+                  breaks pasted URLs, which have no spaces to wrap on. */}
               <div className="grid auto-rows-fr gap-3 sm:grid-cols-2">
                 {suggestions.map((q, i) => (
                   <Button
                     key={`${i}-${q}`}
                     variant="outline"
-                    className="h-full items-center justify-start whitespace-normal px-4 py-3 text-left"
+                    className="h-full items-center justify-start whitespace-normal wrap-anywhere px-4 py-3 text-left"
                     onClick={() => onSendSuggestion(q)}
                   >
                     {q}
