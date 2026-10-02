@@ -9,6 +9,7 @@ import { apiFetch, jsonBody } from '@/lib/api';
 import { qk } from '@/lib/query-keys';
 import { ROUTES } from '@/lib/navigation';
 import { useConversations } from './ConversationsProvider';
+import { toolStatusLabel } from './tool-status';
 
 export type Attachment = {
   id: string;
@@ -62,17 +63,6 @@ type ApiConversation = {
   claudeSessionId?: string | null;
   user?: { name?: string };
   flags?: Flag[];
-};
-
-const TOOL_LABELS: Record<string, string> = {
-  Glob: 'Searching for files...',
-  Grep: 'Searching code...',
-  Read: 'Reading files...',
-  Bash: 'Running a command...',
-  WebSearch: 'Searching the web...',
-  WebFetch: 'Fetching a page...',
-  mcp__knowledge__save_knowledge: 'Saving to knowledge base...',
-  mcp__knowledge__search_knowledge: 'Searching knowledge base...',
 };
 
 /** Conversation counts worth celebrating. Above 100 every hundredth. */
@@ -550,7 +540,7 @@ export function useConversation(initialConversationId: string | null) {
                   colors: ['#fbbf24', '#f59e0b', '#d97706'],
                 });
               }
-              setToolStatus(TOOL_LABELS[event.tool ?? ''] || 'Analyzing the codebase...');
+              setToolStatus(toolStatusLabel(event.tool));
             }
 
             if (event.type === 'done') {
