@@ -11,6 +11,7 @@ import { ChatHeader } from './ChatHeader';
 import { ChatMessages } from './ChatMessages';
 import { ChatThreadSkeleton } from './ChatThreadSkeleton';
 import { useConversations } from './ConversationsProvider';
+import { McpServersBanner } from './McpServersBanner';
 import { useConversation } from './useConversation';
 
 /**
@@ -93,7 +94,7 @@ export function ChatThread({ initialConversationId }: { initialConversationId: s
           onFlag={flag}
         />
       )}
-      {isAdminSend && <AdminViewBanner ownerName={ownership.ownerName} />}
+      {isAdminSend ? <AdminViewBanner ownerName={ownership.ownerName} /> : <McpServersBanner />}
       <ChatMessages
         messages={messages}
         streamingSegments={streamingSegments}
