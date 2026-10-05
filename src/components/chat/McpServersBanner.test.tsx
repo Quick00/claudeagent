@@ -16,15 +16,16 @@ describe('McpServersBanner', () => {
     localStorage.clear();
   });
 
-  test('names the connected servers and links to settings', async () => {
+  test('renders nothing once every server is connected', async () => {
     serversResponse([
       { id: 'a', name: 'Jira', connectionStatus: 'CONNECTED' },
       { id: 'b', name: 'Sentry', connectionStatus: 'CONNECTED' },
     ]);
     renderWithProviders(<McpServersBanner />);
 
-    expect(await screen.findByText('Jira and Sentry')).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Manage connections' })).toHaveAttribute('href', '/settings');
+    await waitFor(() => expect(mockFetch).toHaveBeenCalled());
+    await new Promise((r) => setTimeout(r, 0));
+    expect(screen.queryByRole('link', { name: 'Manage connections' })).not.toBeInTheDocument();
   });
 
   test('says which servers still need connecting', async () => {
@@ -36,6 +37,7 @@ describe('McpServersBanner', () => {
 
     expect(await screen.findByText('Notion')).toBeInTheDocument();
     expect(screen.getByText(/can be connected/)).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Manage connections' })).toHaveAttribute('href', '/settings');
   });
 
   test('renders nothing when no server is registered', async () => {
@@ -48,20 +50,20 @@ describe('McpServersBanner', () => {
   });
 
   test('stays dismissed until the set of servers changes', async () => {
-    serversResponse([{ id: 'a', name: 'Jira', connectionStatus: 'CONNECTED' }]);
+    serversResponse([{ id: 'a', name: 'Jira', connectionStatus: 'NOT_CONNECTED' }]);
     const first = renderWithProviders(<McpServersBanner />);
     await userEvent.click(await screen.findByRole('button', { name: 'Dismiss' }));
     expect(screen.queryByText('Jira')).not.toBeInTheDocument();
     first.unmount();
 
-    renderWithProviders(<McpServersBanner />);
+    const second = renderWithProviders(<McpServersBanner />);
     await new Promise((r) => setTimeout(r, 0));
     expect(screen.queryByText('Jira')).not.toBeInTheDocument();
-    first.unmount();
+    second.unmount();
 
     serversResponse([
-      { id: 'a', name: 'Jira', connectionStatus: 'CONNECTED' },
-      { id: 'b', name: 'Sentry', connectionStatus: 'CONNECTED' },
+      { id: 'a', name: 'Jira', connectionStatus: 'NOT_CONNECTED' },
+      { id: 'b', name: 'Sentry', connectionStatus: 'NOT_CONNECTED' },
     ]);
     renderWithProviders(<McpServersBanner />);
     expect(await screen.findByText('Jira and Sentry')).toBeInTheDocument();

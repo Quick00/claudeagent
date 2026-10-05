@@ -30,7 +30,7 @@ function readDismissed() {
   }
 }
 
-/** Tells the user which connected tools Claude can use here, and which still need connecting. */
+/** Points the user at MCP servers they have not connected yet, until every one is connected. */
 export function McpServersBanner() {
   const { data } = useQuery({
     queryKey: qk.mcpServers.userList(),
@@ -41,12 +41,12 @@ export function McpServersBanner() {
   const servers = Array.isArray(data) ? data : [];
   // A newly registered server changes the signature, so it brings the banner back.
   const signature = servers.map((s) => s.id).sort().join(',');
-  if (servers.length === 0 || dismissedSignature === undefined || dismissedSignature === signature) {
+  const unconnected = servers.filter((s) => s.connectionStatus !== 'CONNECTED').map((s) => s.name);
+  if (unconnected.length === 0 || dismissedSignature === undefined || dismissedSignature === signature) {
     return null;
   }
 
   const connected = servers.filter((s) => s.connectionStatus === 'CONNECTED').map((s) => s.name);
-  const unconnected = servers.filter((s) => s.connectionStatus !== 'CONNECTED').map((s) => s.name);
 
   const dismiss = () => {
     try {
