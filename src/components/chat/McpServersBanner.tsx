@@ -46,8 +46,6 @@ export function McpServersBanner() {
     return null;
   }
 
-  const connected = servers.filter((s) => s.connectionStatus === 'CONNECTED').map((s) => s.name);
-
   const dismiss = () => {
     try {
       localStorage.setItem(DISMISSED_KEY, signature);
@@ -61,16 +59,7 @@ export function McpServersBanner() {
     <div className="flex items-start gap-2 border-b border-primary/30 bg-primary/10 px-4 py-2 text-xs text-foreground">
       <PlugZap className="mt-px size-3.5 shrink-0 text-primary" />
       <p className="flex-1">
-        {connected.length > 0 && (
-          <>
-            Claude can also use <span className="font-medium">{list.format(connected)}</span> in this chat.{' '}
-          </>
-        )}
-        {unconnected.length > 0 && (
-          <>
-            <span className="font-medium">{list.format(unconnected)}</span> can be connected.{' '}
-          </>
-        )}
+        <span className="font-medium">{list.format(unconnected)}</span> can be connected.{' '}
         <Link href={ROUTES.settings} className="text-primary underline underline-offset-2">
           Manage connections
         </Link>

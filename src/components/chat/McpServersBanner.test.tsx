@@ -28,7 +28,7 @@ describe('McpServersBanner', () => {
     expect(screen.queryByRole('link', { name: 'Manage connections' })).not.toBeInTheDocument();
   });
 
-  test('says which servers still need connecting', async () => {
+  test('names only the servers that still need connecting', async () => {
     serversResponse([
       { id: 'a', name: 'Jira', connectionStatus: 'CONNECTED' },
       { id: 'b', name: 'Notion', connectionStatus: 'NOT_CONNECTED' },
@@ -37,6 +37,7 @@ describe('McpServersBanner', () => {
 
     expect(await screen.findByText('Notion')).toBeInTheDocument();
     expect(screen.getByText(/can be connected/)).toBeInTheDocument();
+    expect(screen.queryByText(/Jira/)).not.toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Manage connections' })).toHaveAttribute('href', '/settings');
   });
 
