@@ -10,6 +10,7 @@ import { prisma } from '@/lib/prisma';
 import { sessionManager } from '@/lib/session-manager';
 import { requireApprovedUser } from '@/lib/api-auth';
 import { recordMcpServerStatus } from '@/lib/mcp-connections';
+import * as Sentry from '@sentry/nextjs';
 import { drainSse } from '../helpers/sse';
 
 jest.mock('@/lib/api-auth', () => ({ requireApprovedUser: jest.fn() }));
@@ -26,6 +27,7 @@ jest.mock('@/lib/session-manager', () => ({
   sessionManager: { startSession: jest.fn(), resumeSession: jest.fn(), takeDroppedServers: jest.fn() },
 }));
 jest.mock('@/lib/mcp-connections', () => ({ recordMcpServerStatus: jest.fn(async () => undefined) }));
+jest.mock('@sentry/nextjs', () => ({ captureMessage: jest.fn(), captureException: jest.fn() }));
 jest.mock('@/lib/crypto', () => ({ decrypt: (s: string) => `dec(${s})` }));
 jest.mock('@/lib/knowledge-context', () => ({
   retrieveKnowledge: jest.fn(async () => []),
@@ -240,11 +242,16 @@ describe('POST /api/chat — one assistant row per text segment', () => {
     expect(types.indexOf('text_retract')).toBeLessThan(types.indexOf('tool_use'));
   });
 
-  it('writes nothing but still finishes when the answer is empty', async () => {
+  it('stores and sends an error, and reports to Sentry, when the answer is empty', async () => {
     const events = await runTurn('');
 
     expect(mockMsgCreateMany).not.toHaveBeenCalled();
-    expect(events.some((e) => e.type === 'done')).toBe(true);
+    expect(mockMsgCreate).toHaveBeenCalledWith({
+      data: expect.objectContaining({ role: 'assistant', content: expect.stringContaining('try again') }),
+    });
+    expect(events.some((e) => e.type === 'error')).toBe(true);
+    expect(events.some((e) => e.type === 'done')).toBe(false);
+    expect(Sentry.captureMessage).toHaveBeenCalledWith('Claude turn ended without an answer', expect.anything());
   });
 
   it('emits an mcp_server_notice frame for a server dropped before the session started', async () => {
