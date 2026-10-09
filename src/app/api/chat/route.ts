@@ -15,7 +15,7 @@ import { createAnswerSegments } from '@/lib/answer-segments';
 import { recordMcpServerStatus } from '@/lib/mcp-connections';
 import { NextResponse } from 'next/server';
 import * as Sentry from '@sentry/nextjs';
-import { emptyTurnMessage } from '@/lib/empty-turn';
+import { emptyTurnMessage, reportEmptyTurn } from '@/lib/empty-turn';
 
 const MAX_RETRIES = 2;
 
@@ -165,6 +165,7 @@ export async function POST(request: Request) {
       const answer = createAnswerSegments(sink);
       let claudeSessionId: string | null = null;
       let authFailed = false;
+      let processFailed = false;
       let retrying = false;
       let rateLimited = false;
       let resultSubtype: string | null = null;
@@ -272,6 +273,10 @@ export async function POST(request: Request) {
             sink.close();
             return;
           }
+          // A spawn failure fires `close` after `error`; `onProcessError` already told the user.
+          if (processFailed) {
+            return;
+          }
           if (retrying) {
             return;
           }
@@ -282,24 +287,15 @@ export async function POST(request: Request) {
 
           if (contents.length === 0 && !rateLimited) {
             const content = emptyTurnMessage(resultSubtype);
-            Sentry.captureMessage('Claude turn ended without an answer', {
-              level: 'error',
-              tags: { resultSubtype: resultSubtype ?? 'none', exitCode: String(code), droppedNotes: String(answer.droppedNotes) },
+            reportEmptyTurn({
+              resultSubtype,
+              exitCode: code,
+              droppedNotes: answer.droppedNotes,
               extra: { conversationId: conversation.id, userId, claudeSessionId, retryCount },
             });
-            await prisma.message.create({
-              data: { conversationId: conversation.id, role: 'assistant', content },
-            }).catch((err) => console.error('[chat] Failed to save empty-turn message:', err));
-            // Without the session ID the thread reads as never started, and the next send begins from scratch.
-            if (claudeSessionId) {
-              await prisma.conversation.update({
-                where: { id: conversation.id },
-                data: { claudeSessionId },
-              }).catch((err) => console.error('[chat] Failed to save session ID:', err));
-            }
-            sink.send(JSON.stringify({ type: 'error', content }));
-            sink.close();
-            return;
+            // Streamed and stored like an answer, so the bubble shown live is the row a reload shows.
+            sink.send(JSON.stringify({ type: 'text', content }));
+            contents.push(content);
           }
 
           if (contents.length > 0) {
@@ -319,13 +315,16 @@ export async function POST(request: Request) {
                 createdAt: new Date(base + i),
               })),
             });
+          }
 
-            if (claudeSessionId) {
-              await prisma.conversation.update({
-                where: { id: conversation.id },
-                data: { claudeSessionId },
-              });
-            }
+          // Kept even when no answer was written (rate limit, empty turn):
+          // without it the thread reads as never started, and the next send
+          // begins from scratch.
+          if (claudeSessionId) {
+            await prisma.conversation.update({
+              where: { id: conversation.id },
+              data: { claudeSessionId },
+            });
           }
 
           sink.send(JSON.stringify({ type: 'done', conversationId: conversation.id }));
@@ -333,6 +332,7 @@ export async function POST(request: Request) {
         },
         onProcessError: (err) => {
           console.error('[chat] Process error:', err.message);
+          processFailed = true;
           Sentry.captureException(err, { extra: { conversationId: conversation.id, userId } });
           sink.send(JSON.stringify({
             type: 'error',

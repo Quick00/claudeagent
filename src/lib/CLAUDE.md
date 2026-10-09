@@ -37,6 +37,7 @@ Server-side utility modules.
 - `repo-manager.ts` — Clone, sync (`syncRepo()` returns `{ fromSha, toSha }`), and enforce read-only permissions on GitLab repositories.
 - `sanitize-response.ts` — Strips source file references from Claude responses for security/privacy. `hasSourceReference()` reports whether it would strip anything.
 - `answer-segments.ts` — `createAnswerSegments(sink)`: the answer as bubbles, shared by `/api/chat` and the admin send route. Streams sanitized `text`, splits at each tool call with `text_break`, and stores the same split via `contents()`. A stretch that ends at a tool call is a working note, never the answer: if `isLeakyNote()` flags it (a repo number, file name, multi-hump identifier, backticks, or words like repo/PHP/component) it is taken back with `text_retract` and never stored. The final segment is never dropped.
+- `empty-turn.ts` — What a turn that ends with no answer text becomes, in `/api/chat` and the admin send route: `emptyTurnMessage(resultSubtype)` is the reply stored and streamed in its place (a hint to narrow the question when the CLI hit `--max-turns`), and `reportEmptyTurn()` sends it to Sentry.
 - `upload.ts` — File upload handling. Stores files to `UPLOAD_PATH`, validates MIME types and size limits.
 
 ## Usage
