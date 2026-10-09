@@ -5,6 +5,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { Check, Copy } from 'lucide-react';
 import { apiFetch, jsonBody } from '@/lib/api';
+import { copyText } from '@/lib/clipboard';
 import { qk } from '@/lib/query-keys';
 import { Button } from '@/components/ui/button';
 import {
@@ -64,33 +65,11 @@ export default function LinkClaudeModal({ open, onOpenChange, onLinked }: LinkCl
   })();
 
   const copyToClipboard = async (text: string) => {
-    try {
-      if (navigator.clipboard?.writeText) {
-        await navigator.clipboard.writeText(text);
-      } else {
-        throw new Error('clipboard unavailable');
-      }
+    if (await copyText(text)) {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
-    } catch {
-      // Fallback for non-secure contexts (HTTP on LAN): use a temporary
-      // textarea + document.execCommand('copy'). execCommand is deprecated
-      // but universally works and is the standard fallback for this case.
-      const textarea = document.createElement('textarea');
-      textarea.value = text;
-      textarea.style.position = 'fixed';
-      textarea.style.opacity = '0';
-      document.body.appendChild(textarea);
-      textarea.select();
-      try {
-        document.execCommand('copy');
-        setCopied(true);
-        setTimeout(() => setCopied(false), 2000);
-      } catch {
-        toast.error('Could not copy — select the command manually');
-      } finally {
-        document.body.removeChild(textarea);
-      }
+    } else {
+      toast.error('Could not copy — select the command manually');
     }
   };
 

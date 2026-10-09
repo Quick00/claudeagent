@@ -12,5 +12,6 @@ export default async function NoAccessPage() {
   if (!session?.user) redirect(ROUTES.login);
   if (!isBlockedEmail(session.user.email)) redirect(ROUTES.chat());
 
-  return <NoAccessCard />;
+  const firstName = session.user.name?.trim().split(/\s+/)[0] || 'Friend';
+  return <NoAccessCard firstName={firstName} />;
 }
