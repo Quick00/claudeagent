@@ -25,6 +25,7 @@ All components are React client components (`'use client'`).
 - `DialogOverlay.tsx` — Reusable modal/dialog overlay wrapper.
 - `ThemeProvider.tsx` — Dark/light mode provider.
 - `Providers.tsx` — Context providers wrapper (SessionProvider from next-auth, ThemeProvider, ApprovalGate).
+- `NoAccessCard.tsx` — The `/no-access` screen for blocked accounts. "Submit an apology" is a link out (new tab), not a form.
 - `ApprovalGate.tsx` — Redirects signed-in-but-unapproved accounts to `/pending`. UI-level only; the API guards are what protect the data.
 
 ## Patterns

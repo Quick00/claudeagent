@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { getToken } from 'next-auth/jwt';
+import { isBlockedEmail } from '@/lib/blocked-users';
 
 function isMaintenanceMode() {
   return process.env.MAINTENANCE_MODE === 'true';
@@ -28,11 +29,18 @@ export async function proxy(request: NextRequest) {
     return NextResponse.redirect(new URL('/login', request.url));
   }
 
+  if (isBlockedEmail(token.email)) {
+    if (request.nextUrl.pathname.startsWith('/api/')) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+    return NextResponse.redirect(new URL('/no-access', request.url));
+  }
+
   return NextResponse.next();
 }
 
 export const config = {
   matcher: [
-    '/((?!maintenance|api/auth|api/maintenance-status|api/knowledge|_next/static|_next/image|favicon\\.ico|robots\\.txt|login|install).*)',
+    '/((?!maintenance|no-access|api/auth|api/maintenance-status|api/knowledge|_next/static|_next/image|favicon\\.ico|robots\\.txt|login|install).*)',
   ],
 };

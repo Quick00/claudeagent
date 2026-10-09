@@ -22,6 +22,7 @@ export const ROUTES = {
   settings: '/settings',
   login: '/login',
   pending: '/pending',
+  noAccess: '/no-access',
 } as const;
 
 export type SectionId = 'chat' | 'knowledge' | 'admin' | 'settings';
