@@ -15,6 +15,7 @@ A web app that lets team members ask questions about a codebase and get answers 
 - **Email notifications** — Resend integration sends users an email when their feedback is marked as done
 - **Knowledge dashboard** — stats overview with semantic search across all knowledge entries
 - **Maintenance mode** — flip one env var to show a "back soon" page to all users while deploying
+- **Blocked accounts** — list emails in `BLOCKED_EMAILS` to send them to a `/no-access` screen (pages redirect, APIs return 403)
 - **Admin panel** — manage users, repositories, review flagged conversations, and feedback
 - **Google OAuth** authentication for the app itself (or test-mode login for local dev)
 - **Session management** — process pool with max concurrency and queuing
@@ -78,6 +79,9 @@ CLAUDE_MAX_TURNS=25              # max tool-use turns per question
 
 # Maintenance mode — set to "true" to show a maintenance page to all users
 # MAINTENANCE_MODE=true
+
+# Blocked accounts — comma-separated emails sent to the /no-access screen
+# BLOCKED_EMAILS=someone@example.com
 
 # Test mode — skip Google OAuth, use simple email login
 # AUTH_TEST_MODE=true
@@ -214,6 +218,7 @@ src/
     knowledge/                # Knowledge map page
     login/                    # Login page
     maintenance/              # Maintenance mode page (shown when MAINTENANCE_MODE=true)
+    no-access/                # Blocked-account page (emails listed in BLOCKED_EMAILS)
     # Settings, Users, Flags, and Feedback are sidebar panels (no dedicated pages)
     global-error.tsx          # App-level error boundary (Sentry-aware)
     page.tsx                  # Main chat page

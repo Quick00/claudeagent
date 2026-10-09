@@ -13,6 +13,7 @@ Next.js 16 App Router directory.
 - `knowledge/` — Knowledge graph visualization
 - `login/` — Auth login page
 - `maintenance/` — Maintenance mode page (shown when `MAINTENANCE_MODE=true`)
+- `no-access/` — Blocked-account page. The proxy redirects any signed-in email listed in `BLOCKED_EMAILS` here (and answers its API calls with 403); the page itself sends everyone else back to chat.
 - `pending/` — Waiting-for-approval page for unapproved accounts. Polls `/api/account-status` and reloads into the app once approved.
 - `install/` — Windows installer download route (`install-claude-windows.bat`)
 - `layout.tsx` — Root layout with Providers wrapper

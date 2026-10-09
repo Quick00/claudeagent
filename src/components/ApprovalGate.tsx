@@ -7,7 +7,7 @@ import { ReactNode } from 'react';
 import { ROUTES } from '@/lib/navigation';
 
 /** Routes that must stay reachable while an account is unapproved. */
-const EXEMPT_PATHS = [ROUTES.login, ROUTES.pending, '/maintenance'];
+const EXEMPT_PATHS = [ROUTES.login, ROUTES.pending, ROUTES.noAccess, '/maintenance'];
 
 /**
  * `getShellUser()` already redirects an unapproved account to `/pending` on
