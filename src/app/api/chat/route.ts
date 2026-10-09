@@ -14,6 +14,8 @@ import { attachClaudeProcess, createSseResponse } from '@/lib/claude-process-str
 import { createAnswerSegments } from '@/lib/answer-segments';
 import { recordMcpServerStatus } from '@/lib/mcp-connections';
 import { NextResponse } from 'next/server';
+import * as Sentry from '@sentry/nextjs';
+import { emptyTurnMessage, reportEmptyTurn } from '@/lib/empty-turn';
 
 const MAX_RETRIES = 2;
 
@@ -163,7 +165,10 @@ export async function POST(request: Request) {
       const answer = createAnswerSegments(sink);
       let claudeSessionId: string | null = null;
       let authFailed = false;
+      let processFailed = false;
       let retrying = false;
+      let rateLimited = false;
+      let resultSubtype: string | null = null;
 
       attachClaudeProcess(proc, {
         logPrefix: '[chat]',
@@ -215,6 +220,7 @@ export async function POST(request: Request) {
           sink.close();
         },
         onRateLimit: (rateLimitMessage) => {
+          rateLimited = true;
           prisma.message.create({
             data: {
               conversationId: conversation.id,
@@ -230,6 +236,7 @@ export async function POST(request: Request) {
           sink.send(JSON.stringify({ type: 'text_break' }));
         },
         onResult: (event) => {
+          resultSubtype = event.subtype ?? null;
           if (event.is_error && event.subtype === 'error_during_execution' && retryCount < MAX_RETRIES) {
             console.log(`[chat] error_during_execution — retrying (attempt ${retryCount + 1}/${MAX_RETRIES})`);
             retrying = true;
@@ -245,6 +252,7 @@ export async function POST(request: Request) {
               attachProcess(retryProc, retryCount + 1);
             }).catch((err) => {
               console.error('[chat] Failed to acquire retry process:', err.message);
+              Sentry.captureException(err, { extra: { conversationId: conversation.id, userId, retry: true } });
               // The config was built before acquisition failed, so this
               // request has an entry waiting to be read exactly once.
               sessionManager.takeDroppedServers(retryRequestId);
@@ -260,9 +268,13 @@ export async function POST(request: Request) {
           }
         },
         onClose: async (code) => {
-          console.log(`[chat] Process closed (code=${code}, responseLength=${answer.rawLength}, segments=${answer.count}, droppedNotes=${answer.droppedNotes}, sessionId=${claudeSessionId}, authFailed=${authFailed}, retrying=${retrying})`);
+          console.log(`[chat] Process closed (code=${code}, responseLength=${answer.rawLength}, segments=${answer.count}, droppedNotes=${answer.droppedNotes}, sessionId=${claudeSessionId}, authFailed=${authFailed}, retrying=${retrying}, resultSubtype=${resultSubtype})`);
           if (authFailed) {
             sink.close();
+            return;
+          }
+          // A spawn failure fires `close` after `error`; `onProcessError` already told the user.
+          if (processFailed) {
             return;
           }
           if (retrying) {
@@ -272,6 +284,19 @@ export async function POST(request: Request) {
 
           answer.flushOpen();
           const contents = answer.contents();
+
+          if (contents.length === 0 && !rateLimited) {
+            const content = emptyTurnMessage(resultSubtype);
+            reportEmptyTurn({
+              resultSubtype,
+              exitCode: code,
+              droppedNotes: answer.droppedNotes,
+              extra: { conversationId: conversation.id, userId, claudeSessionId, retryCount },
+            });
+            // Streamed and stored like an answer, so the bubble shown live is the row a reload shows.
+            sink.send(JSON.stringify({ type: 'text', content }));
+            contents.push(content);
+          }
 
           if (contents.length > 0) {
             // `Message.createdAt` is TIMESTAMP(3) — millisecond precision. Rows
@@ -290,13 +315,16 @@ export async function POST(request: Request) {
                 createdAt: new Date(base + i),
               })),
             });
+          }
 
-            if (claudeSessionId) {
-              await prisma.conversation.update({
-                where: { id: conversation.id },
-                data: { claudeSessionId },
-              });
-            }
+          // Kept even when no answer was written (rate limit, empty turn):
+          // without it the thread reads as never started, and the next send
+          // begins from scratch.
+          if (claudeSessionId) {
+            await prisma.conversation.update({
+              where: { id: conversation.id },
+              data: { claudeSessionId },
+            });
           }
 
           sink.send(JSON.stringify({ type: 'done', conversationId: conversation.id }));
@@ -304,6 +332,8 @@ export async function POST(request: Request) {
         },
         onProcessError: (err) => {
           console.error('[chat] Process error:', err.message);
+          processFailed = true;
+          Sentry.captureException(err, { extra: { conversationId: conversation.id, userId } });
           sink.send(JSON.stringify({
             type: 'error',
             content: 'Claude process encountered an error. Please try again.',
@@ -329,6 +359,7 @@ export async function POST(request: Request) {
       attachProcess(proc, 0);
     }).catch((err) => {
       console.error('[chat] Failed to acquire process:', err.message);
+      Sentry.captureException(err, { extra: { conversationId: conversation.id, userId } });
       // The config was built before acquisition failed, so this request has
       // an entry waiting to be read exactly once.
       sessionManager.takeDroppedServers(requestId);

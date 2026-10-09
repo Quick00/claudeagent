@@ -10,6 +10,7 @@ import { prisma } from '@/lib/prisma';
 import { sessionManager } from '@/lib/session-manager';
 import { requireApprovedUser } from '@/lib/api-auth';
 import { recordMcpServerStatus } from '@/lib/mcp-connections';
+import * as Sentry from '@sentry/nextjs';
 import { drainSse } from '../helpers/sse';
 
 jest.mock('@/lib/api-auth', () => ({ requireApprovedUser: jest.fn() }));
@@ -26,6 +27,7 @@ jest.mock('@/lib/session-manager', () => ({
   sessionManager: { startSession: jest.fn(), resumeSession: jest.fn(), takeDroppedServers: jest.fn() },
 }));
 jest.mock('@/lib/mcp-connections', () => ({ recordMcpServerStatus: jest.fn(async () => undefined) }));
+jest.mock('@sentry/nextjs', () => ({ captureMessage: jest.fn(), captureException: jest.fn() }));
 jest.mock('@/lib/crypto', () => ({ decrypt: (s: string) => `dec(${s})` }));
 jest.mock('@/lib/knowledge-context', () => ({
   retrieveKnowledge: jest.fn(async () => []),
@@ -42,6 +44,7 @@ const mockRepos = prisma.repository.findMany as jest.Mock;
 const mockConvFind = prisma.conversation.findFirst as jest.Mock;
 const mockMsgCreate = prisma.message.create as jest.Mock;
 const mockMsgCreateMany = prisma.message.createMany as jest.Mock;
+const mockConvUpdate = prisma.conversation.update as jest.Mock;
 const mockResume = sessionManager.resumeSession as jest.Mock;
 const mockDropped = sessionManager.takeDroppedServers as jest.Mock;
 const mockRecordStatus = recordMcpServerStatus as jest.Mock;
@@ -99,6 +102,14 @@ const toolLines = (name: string) =>
 /** The CLI's init event, listing each configured MCP server's connection state. */
 const initLine = (servers: Array<{ name: string; status: string }>) =>
   JSON.stringify({ type: 'system', subtype: 'init', mcp_servers: servers }) + '\n';
+
+/** The CLI's terminal `result` event. */
+const resultLine = (fields: { subtype?: string; session_id?: string }) =>
+  JSON.stringify({ type: 'result', is_error: fields.subtype !== undefined, ...fields }) + '\n';
+
+/** The CLI's rate-limit notice, an `assistant` event carrying user-facing text. */
+const rateLimitLine = (text: string) =>
+  JSON.stringify({ type: 'assistant', error: 'rate_limit', message: { content: [{ type: 'text', text }] } }) + '\n';
 
 const USER_MESSAGE_AT = new Date('2026-01-01T10:00:00.000Z');
 
@@ -240,11 +251,49 @@ describe('POST /api/chat — one assistant row per text segment', () => {
     expect(types.indexOf('text_retract')).toBeLessThan(types.indexOf('tool_use'));
   });
 
-  it('writes nothing but still finishes when the answer is empty', async () => {
-    const events = await runTurn('');
+  it('stores, streams and reports a message in place of an empty answer', async () => {
+    const events = await runTurn(resultLine({ subtype: 'error_max_turns', session_id: 'sess-2' }));
+
+    expect(writtenRows().map((r) => r.content)).toEqual([expect.stringContaining('narrower question')]);
+    expect(events).toContainEqual({ type: 'text', content: expect.stringContaining('narrower question') });
+    expect(events.some((e) => e.type === 'done')).toBe(true);
+    expect(Sentry.captureMessage).toHaveBeenCalledWith(
+      'Claude turn ended without an answer',
+      expect.objectContaining({ tags: expect.objectContaining({ resultSubtype: 'error_max_turns' }) }),
+    );
+    // Kept, so the next send resumes the thread instead of starting over.
+    expect(mockConvUpdate).toHaveBeenCalledWith({ where: { id: 'conv-1' }, data: { claudeSessionId: 'sess-2' } });
+  });
+
+  it('keeps the session ID when a rate limit is the only reply', async () => {
+    const events = await runTurn(rateLimitLine('You have hit your limit.') + resultLine({ session_id: 'sess-2' }));
 
     expect(mockMsgCreateMany).not.toHaveBeenCalled();
+    expect(Sentry.captureMessage).not.toHaveBeenCalled();
+    expect(mockConvUpdate).toHaveBeenCalledWith({ where: { id: 'conv-1' }, data: { claudeSessionId: 'sess-2' } });
     expect(events.some((e) => e.type === 'done')).toBe(true);
+  });
+
+  it('reports a process that fails to spawn once, and stores nothing for it', async () => {
+    const proc = fakeChild();
+    mockResume.mockResolvedValue(proc);
+    const res = await POST(
+      new Request('http://x', {
+        method: 'POST',
+        body: JSON.stringify({ conversationId: 'conv-1', message: 'How does it work?' }),
+      }),
+    );
+    await tick();
+    // What Node does when the binary cannot be spawned: `error`, then `close`.
+    proc.emit('error', new Error('spawn claude ENOENT'));
+    proc.emit('close', -2);
+    await tick();
+    const events = await drainSse(res);
+
+    expect(events.filter((e) => e.type === 'error')).toHaveLength(1);
+    expect(Sentry.captureException).toHaveBeenCalledTimes(1);
+    expect(Sentry.captureMessage).not.toHaveBeenCalled();
+    expect(mockMsgCreateMany).not.toHaveBeenCalled();
   });
 
   it('emits an mcp_server_notice frame for a server dropped before the session started', async () => {

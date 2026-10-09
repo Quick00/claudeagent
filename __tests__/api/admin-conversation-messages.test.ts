@@ -17,6 +17,7 @@ jest.mock('@/lib/prisma', () => ({
 jest.mock('@/lib/session-manager', () => ({
   sessionManager: { resumeSession: jest.fn(), takeDroppedServers: jest.fn(() => []) },
 }));
+jest.mock('@sentry/nextjs', () => ({ captureMessage: jest.fn(), captureException: jest.fn() }));
 jest.mock('@/lib/crypto', () => ({ decrypt: (s: string) => `dec(${s})` }));
 
 const mockSession = getServerSession as jest.Mock;
@@ -100,6 +101,7 @@ import { sessionManager } from '@/lib/session-manager';
 import { config } from '@/lib/config';
 import { EventEmitter } from 'events';
 import { PassThrough } from 'stream';
+import * as Sentry from '@sentry/nextjs';
 import { drainSse } from '../helpers/sse';
 
 const mockMsgCreate = prisma.message.create as jest.Mock;
@@ -207,5 +209,38 @@ describe('POST /api/admin/conversations/[id]/messages — the answer it stores',
     const rows = (mockMsgCreateMany.mock.calls[0][0] as { data: Array<{ content: string; seenByOwner: boolean }> }).data;
     expect(rows.map((r) => r.content)).toEqual(['Looking into it.', 'It is set in per workshop.']);
     expect(rows.every((r) => r.seenByOwner === false)).toBe(true);
+  });
+
+  it('stores, streams and reports a message in place of an empty answer', async () => {
+    const proc = Object.assign(new EventEmitter(), { stdout: new PassThrough(), stderr: new PassThrough() });
+    mockResume.mockReturnValue(proc);
+
+    const res = await POST(req({ content: 'Hello from admin' }), params('c1'));
+    proc.stdout.write(JSON.stringify({ type: 'result', is_error: true, subtype: 'error_max_turns' }) + '\n');
+    await tick();
+    proc.emit('close', 0);
+    await tick();
+    const events = await drainSse(res);
+
+    const rows = (mockMsgCreateMany.mock.calls[0][0] as { data: Array<{ content: string; seenByOwner: boolean }> }).data;
+    expect(rows).toEqual([expect.objectContaining({ content: expect.stringContaining('narrower question'), seenByOwner: false })]);
+    expect(events).toContainEqual({ type: 'text', content: expect.stringContaining('narrower question') });
+    expect(events.some((e) => e.type === 'done')).toBe(true);
+    expect(Sentry.captureMessage).toHaveBeenCalledWith('Claude turn ended without an answer', expect.anything());
+  });
+
+  it('reports a process that fails to spawn once, and stores nothing for it', async () => {
+    const proc = Object.assign(new EventEmitter(), { stdout: new PassThrough(), stderr: new PassThrough() });
+    mockResume.mockReturnValue(proc);
+
+    const res = await POST(req({ content: 'Hello from admin' }), params('c1'));
+    proc.emit('error', new Error('spawn claude ENOENT'));
+    proc.emit('close', -2);
+    await tick();
+    const events = await drainSse(res);
+
+    expect(events.filter((e) => e.type === 'error')).toHaveLength(1);
+    expect(Sentry.captureMessage).not.toHaveBeenCalled();
+    expect(mockMsgCreateMany).not.toHaveBeenCalled();
   });
 });

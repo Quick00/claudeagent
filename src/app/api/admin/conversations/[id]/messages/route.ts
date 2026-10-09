@@ -8,6 +8,7 @@ import { provenanceCollector } from '@/lib/provenance-collector';
 import { getKnowledgeIgnoreLists } from '@/lib/settings';
 import { createAnswerSegments } from '@/lib/answer-segments';
 import { config } from '@/lib/config';
+import { emptyTurnMessage, reportEmptyTurn } from '@/lib/empty-turn';
 import type { ChildProcess } from 'child_process';
 
 export async function POST(
@@ -57,6 +58,7 @@ export async function POST(
   }
 
   const conversationId = conversation.id;
+  const adminId = currentUser.id;
   const ownerUserId = conversation.user.id;
   const ownerClaudeToken = decrypt(conversation.user.claudeToken);
   const sessionId = conversation.claudeSessionId;
@@ -96,6 +98,8 @@ export async function POST(
       // Same bubbles as /api/chat: split at each tool call, sanitized, and a
       // leaky note before a tool call taken back rather than shown to the owner.
       const answer = createAnswerSegments(sink);
+      let processFailed = false;
+      let resultSubtype: string | null = null;
       attachClaudeProcess(proc, {
         logPrefix: '[admin-chat]',
         onSessionId: (sid) => { newSessionId = sid; },
@@ -107,35 +111,51 @@ export async function POST(
         onToolUseInput: (tool, input) => {
           provenanceCollector.recordToolUse(adminMessage.id, tool, input);
         },
-        onClose: async () => {
+        onResult: (event) => {
+          resultSubtype = event.subtype ?? null;
+        },
+        onClose: async (code) => {
+          // A spawn failure fires `close` after `error`; `onProcessError` already told the admin.
+          if (processFailed) return;
           provenanceCollector.end(adminMessage.id);
           answer.flushOpen();
           const contents = answer.contents();
-          if (contents.length > 0) {
-            // Strictly increasing timestamps, past the question: rows that tie
-            // at TIMESTAMP(3) come back in any order (see /api/chat).
-            const base = Math.max(Date.now(), adminMessage.createdAt.getTime() + 1);
-            await prisma.message.createMany({
-              data: contents.map((content, i) => ({
-                conversationId,
-                role: 'assistant' as const,
-                content,
-                seenByOwner: false,
-                createdAt: new Date(base + i),
-              })),
+          if (contents.length === 0) {
+            const content = emptyTurnMessage(resultSubtype);
+            reportEmptyTurn({
+              resultSubtype,
+              exitCode: code,
+              droppedNotes: answer.droppedNotes,
+              extra: { conversationId, ownerUserId, adminId, claudeSessionId: newSessionId },
             });
-            if (newSessionId && newSessionId !== sessionId) {
-              await prisma.conversation.update({
-                where: { id: conversationId },
-                data: { claudeSessionId: newSessionId },
-              });
-            }
+            // Streamed and stored like an answer, so the bubble shown live is the row a reload shows.
+            sink.send(JSON.stringify({ type: 'text', content }));
+            contents.push(content);
+          }
+          // Strictly increasing timestamps, past the question: rows that tie
+          // at TIMESTAMP(3) come back in any order (see /api/chat).
+          const base = Math.max(Date.now(), adminMessage.createdAt.getTime() + 1);
+          await prisma.message.createMany({
+            data: contents.map((content, i) => ({
+              conversationId,
+              role: 'assistant' as const,
+              content,
+              seenByOwner: false,
+              createdAt: new Date(base + i),
+            })),
+          });
+          if (newSessionId && newSessionId !== sessionId) {
+            await prisma.conversation.update({
+              where: { id: conversationId },
+              data: { claudeSessionId: newSessionId },
+            });
           }
           sink.send(JSON.stringify({ type: 'done', conversationId }));
           sink.close();
         },
         onProcessError: (err) => {
           console.error('[admin-chat] process error:', err.message);
+          processFailed = true;
           sink.send(JSON.stringify({
             type: 'error',
             content: 'Claude process encountered an error. Please try again.',
