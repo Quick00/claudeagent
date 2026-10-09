@@ -30,25 +30,27 @@ function readDismissed() {
   }
 }
 
-/** Points the user at MCP servers they have not connected yet, until every one is connected. */
+/** Points the user at MCP servers they have not connected yet, or whose connection broke. */
 export function McpServersBanner() {
   const { data } = useQuery({
     queryKey: qk.mcpServers.userList(),
     queryFn: ({ signal }) => apiFetch<McpServer[]>('/api/mcp-servers', { signal }),
   });
-  const dismissedSignature = useSyncExternalStore(subscribeDismissed, readDismissed, () => undefined);
+  const dismissed = useSyncExternalStore(subscribeDismissed, readDismissed, () => undefined);
 
   const servers = Array.isArray(data) ? data : [];
-  // A newly registered server changes the signature, so it brings the banner back.
-  const signature = servers.map((s) => s.id).sort().join(',');
-  const unconnected = servers.filter((s) => s.connectionStatus !== 'CONNECTED').map((s) => s.name);
-  if (unconnected.length === 0 || dismissedSignature === undefined || dismissedSignature === signature) {
-    return null;
-  }
+  const broken = servers.filter((s) => s.connectionStatus === 'ERROR');
+  const unconnected = servers.filter((s) => s.connectionStatus === 'NOT_CONNECTED');
+  // One key per server and status, so a dismissal hides what was shown but a
+  // newly registered server, or a connection that breaks, brings it back.
+  const shown = [...broken, ...unconnected].map((s) => `${s.id}:${s.connectionStatus}`);
+  if (shown.length === 0 || dismissed === undefined) return null;
+  const dismissedKeys = new Set(dismissed?.split(',') ?? []);
+  if (shown.every((key) => dismissedKeys.has(key))) return null;
 
   const dismiss = () => {
     try {
-      localStorage.setItem(DISMISSED_KEY, signature);
+      localStorage.setItem(DISMISSED_KEY, shown.join(','));
     } catch {
       // Dismissal only lasts for this page view when storage is blocked.
     }
@@ -59,7 +61,17 @@ export function McpServersBanner() {
     <div className="flex items-start gap-2 border-b border-primary/30 bg-primary/10 px-4 py-2 text-xs text-foreground">
       <PlugZap className="mt-px size-3.5 shrink-0 text-primary" />
       <p className="flex-1">
-        <span className="font-medium">{list.format(unconnected)}</span> can be connected.{' '}
+        {broken.length > 0 && (
+          <>
+            <span className="font-medium">{list.format(broken.map((s) => s.name))}</span>{' '}
+            {broken.length === 1 ? 'needs' : 'need'} reconnecting.{' '}
+          </>
+        )}
+        {unconnected.length > 0 && (
+          <>
+            <span className="font-medium">{list.format(unconnected.map((s) => s.name))}</span> can be connected.{' '}
+          </>
+        )}
         <Link href={ROUTES.settings} className="text-primary underline underline-offset-2">
           Manage connections
         </Link>

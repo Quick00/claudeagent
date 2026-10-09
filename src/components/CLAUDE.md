@@ -9,6 +9,7 @@ All components are React client components (`'use client'`).
 - `ChatMessages.tsx` — Renders message list, streaming content, thinking indicators, tool status, and empty-state suggestions.
 - `ChatInput.tsx` — Auto-resizing textarea. Enter to send, Shift+Enter for newline.
 - `MessageBubble.tsx` — Single message bubble. User = right-aligned blue, Assistant = left-aligned gray with markdown rendering.
+- `chat/McpServersBanner.tsx` — Dismissible strip under the chat header naming the MCP servers the user has not connected, or whose connection broke, with a link to Settings. A dismissal (in `localStorage`) remembers each server and status it hid, so a newly registered server or a newly broken connection brings it back. Not shown when an admin views someone else's conversation.
 
 ## Other Components
 
