@@ -36,6 +36,13 @@ export interface ClaudeEventHandlers {
   logPrefix?: string;
 }
 
+const LOG_CLIP = 300;
+
+function clip(text: string): string {
+  const flat = text.replace(/\s+/g, ' ').trim();
+  return flat.length > LOG_CLIP ? `${flat.slice(0, LOG_CLIP)}…` : flat;
+}
+
 /**
  * Parse the Claude CLI stream-json protocol from a child process's stdout and
  * dispatch typed events to the provided handlers. Non-JSON lines are ignored.
@@ -46,6 +53,8 @@ export function attachClaudeProcess(
   handlers: ClaudeEventHandlers,
 ): void {
   const prefix = handlers.logPrefix ?? '[claude-stream]';
+  let toolCalls = 0;
+  let leadIn = '';
 
   // Buffer for incomplete lines split across data events.
   let stdoutBuffer = '';
@@ -85,7 +94,7 @@ export function attachClaudeProcess(
     }
 
     const assistantMsg = event.message as {
-      content?: Array<{ type?: string; name?: string; text?: string; input?: unknown }>;
+      content?: Array<{ type?: string; name?: string; text?: string; thinking?: string; input?: unknown }>;
     } | undefined;
 
     if (event.type === 'assistant' && event.error === 'rate_limit' && assistantMsg?.content?.[0]?.text) {
@@ -94,8 +103,13 @@ export function attachClaudeProcess(
 
     if (event.type === 'assistant' && assistantMsg?.content) {
       for (const block of assistantMsg.content) {
+        const said = block.type === 'text' ? block.text : block.type === 'thinking' ? block.thinking : undefined;
+        if (said) leadIn = said;
         if (block.type === 'tool_use') {
           const name = block.name ?? 'unknown';
+          toolCalls += 1;
+          console.log(`${prefix} tool #${toolCalls} ${name} ${clip(JSON.stringify(block.input ?? {}))} — why: ${leadIn ? clip(leadIn) : '(no text before call)'}`);
+          leadIn = '';
           handlers.onToolUse?.(name);
           if (block.input && typeof block.input === 'object') {
             handlers.onToolUseInput?.(name, block.input as Record<string, unknown>);
@@ -105,6 +119,7 @@ export function attachClaudeProcess(
     }
 
     if (event.type === 'result') {
+      console.log(`${prefix} run finished: ${toolCalls} tool calls, subtype=${String(event.subtype)}, turns=${String(event.num_turns)}`);
       if (typeof event.session_id === 'string') {
         handlers.onSessionId?.(event.session_id);
       }
