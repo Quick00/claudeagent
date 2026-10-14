@@ -91,14 +91,20 @@ export async function POST(request: Request) {
   // Link attachments to the user message and tell the CLI where to read them
   let cliMessage = message;
   if (attachmentIds && attachmentIds.length > 0) {
+    // Only the sender's own uploads that are not in a message yet: an id from someone
+    // else's conversation would otherwise hand their file to this CLI run.
     const attachments = await prisma.attachment.findMany({
-      where: { id: { in: attachmentIds.slice(0, config.maxFilesPerMessage) } },
+      where: {
+        id: { in: attachmentIds.slice(0, config.maxFilesPerMessage) },
+        uploadedById: userId,
+        messageId: null,
+      },
     });
 
     if (attachments.length > 0) {
       // Link attachments to the message
       await prisma.attachment.updateMany({
-        where: { id: { in: attachments.map((a) => a.id) } },
+        where: { id: { in: attachments.map((a) => a.id) }, uploadedById: userId, messageId: null },
         data: { messageId: userMessage.id },
       });
 

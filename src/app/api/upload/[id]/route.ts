@@ -28,13 +28,11 @@ export async function GET(
     return new Response('Not found', { status: 404 });
   }
 
-  // Access check: conversation owner or admin
-  if (attachment.message?.conversation) {
-    const isOwner = attachment.message.conversation.userId === user.id;
-    const isAdmin = user.role === 'admin';
-    if (!isOwner && !isAdmin) {
-      return new Response('Forbidden', { status: 403 });
-    }
+  // Access check: admin, the conversation's owner once the upload is in a message, and
+  // its uploader before that (a feedback screenshot is never in a message).
+  const owner = attachment.message?.conversation.userId ?? attachment.uploadedById;
+  if (user.role !== 'admin' && owner !== user.id) {
+    return new Response('Forbidden', { status: 403 });
   }
 
   try {

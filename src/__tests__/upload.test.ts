@@ -1,4 +1,7 @@
+import { mkdtemp, rm } from 'fs/promises';
+import os from 'os';
 import path from 'path';
+import * as Sentry from '@sentry/nextjs';
 import ExcelJS from 'exceljs';
 import JSZip from 'jszip';
 import {
@@ -10,8 +13,13 @@ import {
   extractText,
   extractedTextPath,
   attachmentPromptBlock,
+  declaredUncompressedSize,
+  deleteUploadedFile,
+  UploadRefused,
 } from '@/lib/upload';
 import { uploadTypeForFilename, UPLOAD_ACCEPT } from '@/lib/upload-types';
+
+jest.mock('@sentry/nextjs', () => ({ captureException: jest.fn() }));
 
 const PDF = Buffer.from('%PDF-1.7\n%\xE2\xE3\xCF\xD3\n', 'latin1');
 
@@ -190,6 +198,21 @@ describe('upload validation', () => {
       await expect(extractText(notDocx, uploadTypeForFilename('x.docx')!)).rejects.toThrow();
     });
 
+    it('marks Word text that had to be cut off', async () => {
+      const docx = await docxBuffer(['a'.repeat(1_100_000)]);
+      const text = (await extractText(docx, uploadTypeForFilename('x.docx')!))!;
+      expect(text.length).toBeLessThan(1_100_000);
+      expect(text).toMatch(/\[Cut off here: .*The rest is missing\.\]$/);
+    });
+
+    it('refuses an archive that declares more than 100MB unpacked, before converting it', async () => {
+      const xlsx = await xlsxBuffer({ Sheet1: [['a']] });
+      // Rewrite the first central-directory entry's uncompressed size to 200MB.
+      const eocd = xlsx.lastIndexOf(Buffer.from([0x50, 0x4B, 0x05, 0x06]));
+      xlsx.writeUInt32LE(200 * 1024 * 1024, xlsx.readUInt32LE(eocd + 16) + 24);
+      await expect(extractText(xlsx, uploadTypeForFilename('x.xlsx')!)).rejects.toBeInstanceOf(UploadRefused);
+    });
+
     it('returns null for formats the Read tool opens itself', async () => {
       expect(await extractText(PDF, uploadTypeForFilename('x.pdf')!)).toBeNull();
       expect(await extractText(Buffer.from('hi'), uploadTypeForFilename('x.txt')!)).toBeNull();
@@ -214,6 +237,35 @@ describe('upload validation', () => {
   describe('UPLOAD_ACCEPT', () => {
     it('lists extensions, aliases included', () => {
       expect(UPLOAD_ACCEPT.split(',')).toEqual(expect.arrayContaining(['.jpeg', '.pdf', '.xlsx', '.docx', '.yml', '.md']));
+    });
+  });
+
+  describe('declaredUncompressedSize', () => {
+    it('sums the sizes in the central directory', async () => {
+      const zip = new JSZip();
+      zip.file('a.txt', 'x'.repeat(1000));
+      zip.file('b.txt', 'y'.repeat(500));
+      expect(declaredUncompressedSize(await zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE' }))).toBe(1500);
+    });
+
+    it('returns null for something that is not a zip', () => {
+      expect(declaredUncompressedSize(Buffer.from('PK\x03\x04 but nothing after'))).toBeNull();
+    });
+  });
+
+  describe('deleteUploadedFile', () => {
+    it('ignores files that are already gone and reports any other failure', async () => {
+      const dir = await mkdtemp(path.join(os.tmpdir(), 'upload-delete-'));
+      try {
+        await deleteUploadedFile(path.join(dir, 'missing.pdf'));
+        expect(Sentry.captureException).not.toHaveBeenCalled();
+
+        // unlink() on a directory fails with something other than ENOENT.
+        await deleteUploadedFile(dir);
+        expect(Sentry.captureException).toHaveBeenCalledWith(expect.anything(), { extra: { file: dir } });
+      } finally {
+        await rm(dir, { recursive: true, force: true });
+      }
     });
   });
 });

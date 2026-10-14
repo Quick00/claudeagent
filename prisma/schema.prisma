@@ -26,6 +26,7 @@ model User {
   mcpServerConnections McpServerConnection[]
   mcpOAuthStates       McpOAuthState[]
   createdMcpServers    McpServer[] @relation("McpServerCreator")
+  uploadedAttachments  Attachment[]
 }
 
 model AppSetting {
@@ -66,13 +67,18 @@ model Message {
 model Attachment {
   id          String   @id @default(uuid())
   messageId   String?
+  // Null on rows from before uploads were tracked: only admins may open those while unlinked.
+  uploadedById String?
   filename    String
   storagePath String
   mimeType    String
   size        Int
   createdAt   DateTime @default(now())
   message     Message? @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  uploadedBy  User?    @relation(fields: [uploadedById], references: [id], onDelete: SetNull)
   feedbackPost FeedbackPost?
+
+  @@index([uploadedById])
 }
 
 model KnowledgeEntry {

@@ -1,7 +1,7 @@
 import { requireApprovedUser } from '@/lib/api-auth';
 import { prisma } from '@/lib/prisma';
 import { config } from '@/lib/config';
-import { detectUploadType, extractText, sanitizeFilename, saveUploadedFile, deleteUploadedFile } from '@/lib/upload';
+import { detectUploadType, extractText, sanitizeFilename, saveUploadedFile, deleteUploadedFile, UploadRefused } from '@/lib/upload';
 import { UPLOAD_TYPES_LABEL } from '@/lib/upload-types';
 import { NextResponse } from 'next/server';
 
@@ -39,11 +39,12 @@ export async function POST(request: Request) {
   let extracted: string | null;
   try {
     extracted = await extractText(buffer, type);
-  } catch {
-    return NextResponse.json(
-      { error: `Could not read ${sanitizeFilename(file.name)}. It may be damaged or password-protected.` },
-      { status: 400 }
-    );
+  } catch (err) {
+    const name = sanitizeFilename(file.name);
+    const reason = err instanceof UploadRefused
+      ? `${name} ${err.message}`
+      : `Could not read ${name}. It may be damaged or password-protected.`;
+    return NextResponse.json({ error: reason }, { status: 400 });
   }
 
   const dirKey = conversationId || 'temp';
@@ -54,6 +55,7 @@ export async function POST(request: Request) {
     attachment = await prisma.attachment.create({
       data: {
         id: fileId,
+        uploadedById: auth.user.id,
         filename: sanitizeFilename(file.name),
         storagePath,
         mimeType: type.mime,
