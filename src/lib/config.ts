@@ -12,7 +12,6 @@ export const config = {
   uploadPath: process.env.UPLOAD_PATH || './uploads',
   maxFileSize: 10 * 1024 * 1024, // 10MB
   maxFilesPerMessage: 3,
-  allowedMimeTypes: ['image/jpeg', 'image/png', 'image/gif', 'image/webp'] as readonly string[],
   claudeDisallowedTools: (process.env.CLAUDE_DISALLOWED_TOOLS || 'Bash,Task,Write,Edit,NotebookEdit,WebFetch,WebSearch')
     .split(',')
     .map((t) => t.trim())

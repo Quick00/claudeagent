@@ -1,6 +1,7 @@
 import { requireApprovedUser } from '@/lib/api-auth';
 import { prisma } from '@/lib/prisma';
 import { readFile } from 'fs/promises';
+import { uploadTypeForMime } from '@/lib/upload-types';
 
 export async function GET(
   request: Request,
@@ -38,10 +39,16 @@ export async function GET(
 
   try {
     const fileBuffer = await readFile(attachment.storagePath);
+    // Images and PDFs open in the browser; everything else downloads. Text is served as
+    // plain text and nosniff is always set, so an uploaded .xml or .md can never run as a page.
+    const kind = uploadTypeForMime(attachment.mimeType)?.kind;
+    const inline = kind === 'image' || kind === 'pdf';
     return new Response(fileBuffer, {
       headers: {
-        'Content-Type': attachment.mimeType,
+        'Content-Type': kind === 'text' ? 'text/plain; charset=utf-8' : attachment.mimeType,
         'Content-Length': String(attachment.size),
+        'Content-Disposition': `${inline ? 'inline' : 'attachment'}; filename="${attachment.filename}"`,
+        'X-Content-Type-Options': 'nosniff',
         'Cache-Control': 'private, max-age=86400',
       },
     });

@@ -33,7 +33,8 @@ export async function POST(request: Request) {
           where: { id: imageId },
           include: { feedbackPost: true },
         });
-        if (!attachment) {
+        // The upload route takes documents too; a feedback post only ever shows an image.
+        if (!attachment || !attachment.mimeType.startsWith('image/')) {
           throw new Error('ATTACHMENT_NOT_FOUND');
         }
         if (attachment.feedbackPost) {

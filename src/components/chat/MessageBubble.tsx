@@ -6,6 +6,8 @@ import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 import { MarkdownContent } from '@/components/shared/MarkdownContent';
 import { formatDateTimeShort } from '@/lib/format-date';
+import { uploadTypeForMime } from '@/lib/upload-types';
+import { AttachmentChip } from './AttachmentChip';
 import type { Attachment } from './useConversation';
 
 type MessageBubbleProps = {
@@ -24,6 +26,7 @@ export function MessageBubble({
   attachments,
 }: MessageBubbleProps) {
   const images = attachments?.filter((a) => a.mimeType.startsWith('image/')) ?? [];
+  const documents = attachments?.filter((a) => !a.mimeType.startsWith('image/')) ?? [];
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
 
   if (role === 'user') {
@@ -47,6 +50,19 @@ export function MessageBubble({
                     className="max-h-[200px] max-w-[300px] rounded-xl border border-primary object-contain"
                   />
                 </Button>
+              ))}
+            </div>
+          )}
+          {documents.length > 0 && (
+            <div className="mb-2 flex flex-wrap justify-end gap-2">
+              {documents.map((att) => (
+                <AttachmentChip
+                  key={att.id}
+                  filename={att.filename}
+                  size={att.size}
+                  kind={uploadTypeForMime(att.mimeType)?.kind}
+                  href={`/api/upload/${att.id}`}
+                />
               ))}
             </div>
           )}

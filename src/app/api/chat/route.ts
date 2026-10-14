@@ -9,7 +9,7 @@ import { buildSystemPrompt, buildCliMessage } from '@/lib/chat-prompt';
 import { getLinkedServersForPrompt, type LinkedServerSummary } from '@/lib/mcp-context';
 import { provenanceCollector } from '@/lib/provenance-collector';
 import { getKnowledgeIgnoreLists } from '@/lib/settings';
-import path from 'path';
+import { attachmentPromptBlock } from '@/lib/upload';
 import { attachClaudeProcess, createSseResponse } from '@/lib/claude-process-stream';
 import { createAnswerSegments } from '@/lib/answer-segments';
 import { recordMcpServerStatus } from '@/lib/mcp-connections';
@@ -88,7 +88,7 @@ export async function POST(request: Request) {
     await getKnowledgeIgnoreLists(),
   );
 
-  // Link attachments to the user message and build image references for CLI
+  // Link attachments to the user message and tell the CLI where to read them
   let cliMessage = message;
   if (attachmentIds && attachmentIds.length > 0) {
     const attachments = await prisma.attachment.findMany({
@@ -102,13 +102,7 @@ export async function POST(request: Request) {
         data: { messageId: userMessage.id },
       });
 
-      // Append absolute image paths to the message for Claude CLI
-      const imageLines = attachments.map((a) => {
-        const absolutePath = path.resolve(a.storagePath);
-        const sizeKB = (a.size / 1024).toFixed(1);
-        return `- ${absolutePath} (${a.filename}, ${sizeKB}KB)`;
-      });
-      cliMessage += `\n\n---\nThe user attached ${attachments.length} image(s). Read each one with the Read tool before responding:\n${imageLines.join('\n')}`;
+      cliMessage += attachmentPromptBlock(attachments);
     }
   }
 
