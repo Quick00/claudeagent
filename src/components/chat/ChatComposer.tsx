@@ -7,11 +7,16 @@ import { Button } from '@/components/ui/button';
 import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupTextarea } from '@/components/ui/input-group';
 import StarBorder from '@/components/StarBorder';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { UPLOAD_ACCEPT, UPLOAD_TYPES_LABEL, uploadTypeForFilename, type UploadKind } from '@/lib/upload-types';
+import { AttachmentChip } from './AttachmentChip';
 import type { Attachment } from './useConversation';
 
-type PendingImage = {
+type PendingFile = {
   file: File;
-  preview: string;
+  kind: UploadKind;
+  key: string;
+  /** Object URL for an image thumbnail; null for documents. */
+  preview: string | null;
 };
 
 type ChatComposerProps = {
@@ -21,73 +26,94 @@ type ChatComposerProps = {
 
 const MAX_FILES = 3;
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
-const ACCEPTED_TYPES = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+
+let nextFileKey = 0;
+
+class UploadRejected extends Error {}
 
 export function ChatComposer({ onSend, disabled }: ChatComposerProps) {
   const [input, setInput] = useState('');
-  const [images, setImages] = useState<PendingImage[]>([]);
+  const [files, setFiles] = useState<PendingFile[]>([]);
   const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const addFiles = useCallback((files: FileList | File[]) => {
-    setImages((prev) => {
-      const accepted: PendingImage[] = [];
-      for (const file of Array.from(files)) {
-        if (prev.length + accepted.length >= MAX_FILES) break;
-        if (!ACCEPTED_TYPES.includes(file.type)) continue;
-        if (file.size > MAX_FILE_SIZE) continue;
-        accepted.push({ file, preview: URL.createObjectURL(file) });
+  const addFiles = useCallback((incoming: FileList | File[]) => {
+    const candidates: PendingFile[] = [];
+    for (const file of Array.from(incoming)) {
+      const type = uploadTypeForFilename(file.name);
+      if (!type) {
+        toast.error(`${file.name} can't be attached. Supported: ${UPLOAD_TYPES_LABEL}.`);
+        continue;
       }
-      return accepted.length > 0 ? [...prev, ...accepted].slice(0, MAX_FILES) : prev;
+      if (file.size > MAX_FILE_SIZE) {
+        toast.error(`${file.name} is larger than 10MB.`);
+        continue;
+      }
+      candidates.push({
+        file,
+        kind: type.kind,
+        key: `file-${nextFileKey++}`,
+        preview: type.kind === 'image' ? URL.createObjectURL(file) : null,
+      });
+    }
+    if (candidates.length === 0) return;
+
+    setFiles((prev) => {
+      const room = MAX_FILES - prev.length;
+      for (const dropped of candidates.slice(Math.max(room, 0))) {
+        if (dropped.preview) URL.revokeObjectURL(dropped.preview);
+      }
+      return room > 0 ? [...prev, ...candidates.slice(0, room)] : prev;
     });
   }, []);
 
-  const removeImage = useCallback((index: number) => {
-    setImages((prev) => {
-      const removed = prev[index];
-      if (removed) URL.revokeObjectURL(removed.preview);
-      return prev.filter((_, i) => i !== index);
+  const removeFile = useCallback((key: string) => {
+    setFiles((prev) => {
+      const removed = prev.find((f) => f.key === key);
+      if (removed?.preview) URL.revokeObjectURL(removed.preview);
+      return prev.filter((f) => f.key !== key);
     });
   }, []);
 
   const handleSubmit = useCallback(async () => {
     const trimmed = input.trim();
-    if ((!trimmed && images.length === 0) || disabled || uploading) return;
+    if ((!trimmed && files.length === 0) || disabled || uploading) return;
 
     let uploaded: Attachment[] = [];
 
-    if (images.length > 0) {
+    if (files.length > 0) {
       setUploading(true);
       try {
         uploaded = await Promise.all(
-          images.map(async (img) => {
+          files.map(async ({ file }) => {
             const formData = new FormData();
-            formData.append('file', img.file);
+            formData.append('file', file);
             const res = await fetch('/api/upload', { method: 'POST', body: formData });
-            if (!res.ok) throw new Error('Upload failed');
-            const data = await res.json();
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) throw new UploadRejected(typeof data.error === 'string' ? data.error : '');
             return {
               id: data.id as string,
               filename: data.filename as string,
-              mimeType: img.file.type,
-              size: img.file.size,
+              mimeType: data.mimeType as string,
+              size: data.size as number,
             };
           }),
         );
-      } catch {
-        toast.error('Could not upload those images. Try again.');
+      } catch (err) {
+        // The route's message says what was wrong with the file; anything else gets the generic one.
+        toast.error((err instanceof UploadRejected && err.message) || 'Could not upload those files. Try again.');
         return;
       } finally {
         setUploading(false);
       }
     }
 
-    for (const img of images) URL.revokeObjectURL(img.preview);
+    for (const f of files) if (f.preview) URL.revokeObjectURL(f.preview);
 
-    onSend(trimmed || 'Please look at the attached image(s).', uploaded);
+    onSend(trimmed || 'Please look at the attached file(s).', uploaded);
     setInput('');
-    setImages([]);
-  }, [input, images, disabled, uploading, onSend]);
+    setFiles([]);
+  }, [input, files, disabled, uploading, onSend]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -118,25 +144,31 @@ export function ChatComposer({ onSend, disabled }: ChatComposerProps) {
   return (
     <div className="border-t border-border bg-background p-4">
       <div className="mx-auto max-w-3xl">
-        {images.length > 0 && (
-          <div className="mb-3 flex gap-2">
-            {images.map((img, i) => (
-              <div key={img.preview} className="relative">
-                {/* A blob: preview has no intrinsic size for next/image to work with. */}
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={img.preview}
-                  alt={img.file.name}
-                  className="size-16 rounded-lg border border-border object-cover"
-                />
+        {files.length > 0 && (
+          <div className="mb-3 flex flex-wrap items-end gap-2">
+            {files.map((f) => (
+              <div key={f.key} className="relative">
+                {f.preview ? (
+                  <>
+                    {/* A blob: preview has no intrinsic size for next/image to work with. */}
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={f.preview}
+                      alt={f.file.name}
+                      className="size-16 rounded-lg border border-border object-cover"
+                    />
+                  </>
+                ) : (
+                  <AttachmentChip filename={f.file.name} size={f.file.size} kind={f.kind} />
+                )}
                 <Button
                   variant="secondary"
                   size="icon-xs"
                   className="absolute -top-1.5 -right-1.5 rounded-full"
-                  onClick={() => removeImage(i)}
+                  onClick={() => removeFile(f.key)}
                 >
                   <X />
-                  <span className="sr-only">{`Remove ${img.file.name}`}</span>
+                  <span className="sr-only">{`Remove ${f.file.name}`}</span>
                 </Button>
               </div>
             ))}
@@ -172,20 +204,20 @@ export function ChatComposer({ onSend, disabled }: ChatComposerProps) {
                 <TooltipTrigger asChild>
                   <InputGroupButton
                     size="icon-sm"
-                    disabled={disabled || uploading || images.length >= MAX_FILES}
+                    disabled={disabled || uploading || files.length >= MAX_FILES}
                     onClick={() => fileInputRef.current?.click()}
                   >
                     <Paperclip />
-                    <span className="sr-only">Attach image</span>
+                    <span className="sr-only">Attach files</span>
                   </InputGroupButton>
                 </TooltipTrigger>
-                <TooltipContent>Attach an image (up to {MAX_FILES})</TooltipContent>
+                <TooltipContent>Attach images, PDFs, Excel, Word or text files (up to {MAX_FILES})</TooltipContent>
               </Tooltip>
             </InputGroupAddon>
             <input
               ref={fileInputRef}
               type="file"
-              accept="image/jpeg,image/png,image/gif,image/webp"
+              accept={UPLOAD_ACCEPT}
               multiple
               className="hidden"
               onChange={(e) => {
@@ -214,7 +246,7 @@ export function ChatComposer({ onSend, disabled }: ChatComposerProps) {
                 variant="default"
                 size="sm"
                 className="rounded-lg px-4"
-                disabled={disabled || uploading || (!input.trim() && images.length === 0)}
+                disabled={disabled || uploading || (!input.trim() && files.length === 0)}
                 onClick={handleSubmit}
               >
                 {uploading ? 'Uploading...' : 'Send'}

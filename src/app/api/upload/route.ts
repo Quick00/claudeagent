@@ -1,7 +1,8 @@
 import { requireApprovedUser } from '@/lib/api-auth';
 import { prisma } from '@/lib/prisma';
 import { config } from '@/lib/config';
-import { validateMagicBytes, getExtensionFromMime, sanitizeFilename, saveUploadedFile, deleteUploadedFile } from '@/lib/upload';
+import { detectUploadType, extractText, sanitizeFilename, saveUploadedFile, deleteUploadedFile, UploadRefused } from '@/lib/upload';
+import { UPLOAD_TYPES_LABEL } from '@/lib/upload-types';
 import { NextResponse } from 'next/server';
 
 export async function POST(request: Request) {
@@ -27,26 +28,37 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'File too large. Maximum size is 10MB.' }, { status: 413 });
   }
 
-  const detectedMime = validateMagicBytes(buffer);
-  if (!detectedMime || !config.allowedMimeTypes.includes(detectedMime)) {
+  const type = detectUploadType(buffer, file.name);
+  if (!type) {
     return NextResponse.json(
-      { error: 'Invalid file type. Allowed: JPEG, PNG, GIF, WebP.' },
+      { error: `Invalid file type. Allowed: ${UPLOAD_TYPES_LABEL}.` },
       { status: 400 }
     );
   }
 
-  const ext = getExtensionFromMime(detectedMime)!;
+  let extracted: string | null;
+  try {
+    extracted = await extractText(buffer, type);
+  } catch (err) {
+    const name = sanitizeFilename(file.name);
+    const reason = err instanceof UploadRefused
+      ? `${name} ${err.message}`
+      : `Could not read ${name}. It may be damaged or password-protected.`;
+    return NextResponse.json({ error: reason }, { status: 400 });
+  }
+
   const dirKey = conversationId || 'temp';
-  const { storagePath, id: fileId } = await saveUploadedFile(buffer, dirKey, ext);
+  const { storagePath, id: fileId } = await saveUploadedFile(buffer, dirKey, type.ext, extracted);
 
   let attachment;
   try {
     attachment = await prisma.attachment.create({
       data: {
         id: fileId,
+        uploadedById: auth.user.id,
         filename: sanitizeFilename(file.name),
         storagePath,
-        mimeType: detectedMime,
+        mimeType: type.mime,
         size: buffer.length,
       },
     });
@@ -58,6 +70,8 @@ export async function POST(request: Request) {
   return NextResponse.json({
     id: attachment.id,
     filename: attachment.filename,
+    mimeType: attachment.mimeType,
+    size: attachment.size,
     url: `/api/upload/${attachment.id}`,
   });
 }
