@@ -91,3 +91,24 @@ describe('attachClaudeProcess MCP server status', () => {
     expect(onMcpServerStatus).not.toHaveBeenCalled();
   });
 });
+
+describe('attachClaudeProcess tool call log', () => {
+  it('logs each call with the text before it and a closing summary', async () => {
+    const proc = fakeProcess();
+    const log = jest.spyOn(console, 'log').mockImplementation(() => {});
+    attachClaudeProcess(proc, { logPrefix: '[t]' });
+    proc.stdout.write(
+      JSON.stringify({ type: 'assistant', message: { content: [{ type: 'text', text: 'Checking the controller' }] } }) + '\n' +
+      JSON.stringify({ type: 'assistant', message: { content: [{ type: 'tool_use', name: 'Grep', input: { pattern: 'foo' } }] } }) + '\n' +
+      JSON.stringify({ type: 'assistant', message: { content: [{ type: 'tool_use', name: 'Read', input: { file_path: 'a' } }] } }) + '\n' +
+      JSON.stringify({ type: 'result', subtype: 'error_max_turns', num_turns: 26 }) + '\n',
+    );
+    proc.stdout.end();
+    await new Promise((r) => setImmediate(r));
+    const lines = log.mock.calls.map((c) => c[0]);
+    log.mockRestore();
+    expect(lines[0]).toBe('[t] tool #1 Grep {"pattern":"foo"} — why: Checking the controller');
+    expect(lines[1]).toBe('[t] tool #2 Read {"file_path":"a"} — why: (no text before call)');
+    expect(lines[2]).toBe('[t] run finished: 2 tool calls, subtype=error_max_turns, turns=26');
+  });
+});

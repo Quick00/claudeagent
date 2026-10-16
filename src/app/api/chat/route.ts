@@ -171,7 +171,7 @@ export async function POST(request: Request) {
       let resultSubtype: string | null = null;
 
       attachClaudeProcess(proc, {
-        logPrefix: '[chat]',
+        logPrefix: `[chat ${conversation.id}]`,
         onSessionId: (sid) => { claudeSessionId = sid; },
         onTextDelta: (delta) => answer.append(delta),
         onToolUse: (tool) => {
