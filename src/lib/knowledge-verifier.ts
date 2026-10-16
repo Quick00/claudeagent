@@ -5,7 +5,7 @@ import { refreshSourcesToHead } from '@/lib/knowledge-admin';
 import { createOpenReview } from '@/lib/knowledge-review-create';
 
 const OPENROUTER_API_URL = 'https://openrouter.ai/api/v1/chat/completions';
-const VERIFIER_MODEL = 'anthropic/claude-haiku-4.5';
+const VERIFIER_MODEL = 'anthropic/claude-haiku-5.5';
 
 /** Tier 1 source budget: above this many characters of file content, the verdict is "unsure" rather than an over-budget model call. */
 export const SOURCE_BUDGET_CHARS = 160_000;

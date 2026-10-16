@@ -1,7 +1,7 @@
 import type { Freshness } from '@/lib/knowledge-freshness';
 
 const OPENROUTER_API_URL = 'https://openrouter.ai/api/v1/chat/completions';
-const LIBRARIAN_MODEL = 'anthropic/claude-haiku-4.5';
+const LIBRARIAN_MODEL = 'anthropic/claude-haiku-5.5';
 
 export interface LibrarianCandidate {
   id: string;

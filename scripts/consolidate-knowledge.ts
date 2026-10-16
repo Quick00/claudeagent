@@ -10,7 +10,7 @@ const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL ?? '' 
 const prisma = new PrismaClient({ adapter });
 
 const OPENROUTER_API_URL = 'https://openrouter.ai/api/v1/chat/completions';
-const CONSOLIDATION_MODEL = 'anthropic/claude-sonnet-4.6';
+const CONSOLIDATION_MODEL = 'anthropic/claude-sonnet-5.5';
 const SIMILARITY_THRESHOLD = 0.7;
 const CONCURRENCY = 5;
 
@@ -149,7 +149,7 @@ async function generateSubject(content: string, category: string): Promise<strin
       Authorization: `Bearer ${apiKey}`,
     },
     body: JSON.stringify({
-      model: 'anthropic/claude-haiku-4.5',
+      model: 'anthropic/claude-haiku-5.5',
       messages: [{ role: 'user', content: `Give this knowledge entry a short, clear subject title (3-7 words). Respond with ONLY the title, nothing else.\n\nCategory: ${category}\nContent: ${content}` }],
       temperature: 0,
       max_tokens: 50,
