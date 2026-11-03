@@ -130,7 +130,7 @@ export async function POST(request: Request) {
   try {
     knowledge = await retrieveKnowledge(message, 10);
   } catch (err) {
-    console.error('[chat] Knowledge retrieval failed, continuing without knowledge:', (err as Error).message);
+    console.error(`${logPrefix} Knowledge retrieval failed, continuing without knowledge:`, (err as Error).message);
   }
 
   const isResumed = Boolean(conversation.claudeSessionId);
@@ -138,7 +138,7 @@ export async function POST(request: Request) {
   try {
     linkedServers = await getLinkedServersForPrompt(userId);
   } catch (err) {
-    console.error('[chat] Linked MCP server lookup failed, continuing without them:', (err as Error).message);
+    console.error(`${logPrefix} Linked MCP server lookup failed, continuing without them:`, (err as Error).message);
   }
   const systemPrompt = buildSystemPrompt({ isResumed, knowledge, repoContext, linkedServers });
 

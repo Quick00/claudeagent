@@ -101,6 +101,10 @@ export function attachClaudeProcess(
       handlers.onRateLimit?.(assistantMsg.content[0].text);
     }
 
+    // A tool result starts the next turn; calls made in parallel within one
+    // turn all share the text that came before them.
+    if (event.type === 'user') leadIn = '';
+
     if (event.type === 'assistant' && assistantMsg?.content) {
       for (const block of assistantMsg.content) {
         const said = block.type === 'text' ? block.text : block.type === 'thinking' ? block.thinking : undefined;
@@ -109,7 +113,6 @@ export function attachClaudeProcess(
           const name = block.name ?? 'unknown';
           toolCalls += 1;
           console.log(`${prefix} tool #${toolCalls} ${name} ${clip(JSON.stringify(block.input ?? {}))} — why: ${leadIn ? clip(leadIn) : '(no text before call)'}`);
-          leadIn = '';
           handlers.onToolUse?.(name);
           if (block.input && typeof block.input === 'object') {
             handlers.onToolUseInput?.(name, block.input as Record<string, unknown>);
