@@ -58,6 +58,7 @@ export async function POST(
   }
 
   const conversationId = conversation.id;
+  const logPrefix = `[admin-chat ${conversationId}]`;
   const adminId = currentUser.id;
   const ownerUserId = conversation.user.id;
   const ownerClaudeToken = decrypt(conversation.user.claudeToken);
@@ -101,7 +102,7 @@ export async function POST(
       let processFailed = false;
       let resultSubtype: string | null = null;
       attachClaudeProcess(proc, {
-        logPrefix: '[admin-chat]',
+        logPrefix,
         onSessionId: (sid) => { newSessionId = sid; },
         onTextDelta: (delta) => answer.append(delta),
         onToolUse: (tool) => {
@@ -154,7 +155,7 @@ export async function POST(
           sink.close();
         },
         onProcessError: (err) => {
-          console.error('[admin-chat] process error:', err.message);
+          console.error(`${logPrefix} process error:`, err.message);
           processFailed = true;
           sink.send(JSON.stringify({
             type: 'error',
@@ -175,7 +176,7 @@ export async function POST(
     const drainDroppedServers = () => {
       const dropped = sessionManager.takeDroppedServers(requestId);
       if (dropped.length > 0) {
-        console.warn(`[admin-chat] MCP servers unavailable this turn: ${dropped.map((d) => d.name).join(', ')}`);
+        console.warn(`${logPrefix} MCP servers unavailable this turn: ${dropped.map((d) => d.name).join(', ')}`);
       }
     };
 
@@ -191,7 +192,7 @@ export async function POST(
 
     if (procOrPromise instanceof Promise) {
       procOrPromise.then(attach).catch((err) => {
-        console.error('[admin-chat] failed to acquire process:', err.message);
+        console.error(`${logPrefix} failed to acquire process:`, err.message);
         sink.send(JSON.stringify({
           type: 'error',
           content: 'Failed to start Claude process. Please try again.',

@@ -91,3 +91,72 @@ describe('attachClaudeProcess MCP server status', () => {
     expect(onMcpServerStatus).not.toHaveBeenCalled();
   });
 });
+
+describe('attachClaudeProcess tool call log', () => {
+  it('logs each call with the text before it and a closing summary', async () => {
+    const proc = fakeProcess();
+    const log = jest.spyOn(console, 'log').mockImplementation(() => {});
+    attachClaudeProcess(proc, { logPrefix: '[t]' });
+    proc.stdout.write(
+      JSON.stringify({ type: 'assistant', message: { content: [{ type: 'text', text: 'Checking the controller' }] } }) + '\n' +
+      JSON.stringify({ type: 'assistant', message: { content: [{ type: 'tool_use', name: 'Grep', input: { pattern: 'foo' } }] } }) + '\n' +
+      JSON.stringify({ type: 'user', message: { content: [{ type: 'tool_result', content: 'match' }] } }) + '\n' +
+      JSON.stringify({ type: 'assistant', message: { content: [{ type: 'tool_use', name: 'Read', input: { file_path: 'a' } }] } }) + '\n' +
+      JSON.stringify({ type: 'result', subtype: 'error_max_turns', num_turns: 26 }) + '\n',
+    );
+    proc.stdout.end();
+    await new Promise((r) => setImmediate(r));
+    const lines = log.mock.calls.map((c) => c[0]);
+    log.mockRestore();
+    expect(lines[0]).toBe('[t] tool #1 Grep {"pattern":"foo"} — why: Checking the controller');
+    expect(lines[1]).toBe('[t] tool #2 Read {"file_path":"a"} — why: (no text before call)');
+    expect(lines[2]).toBe('[t] run finished: 2 tool calls, subtype=error_max_turns, turns=26');
+  });
+
+  it('uses a thinking block as the text before a call', async () => {
+    const proc = fakeProcess();
+    const log = jest.spyOn(console, 'log').mockImplementation(() => {});
+    attachClaudeProcess(proc, { logPrefix: '[t]' });
+    proc.stdout.write(
+      JSON.stringify({ type: 'assistant', message: { content: [{ type: 'thinking', thinking: 'Planning the read' }, { type: 'tool_use', name: 'Read', input: { file_path: 'a' } }] } }) + '\n',
+    );
+    proc.stdout.end();
+    await new Promise((r) => setImmediate(r));
+    const lines = log.mock.calls.map((c) => c[0]);
+    log.mockRestore();
+    expect(lines[0]).toBe('[t] tool #1 Read {"file_path":"a"} — why: Planning the read');
+  });
+
+  it('gives calls made in parallel the same text before them', async () => {
+    const proc = fakeProcess();
+    const log = jest.spyOn(console, 'log').mockImplementation(() => {});
+    attachClaudeProcess(proc, { logPrefix: '[t]' });
+    proc.stdout.write(
+      JSON.stringify({ type: 'assistant', message: { content: [{ type: 'text', text: 'Reading both files' }] } }) + '\n' +
+      JSON.stringify({ type: 'assistant', message: { content: [{ type: 'tool_use', name: 'Read', input: { file_path: 'a' } }] } }) + '\n' +
+      JSON.stringify({ type: 'assistant', message: { content: [{ type: 'tool_use', name: 'Read', input: { file_path: 'b' } }] } }) + '\n',
+    );
+    proc.stdout.end();
+    await new Promise((r) => setImmediate(r));
+    const lines = log.mock.calls.map((c) => c[0]);
+    log.mockRestore();
+    expect(lines[0]).toBe('[t] tool #1 Read {"file_path":"a"} — why: Reading both files');
+    expect(lines[1]).toBe('[t] tool #2 Read {"file_path":"b"} — why: Reading both files');
+  });
+
+  it('clips long tool input and text before the call', async () => {
+    const proc = fakeProcess();
+    const log = jest.spyOn(console, 'log').mockImplementation(() => {});
+    attachClaudeProcess(proc, { logPrefix: '[t]' });
+    const long = 'y'.repeat(400);
+    proc.stdout.write(
+      JSON.stringify({ type: 'assistant', message: { content: [{ type: 'text', text: long }] } }) + '\n' +
+      JSON.stringify({ type: 'assistant', message: { content: [{ type: 'tool_use', name: 'Grep', input: { pattern: long } }] } }) + '\n',
+    );
+    proc.stdout.end();
+    await new Promise((r) => setImmediate(r));
+    const line = log.mock.calls[0][0] as string;
+    log.mockRestore();
+    expect(line).toBe(`[t] tool #1 Grep ${`{"pattern":"${long}`.slice(0, 300)}… — why: ${'y'.repeat(300)}…`);
+  });
+});
