@@ -74,6 +74,8 @@ export async function POST(request: Request) {
     });
   }
 
+  const logPrefix = `[chat ${conversation.id}]`;
+
   const userMessage = await prisma.message.create({
     data: {
       conversationId: conversation.id,
@@ -171,7 +173,7 @@ export async function POST(request: Request) {
       let resultSubtype: string | null = null;
 
       attachClaudeProcess(proc, {
-        logPrefix: `[chat ${conversation.id}]`,
+        logPrefix,
         onSessionId: (sid) => { claudeSessionId = sid; },
         onTextDelta: (delta) => answer.append(delta),
         onToolUse: (tool) => {
@@ -191,16 +193,16 @@ export async function POST(request: Request) {
             // report is what clears the note an earlier failure left in
             // Settings (see `recordMcpServerStatus`).
             recordMcpServerStatus(userId, server.name, server.status).catch((err) => {
-              console.error(`[chat] Failed to record MCP server status for "${server.name}":`, err.message);
+              console.error(`${logPrefix} Failed to record MCP server status for "${server.name}":`, err.message);
             });
             if (server.status === 'failed' || server.status === 'needs-auth') {
-              console.error(`[chat] MCP server "${server.name}" reported status "${server.status}" (userId=${userId})`);
+              console.error(`${logPrefix} MCP server "${server.name}" reported status "${server.status}" (userId=${userId})`);
               notifyServerDrop(server.name, `${server.name} is unavailable this turn — reconnect it in Settings.`);
             }
           }
         },
         onAuthFailed: () => {
-          console.error('[chat] Authentication failed — invalid Claude token');
+          console.error(`${logPrefix} Authentication failed — invalid Claude token`);
           authFailed = true;
           // Drop the partial answer: the error row below is what this turn becomes.
           answer.reset();
@@ -210,7 +212,7 @@ export async function POST(request: Request) {
               role: 'assistant',
               content: 'Your Claude account token is invalid or expired. Please re-link your Claude account in Settings.',
             },
-          }).catch((err) => console.error('[chat] Failed to save auth error message:', err));
+          }).catch((err) => console.error(`${logPrefix} Failed to save auth error message:`, err));
           sink.send(JSON.stringify({
             type: 'error',
             content: 'Your Claude account token is invalid or expired. Please re-link your Claude account in Settings.',
@@ -227,7 +229,7 @@ export async function POST(request: Request) {
               role: 'assistant',
               content: rateLimitMessage,
             },
-          }).catch((err) => console.error('[chat] Failed to save rate-limit message:', err));
+          }).catch((err) => console.error(`${logPrefix} Failed to save rate-limit message:`, err));
           // The notice is its own row above, so give it a bubble of its own
           // live too. It never enters the answer's segments — hence no new
           // segment here, and no second copy of it from `onClose`.
@@ -238,7 +240,7 @@ export async function POST(request: Request) {
         onResult: (event) => {
           resultSubtype = event.subtype ?? null;
           if (event.is_error && event.subtype === 'error_during_execution' && retryCount < MAX_RETRIES) {
-            console.log(`[chat] error_during_execution — retrying (attempt ${retryCount + 1}/${MAX_RETRIES})`);
+            console.log(`${logPrefix} error_during_execution — retrying (attempt ${retryCount + 1}/${MAX_RETRIES})`);
             retrying = true;
             const retryRequestId = `${conversation.id}-retry-${Date.now()}`;
             const retryProcOrPromise = conversation.claudeSessionId
@@ -251,7 +253,7 @@ export async function POST(request: Request) {
               }
               attachProcess(retryProc, retryCount + 1);
             }).catch((err) => {
-              console.error('[chat] Failed to acquire retry process:', err.message);
+              console.error(`${logPrefix} Failed to acquire retry process:`, err.message);
               Sentry.captureException(err, { extra: { conversationId: conversation.id, userId, retry: true } });
               // The config was built before acquisition failed, so this
               // request has an entry waiting to be read exactly once.
@@ -268,7 +270,7 @@ export async function POST(request: Request) {
           }
         },
         onClose: async (code) => {
-          console.log(`[chat] Process closed (code=${code}, responseLength=${answer.rawLength}, segments=${answer.count}, droppedNotes=${answer.droppedNotes}, sessionId=${claudeSessionId}, authFailed=${authFailed}, retrying=${retrying}, resultSubtype=${resultSubtype})`);
+          console.log(`${logPrefix} Process closed (code=${code}, responseLength=${answer.rawLength}, segments=${answer.count}, droppedNotes=${answer.droppedNotes}, sessionId=${claudeSessionId}, authFailed=${authFailed}, retrying=${retrying}, resultSubtype=${resultSubtype})`);
           if (authFailed) {
             sink.close();
             return;
@@ -331,7 +333,7 @@ export async function POST(request: Request) {
           sink.close();
         },
         onProcessError: (err) => {
-          console.error('[chat] Process error:', err.message);
+          console.error(`${logPrefix} Process error:`, err.message);
           processFailed = true;
           Sentry.captureException(err, { extra: { conversationId: conversation.id, userId } });
           sink.send(JSON.stringify({
@@ -345,20 +347,20 @@ export async function POST(request: Request) {
     }
 
     const requestId = `${conversation.id}-${Date.now()}`;
-    console.log(`[chat] Starting request (requestId=${requestId}, conversationId=${conversation.id}, resume=${!!conversation.claudeSessionId}, knowledgeEntries=${knowledge.length})`);
+    console.log(`${logPrefix} Starting request (requestId=${requestId}, conversationId=${conversation.id}, resume=${!!conversation.claudeSessionId}, knowledgeEntries=${knowledge.length})`);
 
     const procOrPromise = conversation.claudeSessionId
       ? sessionManager.resumeSession(requestId, conversation.claudeSessionId, effectiveMessage, userClaudeToken, userId, userMessage.id)
       : sessionManager.startSession(requestId, effectiveMessage, systemPrompt, userClaudeToken, userId, repoPaths, userMessage.id);
 
     procOrPromise.then((proc) => {
-      console.log(`[chat] Process acquired (pid=${proc.pid})`);
+      console.log(`${logPrefix} Process acquired (pid=${proc.pid})`);
       for (const dropped of sessionManager.takeDroppedServers(requestId)) {
         notifyServerDrop(dropped.name, `${dropped.name} is unavailable this turn (${dropped.reason}).`);
       }
       attachProcess(proc, 0);
     }).catch((err) => {
-      console.error('[chat] Failed to acquire process:', err.message);
+      console.error(`${logPrefix} Failed to acquire process:`, err.message);
       Sentry.captureException(err, { extra: { conversationId: conversation.id, userId } });
       // The config was built before acquisition failed, so this request has
       // an entry waiting to be read exactly once.
