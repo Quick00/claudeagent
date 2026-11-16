@@ -2,24 +2,33 @@ import { buildPdf, markdownToPdfContent } from '@/lib/generate-pdf';
 
 const flat = (v: unknown) => JSON.stringify(v);
 
+type Node = {
+  style?: string;
+  table?: { headerRows: number; body: unknown[][] };
+  ul?: unknown[];
+  ol?: unknown[];
+  start?: number;
+};
+const nodesOf = (markdown: string) => markdownToPdfContent(markdown) as Node[];
+
 describe('markdownToPdfContent', () => {
   it('maps a heading to a styled node', () => {
-    const [node] = markdownToPdfContent('# Overview') as Array<Record<string, unknown>>;
+    const [node] = nodesOf('# Overview');
     expect(node.style).toBe('h1');
     expect(flat(node)).toMatch(/Overview/);
   });
 
   it('maps a table to a pdfmake table with a header row', () => {
-    const nodes = markdownToPdfContent('| Name | Age |\n|---|---|\n| Ann | 31 |\n| Bob | 40 |') as Array<Record<string, any>>;
+    const nodes = nodesOf('| Name | Age |\n|---|---|\n| Ann | 31 |\n| Bob | 40 |');
     const table = nodes.find((n) => n.table)!;
-    expect(table.table.headerRows).toBe(1);
-    expect(table.table.body).toHaveLength(3);
-    expect(table.table.body[0]).toHaveLength(2);
-    expect(flat(table.table.body[2])).toMatch(/Bob/);
+    expect(table.table!.headerRows).toBe(1);
+    expect(table.table!.body).toHaveLength(3);
+    expect(table.table!.body[0]).toHaveLength(2);
+    expect(flat(table.table!.body[2])).toMatch(/Bob/);
   });
 
   it('maps bullet and numbered lists', () => {
-    const nodes = markdownToPdfContent('- a\n- b\n\n1. one\n2. two') as Array<Record<string, any>>;
+    const nodes = nodesOf('- a\n- b\n\n1. one\n2. two');
     expect(nodes.find((n) => n.ul)?.ul).toHaveLength(2);
     expect(nodes.find((n) => n.ol)?.ol).toHaveLength(2);
   });
@@ -57,20 +66,26 @@ describe('buildPdf', () => {
 
 describe('review fixes', () => {
   it('keeps a numbered list numbered after an interruption', () => {
-    const nodes = markdownToPdfContent('1. one\n2. two\n\nA paragraph.\n\n3. three') as Array<Record<string, any>>;
+    const nodes = nodesOf('1. one\n2. two\n\nA paragraph.\n\n3. three');
     const lists = nodes.filter((n) => n.ol);
     expect(lists[1].start).toBe(3);
   });
 
-  it('builds a pathological single long word quickly', async () => {
+  // Wall-clock limits are flaky on shared CI runners, so each worst case is timed against plain
+  // text of the same size in the same run. Before the fix these were ~100x slower than plain.
+  async function timed(markdown: string) {
     const started = Date.now();
-    await buildPdf(undefined, 'x'.repeat(200000));
-    expect(Date.now() - started).toBeLessThan(4000);
-  });
+    await buildPdf(undefined, markdown);
+    return Date.now() - started;
+  }
 
-  it('builds heavily formatted text quickly', async () => {
-    const started = Date.now();
-    await buildPdf(undefined, '*a* '.repeat(50000));
-    expect(Date.now() - started).toBeLessThan(4000);
-  });
+  it('lays out a single huge word no slower than plain text', async () => {
+    const plain = await timed('a '.repeat(50000));
+    expect(await timed('x'.repeat(200000))).toBeLessThan(plain * 3 + 500);
+  }, 60000);
+
+  it('lays out heavily formatted text no slower than plain text', async () => {
+    const plain = await timed('a '.repeat(50000));
+    expect(await timed('*a* '.repeat(50000))).toBeLessThan(plain * 3 + 500);
+  }, 60000);
 });

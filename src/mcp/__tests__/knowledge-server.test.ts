@@ -3,10 +3,12 @@ import path from 'path';
 
 const SERVER = path.join(__dirname, '..', 'knowledge-server.mjs');
 
+type ToolResult = { tools?: Array<{ name: string }>; isError?: boolean; content?: Array<{ text: string }> };
+
 /** Sends JSON-RPC requests to a fresh server process and collects one reply per request. */
 async function rpc(env: Record<string, string>, requests: Array<{ method: string; params?: unknown }>) {
   const proc = spawn(process.execPath, [SERVER], { env: { ...process.env, ...env }, stdio: ['pipe', 'pipe', 'inherit'] });
-  const replies: Array<{ id: number; result: any }> = [];
+  const replies: Array<{ id: number; result: ToolResult }> = [];
   let buffer = '';
   const done = new Promise<void>((resolve) => {
     proc.stdout.on('data', (chunk) => {
@@ -25,7 +27,7 @@ async function rpc(env: Record<string, string>, requests: Array<{ method: string
   return replies.sort((a, b) => a.id - b.id).map((r) => r.result);
 }
 
-const toolNames = (result: any) => result.tools.map((t: { name: string }) => t.name);
+const toolNames = (result: ToolResult) => (result.tools ?? []).map((t) => t.name);
 
 describe('knowledge-server create_file', () => {
   it('is offered in a chat session', async () => {
@@ -47,6 +49,6 @@ describe('knowledge-server create_file', () => {
       { method: 'tools/call', params: { name: 'create_file', arguments: { format: 'pdf', filename: 'x', content: 'hi' } } },
     ]);
     expect(call.isError).toBe(true);
-    expect(call.content[0].text).toMatch(/file/i);
+    expect(call.content?.[0].text).toMatch(/file/i);
   });
 });

@@ -25,7 +25,7 @@ beforeEach(() => {
   db.message.findUnique.mockResolvedValue({ id: 'm1', conversationId: 'c1', conversation: { userId: 'owner' } });
   db.attachment.count.mockResolvedValue(0);
   save.mockResolvedValue({ storagePath: '/up/c1/f.xlsx', id: 'f' });
-  db.attachment.create.mockImplementation(({ data }) => Promise.resolve({ id: 'a1', ...data }));
+  db.attachment.create.mockImplementation(({ data }: { data: Record<string, unknown> }) => Promise.resolve({ id: 'a1', ...data }));
 });
 
 describe('createGeneratedFile', () => {
@@ -75,14 +75,14 @@ describe('createGeneratedFile', () => {
 describe('createGeneratedFile builder failure', () => {
   it('returns a 400 Claude can act on when the builder throws', async () => {
     let isolated!: typeof import('@/lib/generated-files');
-    jest.isolateModules(() => {
+    await jest.isolateModulesAsync(async () => {
       jest.doMock('@/lib/prisma', () => ({ prisma: db }));
       jest.doMock('@/lib/upload', () => ({ saveUploadedFile: save, deleteUploadedFile: remove }));
       jest.doMock('@/lib/generate-file', () => ({
         ...jest.requireActual('@/lib/generate-file'),
         buildGeneratedFile: jest.fn().mockRejectedValue(new Error('The name "X" is protected')),
       }));
-      isolated = require('@/lib/generated-files');
+      isolated = await import('@/lib/generated-files');
     });
     const result = await isolated.createGeneratedFile('m1', xlsxInput);
     expect(result).toMatchObject({ ok: false, status: 400 });
