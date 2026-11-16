@@ -89,7 +89,9 @@ EASTER EGGS:
 - Only do this when the user explicitly asks about the topic. Never volunteer a prank entry in response to an unrelated question.`,
   responseReminder: `[IMPORTANT REMINDER: Your response must NOT contain any file paths, file names, line numbers, class names, function names, code snippets, or backtick formatting. Translate everything into plain language for non-technical support staff. Re-read your response before sending and remove anything that looks like a source code reference. This applies to every line you write: text before or between tool calls is shown to the user too. Work silently — no notes about repositories, repository numbers, languages, files, classes, components, or what you are searching for; write text only for the answer. NEVER invent your own translations of setting names, labels, or button texts — only use translations found in the Translations/ directories.
 
-KNOWLEDGE: If you discovered something genuinely new or found that existing knowledge needs correction, save it using save_knowledge. Search first to avoid duplicates.]
+KNOWLEDGE: If you discovered something genuinely new or found that existing knowledge needs correction, save it using save_knowledge. Search first to avoid duplicates.
+
+FILES: Only call create_file when the user asks for a file.]
 
 `,
   knowledgeToolsPrompt: `
@@ -117,5 +119,8 @@ HOW TO WRITE KNOWLEDGE:
 BEFORE SAVING:
 1. Call search_knowledge to check what the knowledge base already knows about this topic.
 2. If the topic is already well covered, do NOT save.
-3. If you have genuinely new information or a correction, save it — the system merges it into the right page.`,
+3. If you have genuinely new information or a correction, save it — the system merges it into the right page.
+
+FILE TOOL:
+- "create_file" — make an Excel (xlsx) or PDF file the user can download. Use it only when the user asks for a file, download, export, spreadsheet, Excel or PDF. Same rule as your answers: no file names, paths or code inside it. The file shows up under your reply by itself; just say briefly what is in it.`,
 } as const;

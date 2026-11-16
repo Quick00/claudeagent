@@ -11,6 +11,7 @@ import { createInterface } from 'readline';
 const API_URL = process.env.KNOWLEDGE_API_URL || 'http://localhost:3000/api/knowledge';
 const SEARCH_URL = process.env.KNOWLEDGE_SEARCH_URL || 'http://localhost:3000/api/knowledge/search';
 const VERIFY_URL = process.env.KNOWLEDGE_VERIFY_URL || 'http://localhost:3000/api/knowledge/verify-result';
+const FILES_URL = process.env.KNOWLEDGE_FILES_URL || 'http://localhost:3000/api/files/generate';
 const API_SECRET = process.env.KNOWLEDGE_API_SECRET || '';
 const PROVENANCE_KEY = process.env.PROVENANCE_KEY || '';
 /**
@@ -125,6 +126,38 @@ rl.on('line', async (line) => {
         },
       },
       {
+        name: 'create_file',
+        description:
+          'Create an Excel (.xlsx) or PDF file the user can download. Only use this when the user asks for a file, export, spreadsheet, Excel or PDF. The file appears as a download under your reply automatically — do not paste links or ids. For xlsx pass sheets; for pdf pass content as Markdown. Never put file names, paths or code in the file.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            format: { type: 'string', enum: ['xlsx', 'pdf'], description: 'xlsx = Excel workbook, pdf = document.' },
+            filename: { type: 'string', description: 'File name without extension, in plain words (e.g. "Event settings overview").' },
+            title: { type: 'string', description: 'pdf only: the document title shown at the top.' },
+            sheets: {
+              type: 'array',
+              description: 'xlsx only: one entry per sheet (max 10; max 5000 rows and 50 columns per sheet).',
+              items: {
+                type: 'object',
+                properties: {
+                  name: { type: 'string', description: 'Sheet name.' },
+                  columns: { type: 'array', items: { type: 'string' }, description: 'Header row.' },
+                  rows: {
+                    type: 'array',
+                    description: 'Data rows; each row is an array of values in column order (text, number, true/false or null).',
+                    items: { type: 'array', items: { type: ['string', 'number', 'boolean', 'null'] } },
+                  },
+                },
+                required: ['name', 'columns', 'rows'],
+              },
+            },
+            content: { type: 'string', description: 'pdf only: the document as Markdown (headings, paragraphs, lists, bold/italic, tables).' },
+          },
+          required: ['format', 'filename'],
+        },
+      },
+      {
         name: 'resolve_verification',
         description:
           'Report the result of a knowledge verification run. Only call this when your message asked you to verify a specific page and gave you a run id. A "changed" result is queued for an admin to accept, not applied to the page.',
@@ -150,11 +183,11 @@ rl.on('line', async (line) => {
       id,
       result: {
         // resolve_verification exists only for a verification run; save_knowledge
-        // exists only outside one.
+        // and create_file exist only outside one.
         tools: tools.filter((t) =>
           t.name === 'resolve_verification'
             ? Boolean(VERIFICATION_RUN_ID)
-            : !(VERIFICATION_RUN_ID && t.name === 'save_knowledge'),
+            : !(VERIFICATION_RUN_ID && (t.name === 'save_knowledge' || t.name === 'create_file')),
         ),
       },
     });
@@ -271,6 +304,47 @@ rl.on('line', async (line) => {
           id,
           result: {
             content: [{ type: 'text', text: `Error saving knowledge: ${err.message}` }],
+            isError: true,
+          },
+        });
+      }
+      return;
+    }
+
+    if (name === 'create_file') {
+      if (VERIFICATION_RUN_ID) {
+        send({
+          jsonrpc: '2.0',
+          id,
+          result: {
+            content: [{ type: 'text', text: 'create_file is not available during a verification run.' }],
+            isError: true,
+          },
+        });
+        return;
+      }
+      try {
+        const res = await fetch(FILES_URL, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${API_SECRET}`,
+          },
+          body: JSON.stringify({ ...args, provenanceKey: PROVENANCE_KEY }),
+        });
+        if (!res.ok) throw new Error((await res.text()) || `HTTP ${res.status}`);
+        const data = await res.json();
+        send({
+          jsonrpc: '2.0',
+          id,
+          result: { content: [{ type: 'text', text: `Created ${data.filename}. It will appear as a download under your reply.` }] },
+        });
+      } catch (err) {
+        send({
+          jsonrpc: '2.0',
+          id,
+          result: {
+            content: [{ type: 'text', text: `The file was not created: ${err.message}` }],
             isError: true,
           },
         });

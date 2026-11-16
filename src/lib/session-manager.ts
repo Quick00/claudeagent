@@ -107,6 +107,7 @@ async function buildMcpConfigFile(
         KNOWLEDGE_API_URL: `${process.env.NEXTAUTH_URL || 'http://localhost:3000'}/api/knowledge`,
         KNOWLEDGE_SEARCH_URL: `${process.env.NEXTAUTH_URL || 'http://localhost:3000'}/api/knowledge/search`,
         KNOWLEDGE_VERIFY_URL: `${process.env.NEXTAUTH_URL || 'http://localhost:3000'}/api/knowledge/verify-result`,
+        KNOWLEDGE_FILES_URL: `${process.env.NEXTAUTH_URL || 'http://localhost:3000'}/api/files/generate`,
         KNOWLEDGE_API_SECRET: process.env.KNOWLEDGE_API_SECRET || '',
         PROVENANCE_KEY: provenanceKey,
         VERIFICATION_RUN_ID: verificationRunId || '',
