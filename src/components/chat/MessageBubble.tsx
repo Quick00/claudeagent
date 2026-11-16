@@ -108,6 +108,20 @@ export function MessageBubble({
     <div className="flex justify-start">
       <div className="w-full overflow-hidden rounded-2xl bg-muted px-4 py-3 text-foreground">
         <MarkdownContent content={content} density="compact" className="overflow-x-auto" />
+        {documents.length > 0 && (
+          // Files Claude made with create_file for this answer.
+          <div className="mt-3 flex flex-wrap gap-2">
+            {documents.map((att) => (
+              <AttachmentChip
+                key={att.id}
+                filename={att.filename}
+                size={att.size}
+                kind={uploadTypeForMime(att.mimeType)?.kind}
+                href={`/api/upload/${att.id}`}
+              />
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );

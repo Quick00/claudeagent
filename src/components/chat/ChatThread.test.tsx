@@ -148,6 +148,44 @@ describe('ChatThread', () => {
     expect(await screen.findByText('Because it does.')).toBeInTheDocument();
   });
 
+  test('a file Claude made shows as a download under its answer', async () => {
+    const file = { id: 'att-9', filename: 'Event settings.xlsx', mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', size: 2048 };
+    routeFetch({
+      '/api/conversations/conv-1': () =>
+        jsonOk({
+          ...CONVERSATION,
+          messages: [CONVERSATION.messages[0], { ...CONVERSATION.messages[1], attachments: [file] }],
+        }),
+    });
+    renderThread('conv-1');
+
+    const link = await screen.findByRole('link', { name: /Event settings\.xlsx/ });
+    expect(link).toHaveAttribute('href', '/api/upload/att-9');
+  });
+
+  test('a file announced while streaming appears under the answer when it finishes', async () => {
+    const file = { id: 'att-7', filename: 'Overview.pdf', mimeType: 'application/pdf', size: 1024 };
+    // The refetch after `done` never lands, so what shows is the client's own copy of the answer.
+    let loads = 0;
+    routeFetch({
+      '/api/conversations/conv-1': () => (++loads === 1 ? jsonOk(CONVERSATION) : new Promise(() => {})),
+      '/api/chat': () =>
+        sseResponse([
+          { type: 'text', content: 'Here is your PDF.' },
+          { type: 'files', messageId: 'reply-1', files: [file] },
+          { type: 'done' },
+        ]),
+    });
+    const { user } = renderThread('conv-1');
+    await screen.findByText('It uses OAuth.');
+
+    await user.type(screen.getByRole('textbox', { name: /message/i }), 'PDF please');
+    await user.click(screen.getByRole('button', { name: /^send$/i }));
+
+    const link = await screen.findByRole('link', { name: /Overview\.pdf/ });
+    expect(link).toHaveAttribute('href', '/api/upload/att-7');
+  });
+
   test('a new conversation replaces the URL with /chat/<id> and keeps the optimistic bubble', async () => {
     routeFetch({
       '/api/chat': () =>
