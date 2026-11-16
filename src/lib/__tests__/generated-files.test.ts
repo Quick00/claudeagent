@@ -8,6 +8,7 @@ jest.mock('@/lib/prisma', () => ({
     attachment: { count: jest.fn(), create: jest.fn(), findMany: jest.fn(), updateMany: jest.fn(), deleteMany: jest.fn() },
   },
 }));
+jest.mock('@sentry/nextjs', () => ({ captureException: jest.fn() }));
 jest.mock('@/lib/upload', () => ({ saveUploadedFile: jest.fn(), deleteUploadedFile: jest.fn() }));
 
 const db = prisma as unknown as {
@@ -93,5 +94,34 @@ describe('discardUnlinkedGeneratedFiles', () => {
     expect(remove).toHaveBeenCalledWith('/p/1');
     expect(remove).toHaveBeenCalledWith('/p/2');
     expect(db.attachment.deleteMany).toHaveBeenCalledWith({ where: { id: { in: ['a1', 'a2'] } } });
+  });
+});
+
+describe('attachGeneratedFilesToReply', () => {
+  const sink = () => ({ send: jest.fn(), close: jest.fn() });
+
+  it('links the files and tells the client about them', async () => {
+    const { attachGeneratedFilesToReply } = jest.requireActual('@/lib/generated-files') as typeof import('@/lib/generated-files');
+    const file = { id: 'a1', filename: 'x.pdf', mimeType: 'application/pdf', size: 10 };
+    db.attachment.findMany.mockResolvedValue([file]);
+    const s = sink();
+    await attachGeneratedFilesToReply(s, 'm1', 'reply');
+    expect(s.send).toHaveBeenCalledWith(JSON.stringify({ type: 'files', messageId: 'reply', files: [file] }));
+  });
+
+  it('sends nothing when the turn made no files', async () => {
+    const { attachGeneratedFilesToReply } = jest.requireActual('@/lib/generated-files') as typeof import('@/lib/generated-files');
+    db.attachment.findMany.mockResolvedValue([]);
+    const s = sink();
+    await attachGeneratedFilesToReply(s, 'm1', 'reply');
+    expect(s.send).not.toHaveBeenCalled();
+  });
+
+  it('never fails the turn when linking throws', async () => {
+    const { attachGeneratedFilesToReply } = jest.requireActual('@/lib/generated-files') as typeof import('@/lib/generated-files');
+    db.attachment.updateMany.mockRejectedValue(new Error('db down'));
+    const s = sink();
+    await expect(attachGeneratedFilesToReply(s, 'm1', 'reply')).resolves.toBeUndefined();
+    expect(s.send).not.toHaveBeenCalled();
   });
 });

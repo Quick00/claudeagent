@@ -9,6 +9,7 @@ import { getKnowledgeIgnoreLists } from '@/lib/settings';
 import { createAnswerSegments } from '@/lib/answer-segments';
 import { config } from '@/lib/config';
 import { emptyTurnMessage, reportEmptyTurn } from '@/lib/empty-turn';
+import { attachGeneratedFilesToReply } from '@/lib/generated-files';
 import type { ChildProcess } from 'child_process';
 
 export async function POST(
@@ -136,7 +137,7 @@ export async function POST(
           // Strictly increasing timestamps, past the question: rows that tie
           // at TIMESTAMP(3) come back in any order (see /api/chat).
           const base = Math.max(Date.now(), adminMessage.createdAt.getTime() + 1);
-          await prisma.message.createMany({
+          const written = await prisma.message.createManyAndReturn({
             data: contents.map((content, i) => ({
               conversationId,
               role: 'assistant' as const,
@@ -144,7 +145,11 @@ export async function POST(
               seenByOwner: false,
               createdAt: new Date(base + i),
             })),
+            select: { id: true, createdAt: true },
           });
+          const replyId = written.reduce<typeof written[number] | null>((last, row) => (!last || row.createdAt > last.createdAt ? row : last), null)?.id ?? null;
+          // Files Claude made with create_file go under the last bubble of this answer.
+          await attachGeneratedFilesToReply(sink, adminMessage.id, replyId);
           if (newSessionId && newSessionId !== sessionId) {
             await prisma.conversation.update({
               where: { id: conversationId },

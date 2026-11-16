@@ -12,13 +12,14 @@ import { requireApprovedUser } from '@/lib/api-auth';
 import { recordMcpServerStatus } from '@/lib/mcp-connections';
 import * as Sentry from '@sentry/nextjs';
 import { drainSse } from '../helpers/sse';
+import { attachGeneratedFilesToReply, discardUnlinkedGeneratedFiles } from '@/lib/generated-files';
 
 jest.mock('@/lib/api-auth', () => ({ requireApprovedUser: jest.fn() }));
 jest.mock('@/lib/prisma', () => ({
   prisma: {
     repository: { findMany: jest.fn() },
     conversation: { findFirst: jest.fn(), create: jest.fn(), update: jest.fn() },
-    message: { create: jest.fn(), createMany: jest.fn() },
+    message: { create: jest.fn(), createManyAndReturn: jest.fn() },
     attachment: { findMany: jest.fn(), updateMany: jest.fn() },
     mcpServerConnection: { findMany: jest.fn() },
   },
@@ -35,6 +36,10 @@ jest.mock('@/lib/knowledge-context', () => ({
   formatKnowledgeDelta: () => '',
 }));
 jest.mock('@/lib/settings', () => ({ getKnowledgeIgnoreLists: jest.fn(async () => undefined) }));
+jest.mock('@/lib/generated-files', () => ({
+  attachGeneratedFilesToReply: jest.fn(async () => undefined),
+  discardUnlinkedGeneratedFiles: jest.fn(async () => undefined),
+}));
 jest.mock('@/lib/provenance-collector', () => ({
   provenanceCollector: { start: jest.fn(), end: jest.fn(), recordToolUse: jest.fn() },
 }));
@@ -43,7 +48,7 @@ const mockAuth = requireApprovedUser as jest.Mock;
 const mockRepos = prisma.repository.findMany as jest.Mock;
 const mockConvFind = prisma.conversation.findFirst as jest.Mock;
 const mockMsgCreate = prisma.message.create as jest.Mock;
-const mockMsgCreateMany = prisma.message.createMany as jest.Mock;
+const mockMsgCreateMany = prisma.message.createManyAndReturn as jest.Mock;
 const mockConvUpdate = prisma.conversation.update as jest.Mock;
 const mockResume = sessionManager.resumeSession as jest.Mock;
 const mockDropped = sessionManager.takeDroppedServers as jest.Mock;
@@ -157,9 +162,42 @@ describe('POST /api/chat — one assistant row per text segment', () => {
     ]);
     mockConvFind.mockResolvedValue({ id: 'conv-1', claudeSessionId: 'sess-1' });
     mockMsgCreate.mockResolvedValue({ id: 'um1', createdAt: USER_MESSAGE_AT });
-    mockMsgCreateMany.mockResolvedValue({ count: 1 });
+    mockMsgCreateMany.mockImplementation(async ({ data }: { data: { createdAt: Date }[] }) => data.map((row, i) => ({ id: `reply-${i}`, createdAt: row.createdAt })));
     mockDropped.mockReturnValue([]);
     mockLinkedServers.mockResolvedValue([]);
+  });
+
+  it('attaches the turn\'s generated files to the last bubble, before done', async () => {
+    const attach = attachGeneratedFilesToReply as jest.Mock;
+    attach.mockImplementation(async (sink: { send: (s: string) => void }) => sink.send(JSON.stringify({ type: 'files', files: [] })));
+    const events = await runTurn(textLine('Here is the list.') + toolLines('mcp__knowledge__create_file') + textLine('Done, see the file.'));
+
+    expect(attach).toHaveBeenCalledWith(expect.anything(), 'um1', 'reply-1');
+    const types = events.map((e) => e.type);
+    expect(types.indexOf('files')).toBeGreaterThan(-1);
+    expect(types.indexOf('files')).toBeLessThan(types.indexOf('done'));
+  });
+
+  it('discards the failed attempt\'s files before a retry starts', async () => {
+    const order: string[] = [];
+    (discardUnlinkedGeneratedFiles as jest.Mock).mockImplementation(async () => { order.push('discard'); });
+    const first = fakeChild();
+    const second = fakeChild();
+    mockResume.mockResolvedValueOnce(first).mockImplementationOnce(async () => { order.push('respawn'); return second; });
+
+    const res = await POST(new Request('http://x', { method: 'POST', body: JSON.stringify({ conversationId: 'conv-1', message: 'q' }) }));
+    await tick();
+    first.stdout.write(resultLine({ subtype: 'error_during_execution' }));
+    await tick();
+    await tick();
+    second.stdout.write(textLine('ok'));
+    await tick();
+    second.emit('close', 0);
+    await tick();
+    await drainSse(res);
+
+    expect(discardUnlinkedGeneratedFiles).toHaveBeenCalledWith('um1');
+    expect(order).toEqual(['discard', 'respawn']);
   });
 
   it('writes one row when no tool interrupts the answer', async () => {
@@ -342,7 +380,7 @@ describe('POST /api/chat — what a connected source is for reaches the CLI', ()
       { name: 'app', description: 'the app', localPath: '/repos/app', lastPulledAt: null, gitlabProjectId: '1' },
     ]);
     mockMsgCreate.mockResolvedValue({ id: 'um1', createdAt: USER_MESSAGE_AT });
-    mockMsgCreateMany.mockResolvedValue({ count: 1 });
+    mockMsgCreateMany.mockImplementation(async ({ data }: { data: { createdAt: Date }[] }) => data.map((row, i) => ({ id: `reply-${i}`, createdAt: row.createdAt })));
     mockDropped.mockReturnValue([]);
     mockLinkedServers.mockResolvedValue([
       { mcpServer: { name: 'jira', description: 'Customer tickets and their status.' } },

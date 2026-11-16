@@ -1,4 +1,6 @@
+import * as Sentry from '@sentry/nextjs';
 import { config } from '@/lib/config';
+import type { SseSink } from '@/lib/claude-process-stream';
 import { prisma } from '@/lib/prisma';
 import { saveUploadedFile, deleteUploadedFile } from '@/lib/upload';
 import { buildGeneratedFile, generatedFilename, sanitizeGenerateRequest, validateGenerateRequest } from '@/lib/generate-file';
@@ -75,4 +77,18 @@ export async function discardUnlinkedGeneratedFiles(triggerMessageId: string): P
   if (files.length === 0) return;
   await Promise.all(files.map((f) => deleteUploadedFile(f.storagePath)));
   await prisma.attachment.deleteMany({ where: { id: { in: files.map((f) => f.id) } } });
+}
+
+/**
+ * End of a turn: put its files under the reply and tell the live client, so the
+ * chips show without a reload. A failure here is reported, never thrown — the
+ * answer itself is already saved and must still finish.
+ */
+export async function attachGeneratedFilesToReply(sink: SseSink, triggerMessageId: string, assistantMessageId: string | null): Promise<void> {
+  try {
+    const files = await linkGeneratedFiles(triggerMessageId, assistantMessageId);
+    if (files.length > 0) sink.send(JSON.stringify({ type: 'files', messageId: assistantMessageId, files }));
+  } catch (err) {
+    Sentry.captureException(err, { extra: { triggerMessageId, assistantMessageId } });
+  }
 }

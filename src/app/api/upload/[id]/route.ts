@@ -3,6 +3,17 @@ import { prisma } from '@/lib/prisma';
 import { readFile } from 'fs/promises';
 import { uploadTypeForMime } from '@/lib/upload-types';
 
+/**
+ * Filenames come from users and, for generated files, from the model: the quoted
+ * form keeps printable ASCII minus quotes and backslashes, and `filename*`
+ * carries the real name percent-encoded (RFC 6266), so nothing can break the header.
+ */
+function contentDisposition(type: 'inline' | 'attachment', filename: string): string {
+  const ascii = filename.replace(/[^\x20-\x7e]|["\\]/g, '_');
+  const encoded = encodeURIComponent(filename).replace(/['()*]/g, (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`);
+  return `${type}; filename="${ascii}"; filename*=UTF-8''${encoded}`;
+}
+
 export async function GET(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
@@ -45,7 +56,7 @@ export async function GET(
       headers: {
         'Content-Type': kind === 'text' ? 'text/plain; charset=utf-8' : attachment.mimeType,
         'Content-Length': String(attachment.size),
-        'Content-Disposition': `${inline ? 'inline' : 'attachment'}; filename="${attachment.filename}"`,
+        'Content-Disposition': contentDisposition(inline ? 'inline' : 'attachment', attachment.filename),
         'X-Content-Type-Options': 'nosniff',
         'Cache-Control': 'private, max-age=86400',
       },
