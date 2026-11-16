@@ -81,7 +81,18 @@ describe('GET /api/upload/[id]', () => {
     const res = await GET(request(), params);
 
     expect(res.headers.get('content-type')).toBe('text/plain; charset=utf-8');
-    expect(res.headers.get('content-disposition')).toBe('attachment; filename="export.csv"');
+    expect(res.headers.get('content-disposition')).toBe(`attachment; filename="export.csv"; filename*=UTF-8''export.csv`);
     expect(res.headers.get('x-content-type-options')).toBe('nosniff');
+  });
+
+  test('a filename with quotes, line breaks or non-ASCII cannot break the header', async () => {
+    mockFind.mockResolvedValue(attachment({ filename: 'a"b\r\nX-Evil: 1;c é.csv' }));
+    signIn('alice');
+
+    const disposition = (await GET(request(), params)).headers.get('content-disposition')!;
+
+    expect(disposition).not.toMatch(/[\r\n]/);
+    expect(disposition).toMatch(/^attachment; filename="[^"]*"; filename\*=UTF-8''\S+$/);
+    expect(disposition).toContain(`filename*=UTF-8''${encodeURIComponent('a"b\r\nX-Evil: 1;c é.csv')}`);
   });
 });

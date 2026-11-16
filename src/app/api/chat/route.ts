@@ -10,6 +10,7 @@ import { getLinkedServersForPrompt, type LinkedServerSummary } from '@/lib/mcp-c
 import { provenanceCollector } from '@/lib/provenance-collector';
 import { getKnowledgeIgnoreLists } from '@/lib/settings';
 import { attachmentPromptBlock } from '@/lib/upload';
+import { attachGeneratedFilesToReply, discardUnlinkedGeneratedFiles } from '@/lib/generated-files';
 import { attachClaudeProcess, createSseResponse } from '@/lib/claude-process-stream';
 import { createAnswerSegments } from '@/lib/answer-segments';
 import { recordMcpServerStatus } from '@/lib/mcp-connections';
@@ -243,9 +244,20 @@ export async function POST(request: Request) {
             console.log(`${logPrefix} error_during_execution — retrying (attempt ${retryCount + 1}/${MAX_RETRIES})`);
             retrying = true;
             const retryRequestId = `${conversation.id}-retry-${Date.now()}`;
-            const retryProcOrPromise = conversation.claudeSessionId
-              ? sessionManager.resumeSession(retryRequestId, conversation.claudeSessionId, effectiveMessage, userClaudeToken, userId, userMessage.id)
-              : sessionManager.startSession(retryRequestId, effectiveMessage, systemPrompt, userClaudeToken, userId, repoPaths, userMessage.id);
+            // A fresh retry has no memory of the failed attempt and will build its files again, so
+            // those would sit beside the new ones under the reply: drop them first (awaited before the
+            // spawn, so the retry's own files can't be caught). A resumed retry keeps them — its
+            // session already holds "Created …" and may rightly not make the file twice.
+            const cleanup = conversation.claudeSessionId
+              ? Promise.resolve()
+              : discardUnlinkedGeneratedFiles(userMessage.id).catch((err) => {
+                  console.error(`${logPrefix} Failed to discard generated files before retry:`, err.message);
+                  Sentry.captureException(err, { extra: { conversationId: conversation.id, userId } });
+                });
+            const retryProcOrPromise = cleanup
+              .then(() => conversation.claudeSessionId
+                ? sessionManager.resumeSession(retryRequestId, conversation.claudeSessionId, effectiveMessage, userClaudeToken, userId, userMessage.id)
+                : sessionManager.startSession(retryRequestId, effectiveMessage, systemPrompt, userClaudeToken, userId, repoPaths, userMessage.id));
 
             retryProcOrPromise.then((retryProc) => {
               for (const dropped of sessionManager.takeDroppedServers(retryRequestId)) {
@@ -286,6 +298,7 @@ export async function POST(request: Request) {
 
           answer.flushOpen();
           const contents = answer.contents();
+          let replyId: string | null = null;
 
           if (contents.length === 0 && !rateLimited) {
             const content = emptyTurnMessage(resultSubtype);
@@ -309,15 +322,20 @@ export async function POST(request: Request) {
             // would not be enough. The `max` guards against clock skew between
             // the app and the DB sorting an answer before its question.
             const base = Math.max(Date.now(), userMessage.createdAt.getTime() + 1);
-            await prisma.message.createMany({
+            const written = await prisma.message.createManyAndReturn({
               data: contents.map((content, i) => ({
                 conversationId: conversation.id,
                 role: 'assistant' as const,
                 content,
                 createdAt: new Date(base + i),
               })),
+              select: { id: true, createdAt: true },
             });
+            replyId = written.reduce<typeof written[number] | null>((last, row) => (!last || row.createdAt > last.createdAt ? row : last), null)?.id ?? null;
           }
+
+          // Files Claude made with create_file go under the last bubble of this answer.
+          await attachGeneratedFilesToReply(sink, userMessage.id, replyId);
 
           // Kept even when no answer was written (rate limit, empty turn):
           // without it the thread reads as never started, and the next send

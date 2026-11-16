@@ -18,6 +18,12 @@ const entry: LabelledEntry = {
 const JIRA = { name: 'jira', description: 'Customer tickets and their status.' };
 
 describe('buildSystemPrompt', () => {
+  it('tells Claude it can make a file, but only when asked', () => {
+    const prompt = buildSystemPrompt({ isResumed: false, knowledge: [], repoContext: '', linkedServers: [] });
+    expect(prompt).toContain('create_file');
+    expect(prompt).toMatch(/only when the user asks for a file/i);
+  });
+
   it('describes the connected sources when the user has linked one', () => {
     const prompt = buildSystemPrompt({ isResumed: false, knowledge: [], repoContext: '', linkedServers: [JIRA] });
 
@@ -79,5 +85,12 @@ describe('buildCliMessage', () => {
 
     expect(built).toContain(config.responseReminder);
     expect(built).toContain('Wristband Scanning');
+  });
+});
+
+describe('buildCliMessage file reminder', () => {
+  it('reminds a resumed run that files are made only on request', () => {
+    const message = buildCliMessage({ isResumed: true, knowledge: [], linkedServers: [], message: 'hi' });
+    expect(message).toMatch(/only call create_file when the user asks for a file/i);
   });
 });

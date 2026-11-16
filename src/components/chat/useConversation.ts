@@ -450,6 +450,8 @@ export function useConversation(initialConversationId: string | null) {
         // a `text_break` and silently merging two bubbles that the reload would
         // then show apart.
         let buffer = '';
+        // Files Claude made this turn (`files` frame); they go under the last bubble at `done`.
+        let generatedFiles: Attachment[] = [];
 
         while (true) {
           const { done, value } = await reader.read();
@@ -471,6 +473,7 @@ export function useConversation(initialConversationId: string | null) {
               errorType?: string;
               server?: string;
               message?: string;
+              files?: Attachment[];
             };
             try {
               event = JSON.parse(line.slice(6));
@@ -522,6 +525,10 @@ export function useConversation(initialConversationId: string | null) {
               publish();
             }
 
+            if (event.type === 'files' && Array.isArray(event.files)) {
+              generatedFiles = [...generatedFiles, ...event.files];
+            }
+
             if (event.type === 'mcp_server_notice' && event.message) {
               const notice = event.message;
               setMcpNotices((prev) => (prev.includes(notice) ? prev : [...prev, notice]));
@@ -549,16 +556,18 @@ export function useConversation(initialConversationId: string | null) {
               // `buildTimeline` sorts on `createdAt`, so the order has to be in
               // the values rather than resting on sort stability for ties.
               const base = Date.now();
-              segments
-                .filter(hasText)
-                .forEach((content, i) =>
-                  appendMessage({
-                    id: `assistant-${base}-${i}`,
-                    role: 'assistant',
-                    content,
-                    createdAt: new Date(base + i).toISOString(),
-                  }),
-                );
+              const bubbles = segments.filter(hasText);
+              bubbles.forEach((content, i) =>
+                appendMessage({
+                  id: `assistant-${base}-${i}`,
+                  role: 'assistant',
+                  content,
+                  createdAt: new Date(base + i).toISOString(),
+                  // The server links them to the answer's last row; match that here.
+                  ...(i === bubbles.length - 1 && generatedFiles.length > 0 ? { attachments: generatedFiles } : {}),
+                }),
+              );
+              generatedFiles = [];
               segments = [''];
               setStreamingSegments([]);
               // The cache, not this hook, is the record of what was said. The

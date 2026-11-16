@@ -1,13 +1,14 @@
 import { POST } from '@/app/api/admin/conversations/[id]/messages/route';
 import { getServerSession } from 'next-auth';
 import { prisma } from '@/lib/prisma';
+import { attachGeneratedFilesToReply } from '@/lib/generated-files';
 
 jest.mock('next-auth');
 jest.mock('@/lib/prisma', () => ({
   prisma: {
     user: { findUnique: jest.fn() },
     conversation: { findUnique: jest.fn() },
-    message: { create: jest.fn(), createMany: jest.fn() },
+    message: { create: jest.fn(), createManyAndReturn: jest.fn() },
     flag: { updateMany: jest.fn() },
     repository: { findMany: jest.fn() },
     appSetting: { findUnique: jest.fn(), upsert: jest.fn() },
@@ -18,6 +19,7 @@ jest.mock('@/lib/session-manager', () => ({
   sessionManager: { resumeSession: jest.fn(), takeDroppedServers: jest.fn(() => []) },
 }));
 jest.mock('@sentry/nextjs', () => ({ captureMessage: jest.fn(), captureException: jest.fn() }));
+jest.mock('@/lib/generated-files', () => ({ attachGeneratedFilesToReply: jest.fn(async () => undefined) }));
 jest.mock('@/lib/crypto', () => ({ decrypt: (s: string) => `dec(${s})` }));
 
 const mockSession = getServerSession as jest.Mock;
@@ -166,7 +168,7 @@ describe('POST /api/admin/conversations/[id]/messages — happy path', () => {
 });
 
 describe('POST /api/admin/conversations/[id]/messages — the answer it stores', () => {
-  const mockMsgCreateMany = prisma.message.createMany as jest.Mock;
+  const mockMsgCreateMany = prisma.message.createManyAndReturn as jest.Mock;
   const tick = () => new Promise((r) => setImmediate(r));
   const textLine = (text: string) =>
     JSON.stringify({ type: 'stream_event', event: { type: 'content_block_delta', delta: { type: 'text_delta', text } } }) + '\n';
@@ -182,7 +184,7 @@ describe('POST /api/admin/conversations/[id]/messages — the answer it stores',
       user: { id: 'u-other', claudeToken: 'enc' },
     });
     mockMsgCreate.mockResolvedValue({ id: 'admin-msg-1', createdAt: new Date('2026-01-01T10:00:00.000Z') });
-    mockMsgCreateMany.mockResolvedValue({ count: 1 });
+    mockMsgCreateMany.mockImplementation(async ({ data }: { data: { createdAt: Date }[] }) => data.map((row, i) => ({ id: `reply-${i}`, createdAt: row.createdAt })));
     mockFlagUpdate.mockResolvedValue({ count: 0 });
     mockRepoFind.mockResolvedValue([]);
     mockTx.mockImplementation((ops) => Promise.all(ops.map((p: Promise<unknown>) => p)));
@@ -209,6 +211,20 @@ describe('POST /api/admin/conversations/[id]/messages — the answer it stores',
     const rows = (mockMsgCreateMany.mock.calls[0][0] as { data: Array<{ content: string; seenByOwner: boolean }> }).data;
     expect(rows.map((r) => r.content)).toEqual(['Looking into it.', 'It is set in per workshop.']);
     expect(rows.every((r) => r.seenByOwner === false)).toBe(true);
+  });
+
+  it('attaches files made during the admin turn to its last bubble', async () => {
+    const proc = Object.assign(new EventEmitter(), { stdout: new PassThrough(), stderr: new PassThrough() });
+    mockResume.mockReturnValue(proc);
+
+    const res = await POST(req({ content: 'Make a spreadsheet' }), params('c1'));
+    proc.stdout.write(textLine('Making it.') + toolLine('mcp__knowledge__create_file') + textLine('Here it is.'));
+    await tick();
+    proc.emit('close', 0);
+    await tick();
+    await drainSse(res);
+
+    expect(attachGeneratedFilesToReply).toHaveBeenCalledWith(expect.anything(), 'admin-msg-1', 'reply-1');
   });
 
   it('stores, streams and reports a message in place of an empty answer', async () => {

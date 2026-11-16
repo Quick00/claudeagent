@@ -69,6 +69,8 @@ model Attachment {
   messageId   String?
   // Null on rows from before uploads were tracked: only admins may open those while unlinked.
   uploadedById String?
+  // Set only on files Claude built with `create_file`: the Message.id of the turn that made it.
+  generatedForMessageId String?
   filename    String
   storagePath String
   mimeType    String
@@ -79,6 +81,7 @@ model Attachment {
   feedbackPost FeedbackPost?
 
   @@index([uploadedById])
+  @@index([generatedForMessageId])
 }
 
 model KnowledgeEntry {

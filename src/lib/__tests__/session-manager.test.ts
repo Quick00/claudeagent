@@ -60,6 +60,9 @@ describe('SessionManager spawn arguments', () => {
     expect(mcp.mcpServers.knowledge.env.KNOWLEDGE_VERIFY_URL).toBe(
       mcp.mcpServers.knowledge.env.KNOWLEDGE_SEARCH_URL.replace(/\/search$/, '/verify-result'),
     );
+    expect(mcp.mcpServers.knowledge.env.KNOWLEDGE_FILES_URL).toBe(
+      mcp.mcpServers.knowledge.env.KNOWLEDGE_SEARCH_URL.replace(/\/knowledge\/search$/, '/files/generate'),
+    );
   });
 
   it('does the same on resume', async () => {
