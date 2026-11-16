@@ -36,6 +36,7 @@ export async function createGeneratedFile(triggerMessageId: string, input: unkno
   try {
     built = await buildGeneratedFile(request);
   } catch (err) {
+    console.error(`[files] building a ${request.format} for ${triggerMessageId} failed:`, err);
     Sentry.captureException(err, { extra: { triggerMessageId, format: request.format } });
     return { ok: false, status: 400, error: 'The file could not be built from this content. Try simpler content or a different layout.' };
   }

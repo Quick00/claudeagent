@@ -3,6 +3,9 @@ import { withSentryConfig } from "@sentry/nextjs";
 
 const nextConfig: NextConfig = {
   output: "standalone",
+  // pdfkit (under pdfmake) loads its built-in fonts through package `imports`
+  // ("#standard-fonts/..."), which break once bundled; load both from node_modules.
+  serverExternalPackages: ["pdfmake", "pdfkit"],
   allowedDevOrigins: (process.env.ALLOWED_DEV_ORIGINS ?? "")
     .split(",")
     .map((s) => s.trim())
