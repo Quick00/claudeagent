@@ -8,6 +8,8 @@ const TOOL_LABELS: Record<string, string> = {
   mcp__knowledge__save_knowledge: 'Saving to knowledge base...',
   mcp__knowledge__search_knowledge: 'Searching knowledge base...',
   mcp__knowledge__resolve_verification: 'Checking a knowledge page...',
+  // Served by the knowledge MCP server, but it is not a knowledge action.
+  mcp__knowledge__create_file: 'Creating your file...',
 };
 
 /** `get_jira_issue`, `getJiraIssue`, `notion-search` → `get jira issue`, … */

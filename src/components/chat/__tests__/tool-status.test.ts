@@ -1,9 +1,13 @@
-import { toolStatusLabel } from './tool-status';
+import { toolStatusLabel } from '../tool-status';
 
 describe('toolStatusLabel', () => {
   it('uses the fixed label for known tools', () => {
     expect(toolStatusLabel('Grep')).toBe('Searching code...');
     expect(toolStatusLabel('mcp__knowledge__search_knowledge')).toBe('Searching knowledge base...');
+  });
+
+  it('describes making a file in plain words, not as a knowledge action', () => {
+    expect(toolStatusLabel('mcp__knowledge__create_file')).toBe('Creating your file...');
   });
 
   it('names the server and the action for other MCP tools', () => {
