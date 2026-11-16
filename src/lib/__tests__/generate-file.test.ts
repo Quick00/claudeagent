@@ -107,3 +107,20 @@ describe('generatedFilename', () => {
     expect(generatedFilename('report.PDF', 'pdf')).toBe('report.pdf');
   });
 });
+
+describe('review fixes', () => {
+  it('keeps nested list indentation in pdf markdown while stripping paths', () => {
+    const out = sanitizeGenerateRequest({ format: 'pdf', filename: 'r', content: '1. Step one\n   - sub a in src/A/B.php\n2. Step two' });
+    expect(out.format === 'pdf' && out.content).toBe('1. Step one\n   - sub a in\n2. Step two');
+  });
+
+  it('keeps accented letters in filenames', () => {
+    expect(generatedFilename('Overzicht categorieën', 'xlsx')).toBe('Overzicht categorieen.xlsx');
+    expect(generatedFilename('Résumé', 'pdf')).toBe('Resume.pdf');
+  });
+
+  it('strips source file names from the filename', () => {
+    const out = sanitizeGenerateRequest({ format: 'xlsx', filename: 'UserController.php export', sheets: [{ name: 'S', columns: ['a'], rows: [] }] });
+    expect(out.filename).not.toMatch(/\.php/);
+  });
+});

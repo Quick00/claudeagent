@@ -32,7 +32,14 @@ export async function createGeneratedFile(triggerMessageId: string, input: unkno
   }
 
   const request = sanitizeGenerateRequest(validation.request);
-  const { buffer, mimeType, ext } = await buildGeneratedFile(request);
+  let built: Awaited<ReturnType<typeof buildGeneratedFile>>;
+  try {
+    built = await buildGeneratedFile(request);
+  } catch (err) {
+    Sentry.captureException(err, { extra: { triggerMessageId, format: request.format } });
+    return { ok: false, status: 400, error: 'The file could not be built from this content. Try simpler content or a different layout.' };
+  }
+  const { buffer, mimeType, ext } = built;
   const { storagePath } = await saveUploadedFile(buffer, trigger.conversationId, ext);
 
   try {

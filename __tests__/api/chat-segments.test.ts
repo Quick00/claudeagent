@@ -178,12 +178,13 @@ describe('POST /api/chat — one assistant row per text segment', () => {
     expect(types.indexOf('files')).toBeLessThan(types.indexOf('done'));
   });
 
-  it('discards the failed attempt\'s files before a retry starts', async () => {
+  it('discards the failed attempt\'s files before a fresh retry starts', async () => {
+    mockConvFind.mockResolvedValue({ id: 'conv-1', claudeSessionId: null });
     const order: string[] = [];
     (discardUnlinkedGeneratedFiles as jest.Mock).mockImplementation(async () => { order.push('discard'); });
     const first = fakeChild();
     const second = fakeChild();
-    mockResume.mockResolvedValueOnce(first).mockImplementationOnce(async () => { order.push('respawn'); return second; });
+    mockStart.mockResolvedValueOnce(first).mockImplementationOnce(async () => { order.push('respawn'); return second; });
 
     const res = await POST(new Request('http://x', { method: 'POST', body: JSON.stringify({ conversationId: 'conv-1', message: 'q' }) }));
     await tick();
@@ -198,6 +199,26 @@ describe('POST /api/chat — one assistant row per text segment', () => {
 
     expect(discardUnlinkedGeneratedFiles).toHaveBeenCalledWith('um1');
     expect(order).toEqual(['discard', 'respawn']);
+  });
+
+  it('keeps the failed attempt\'s files when the retry resumes a session that remembers making them', async () => {
+    const first = fakeChild();
+    const second = fakeChild();
+    mockResume.mockResolvedValueOnce(first).mockResolvedValueOnce(second);
+
+    const res = await POST(new Request('http://x', { method: 'POST', body: JSON.stringify({ conversationId: 'conv-1', message: 'q' }) }));
+    await tick();
+    first.stdout.write(resultLine({ subtype: 'error_during_execution' }));
+    await tick();
+    await tick();
+    second.stdout.write(textLine('ok'));
+    await tick();
+    second.emit('close', 0);
+    await tick();
+    await drainSse(res);
+
+    expect(mockResume).toHaveBeenCalledTimes(2);
+    expect(discardUnlinkedGeneratedFiles).not.toHaveBeenCalled();
   });
 
   it('writes one row when no tool interrupts the answer', async () => {

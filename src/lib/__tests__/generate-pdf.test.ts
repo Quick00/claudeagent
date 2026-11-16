@@ -54,3 +54,23 @@ describe('buildPdf', () => {
     expect(buffer.subarray(0, 4).toString()).toBe('%PDF');
   });
 });
+
+describe('review fixes', () => {
+  it('keeps a numbered list numbered after an interruption', () => {
+    const nodes = markdownToPdfContent('1. one\n2. two\n\nA paragraph.\n\n3. three') as Array<Record<string, any>>;
+    const lists = nodes.filter((n) => n.ol);
+    expect(lists[1].start).toBe(3);
+  });
+
+  it('builds a pathological single long word quickly', async () => {
+    const started = Date.now();
+    await buildPdf(undefined, 'x'.repeat(200000));
+    expect(Date.now() - started).toBeLessThan(4000);
+  });
+
+  it('builds heavily formatted text quickly', async () => {
+    const started = Date.now();
+    await buildPdf(undefined, '*a* '.repeat(50000));
+    expect(Date.now() - started).toBeLessThan(4000);
+  });
+});

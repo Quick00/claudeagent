@@ -4,9 +4,9 @@ import type { SheetInput } from '@/lib/generate-file';
 const MIN_WIDTH = 8;
 const MAX_WIDTH = 60;
 
-/** Excel sheet names: 1-31 chars, none of \ / ? * [ ] :, unique ignoring case. */
+/** Excel sheet names: 1-31 chars, none of \ / ? * [ ] :, unique ignoring case, and never "History" (reserved). */
 function sheetNames(raw: string[]): string[] {
-  const used = new Set<string>();
+  const used = new Set<string>(['history']);
   return raw.map((name, i) => {
     const base = name.replace(/[\\/?*[\]:]/g, ' ').replace(/\s+/g, ' ').replace(/^'+|'+$/g, '').trim().slice(0, 31) || `Sheet ${i + 1}`;
     let candidate = base;

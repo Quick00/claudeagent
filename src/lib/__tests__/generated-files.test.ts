@@ -72,6 +72,24 @@ describe('createGeneratedFile', () => {
   });
 });
 
+describe('createGeneratedFile builder failure', () => {
+  it('returns a 400 Claude can act on when the builder throws', async () => {
+    let isolated!: typeof import('@/lib/generated-files');
+    jest.isolateModules(() => {
+      jest.doMock('@/lib/prisma', () => ({ prisma: db }));
+      jest.doMock('@/lib/upload', () => ({ saveUploadedFile: save, deleteUploadedFile: remove }));
+      jest.doMock('@/lib/generate-file', () => ({
+        ...jest.requireActual('@/lib/generate-file'),
+        buildGeneratedFile: jest.fn().mockRejectedValue(new Error('The name "X" is protected')),
+      }));
+      isolated = require('@/lib/generated-files');
+    });
+    const result = await isolated.createGeneratedFile('m1', xlsxInput);
+    expect(result).toMatchObject({ ok: false, status: 400 });
+    expect(save).not.toHaveBeenCalled();
+  });
+});
+
 describe('linkGeneratedFiles', () => {
   it('links nothing when the turn wrote no reply', async () => {
     await expect(linkGeneratedFiles('m1', null)).resolves.toEqual([]);

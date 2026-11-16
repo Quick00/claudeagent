@@ -76,13 +76,29 @@ export function validateGenerateRequest(input: unknown): Validation {
 
 const clean = (text: string) => stripSourceReferences(text).trim();
 
+/**
+ * The chat sanitizer collapses runs of spaces, which in Markdown carry list nesting.
+ * Sanitize line by line and keep each line's indentation; code fence lines pass untouched.
+ */
+function cleanMarkdown(markdown: string): string {
+  return markdown
+    .split('\n')
+    .map((line) => {
+      const indent = /^\s*/.exec(line)![0];
+      const rest = line.slice(indent.length);
+      return rest.startsWith('```') || rest.startsWith('~~~') ? line : indent + stripSourceReferences(rest).trimEnd();
+    })
+    .join('\n');
+}
+
 /** Same scrubbing as chat answers: no repo paths or source file names inside a file people pass around. */
 export function sanitizeGenerateRequest(req: GenerateRequest): GenerateRequest {
   if (req.format === 'pdf') {
-    return { ...req, title: req.title === undefined ? undefined : clean(req.title), content: stripSourceReferences(req.content) };
+    return { ...req, filename: clean(req.filename), title: req.title === undefined ? undefined : clean(req.title), content: cleanMarkdown(req.content) };
   }
   return {
     ...req,
+    filename: clean(req.filename),
     sheets: req.sheets.map((s) => ({
       name: clean(s.name),
       columns: s.columns.map(clean),
@@ -96,6 +112,7 @@ export function generatedFilename(name: string, ext: 'xlsx' | 'pdf'): string {
   const withoutExt = name.replace(new RegExp(`\\.${ext}$`, 'i'), '');
   const base = withoutExt
     .normalize('NFKD')
+    .replace(/\p{M}/gu, '')
     .replace(/[^A-Za-z0-9 ._-]+/g, ' ')
     .replace(/\s+/g, ' ')
     .replace(/^[ .]+|[ .]+$/g, '')

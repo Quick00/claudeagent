@@ -6,6 +6,15 @@ import type { Content, TDocumentDefinitions } from 'pdfmake/interfaces';
 type Run = { text: string; bold?: boolean; italics?: boolean; decoration?: 'lineThrough' };
 type Marks = Omit<Run, 'text'>;
 
+/**
+ * pdfmake lays text out synchronously on the request thread, and its cost grows with the
+ * number of styled runs and the length of unbreakable words: a 200k-character word or 50k
+ * italic fragments each took 15–20 s. Past these bounds the text is laid out more cheaply —
+ * long words get break points, and once the run budget is spent formatting is dropped.
+ */
+const MAX_WORD = 80;
+const MAX_STYLED_RUNS = 4000;
+
 // The built-in PDF font: nothing to load from disk or bundle. pdfmake checks font names
 // against the local-file policy too, so the four Helvetica faces are the only "files" allowed;
 // nothing in a generated document may point it at a URL or any other path.
@@ -16,6 +25,26 @@ pdfmake.setLocalAccessPolicy((path: string) => STANDARD_FACES.has(path));
 
 const decode = (text: string) =>
   text.replace(/&(amp|lt|gt|quot|#39);/g, (_, e: string) => ({ amp: '&', lt: '<', gt: '>', quot: '"', '#39': "'" })[e] ?? _);
+
+const breakLongWords = (text: string) => text.replace(new RegExp(`\\S{${MAX_WORD}}(?=\\S)`, 'g'), '$& ');
+
+let styledRunsLeft = MAX_STYLED_RUNS;
+
+/** Merges neighbouring runs with the same marks; past the run budget, drops the marks entirely. */
+function finishRuns(runs: Run[]): Run[] | string {
+  const merged: Run[] = [];
+  for (const run of runs) {
+    const last = merged[merged.length - 1];
+    if (last && last.bold === run.bold && last.italics === run.italics && last.decoration === run.decoration) last.text += run.text;
+    else merged.push({ ...run });
+  }
+  for (const run of merged) run.text = breakLongWords(run.text);
+  if (merged.length <= 1 || merged.length <= styledRunsLeft) {
+    styledRunsLeft -= merged.length;
+    return merged;
+  }
+  return merged.map((r) => r.text).join('');
+}
 
 /** Inline tokens to text runs. Links keep their text only; images keep their alt text. */
 function inline(tokens: Token[] | undefined, marks: Marks = {}): Run[] {
@@ -61,25 +90,25 @@ function blocksOf(tokens: Token[]): Content[] {
         break;
       case 'heading': {
         const h = token as Tokens.Heading;
-        out.push({ text: inline(h.tokens), style: `h${Math.min(h.depth, 3)}` });
+        out.push({ text: finishRuns(inline(h.tokens)), style: `h${Math.min(h.depth, 3)}` });
         break;
       }
       case 'paragraph':
-        out.push({ text: inline((token as Tokens.Paragraph).tokens), style: 'paragraph' });
+        out.push({ text: finishRuns(inline((token as Tokens.Paragraph).tokens)), style: 'paragraph' });
         break;
       case 'text':
-        out.push({ text: inline((token as Tokens.Text).tokens ?? [token]) });
+        out.push({ text: finishRuns(inline((token as Tokens.Text).tokens ?? [token])) });
         break;
       case 'list': {
         const list = token as Tokens.List;
         const items = list.items.map(listItem);
-        out.push(list.ordered ? { ol: items, style: 'list' } : { ul: items, style: 'list' });
+        out.push(list.ordered ? { ol: items, start: typeof list.start === 'number' ? list.start : 1, style: 'list' } : { ul: items, style: 'list' });
         break;
       }
       case 'table': {
         const table = token as Tokens.Table;
-        const header = table.header.map((cell) => ({ text: inline(cell.tokens), style: 'tableHeader' }));
-        const body = table.rows.map((row) => header.map((_, c) => ({ text: inline(row[c]?.tokens) })));
+        const header = table.header.map((cell) => ({ text: finishRuns(inline(cell.tokens)), style: 'tableHeader' }));
+        const body = table.rows.map((row) => header.map((_, c) => ({ text: finishRuns(inline(row[c]?.tokens)) })));
         out.push({ table: { headerRows: 1, widths: header.map(() => '*'), body: [header, ...body] }, layout: 'lightHorizontalLines', style: 'table' });
         break;
       }
@@ -91,18 +120,19 @@ function blocksOf(tokens: Token[]): Content[] {
         break;
       default:
         // Code blocks, raw HTML and anything else: shown as plain text, never interpreted.
-        out.push({ text: decode('text' in token && typeof token.text === 'string' ? token.text : token.raw), style: 'paragraph' });
+        out.push({ text: breakLongWords(decode('text' in token && typeof token.text === 'string' ? token.text : token.raw)), style: 'paragraph' });
     }
   }
   return out;
 }
 
 export function markdownToPdfContent(markdown: string): Content[] {
+  styledRunsLeft = MAX_STYLED_RUNS;
   return blocksOf(marked.lexer(markdown, { gfm: true }));
 }
 
 export async function buildPdf(title: string | undefined, markdown: string): Promise<Buffer> {
-  const content: Content[] = title ? [{ text: title, style: 'title' }] : [];
+  const content: Content[] = title ? [{ text: breakLongWords(title), style: 'title' }] : [];
   content.push(...markdownToPdfContent(markdown));
 
   const doc: TDocumentDefinitions = {

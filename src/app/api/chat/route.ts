@@ -244,13 +244,17 @@ export async function POST(request: Request) {
             console.log(`${logPrefix} error_during_execution — retrying (attempt ${retryCount + 1}/${MAX_RETRIES})`);
             retrying = true;
             const retryRequestId = `${conversation.id}-retry-${Date.now()}`;
-            // Files the failed attempt built would otherwise sit beside the retry's own under the reply.
-            // Awaited before the spawn, so the retry's new files can't be caught by the cleanup.
-            const retryProcOrPromise = discardUnlinkedGeneratedFiles(userMessage.id)
-              .catch((err) => {
-                console.error(`${logPrefix} Failed to discard generated files before retry:`, err.message);
-                Sentry.captureException(err, { extra: { conversationId: conversation.id, userId } });
-              })
+            // A fresh retry has no memory of the failed attempt and will build its files again, so
+            // those would sit beside the new ones under the reply: drop them first (awaited before the
+            // spawn, so the retry's own files can't be caught). A resumed retry keeps them — its
+            // session already holds "Created …" and may rightly not make the file twice.
+            const cleanup = conversation.claudeSessionId
+              ? Promise.resolve()
+              : discardUnlinkedGeneratedFiles(userMessage.id).catch((err) => {
+                  console.error(`${logPrefix} Failed to discard generated files before retry:`, err.message);
+                  Sentry.captureException(err, { extra: { conversationId: conversation.id, userId } });
+                });
+            const retryProcOrPromise = cleanup
               .then(() => conversation.claudeSessionId
                 ? sessionManager.resumeSession(retryRequestId, conversation.claudeSessionId, effectiveMessage, userClaudeToken, userId, userMessage.id)
                 : sessionManager.startSession(retryRequestId, effectiveMessage, systemPrompt, userClaudeToken, userId, repoPaths, userMessage.id));

@@ -56,4 +56,9 @@ describe('buildXlsx', () => {
     expect(ws.getColumn(1).width).toBe(60);
     expect(ws.getColumn(2).width).toBe(8);
   });
+
+  it('renames the sheet name Excel reserves', async () => {
+    const wb = await read(await buildXlsx([{ name: 'History', columns: ['x'], rows: [] }, { name: 'history', columns: ['x'], rows: [] }]));
+    expect(wb.worksheets.map((w) => w.name.toLowerCase())).not.toContain('history');
+  });
 });
