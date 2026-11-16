@@ -10,6 +10,17 @@ export const config = {
   mcpServerDescriptionMaxLength: 300,
   claudeMaxTurns: parseInt(process.env.CLAUDE_MAX_TURNS || '25', 10),
   uploadPath: process.env.UPLOAD_PATH || './uploads',
+  /** Caps on files Claude builds with `create_file` (see `generate-file.ts`). */
+  generatedFiles: {
+    maxPerTurn: 5,
+    maxSheets: 10,
+    maxRowsPerSheet: 5000,
+    maxColumns: 50,
+    maxCells: 100000,
+    maxCellChars: 32767,
+    maxPdfChars: 200000,
+    maxFilenameChars: 100,
+  },
   maxFileSize: 10 * 1024 * 1024, // 10MB
   maxFilesPerMessage: 3,
   claudeDisallowedTools: (process.env.CLAUDE_DISALLOWED_TOOLS || 'Bash,Task,Write,Edit,NotebookEdit,WebFetch,WebSearch')

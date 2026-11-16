@@ -11,7 +11,11 @@ const nodeProject: Config = {
   displayName: 'node',
   testEnvironment: 'node',
   testMatch: ['**/__tests__/**/*.test.ts'],
-  moduleNameMapper,
+  moduleNameMapper: {
+    ...moduleNameMapper,
+    // ESM-only; its UMD build is the same parser in a form Jest can require.
+    '^marked$': '<rootDir>/node_modules/marked/lib/marked.umd.js',
+  },
 };
 
 const jsdomProject: Config = {
